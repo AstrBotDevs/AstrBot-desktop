@@ -105,10 +105,6 @@ jobs:
             git -C "${repo_dir}" fetch --depth 1 origin "${source_git_ref}"
             git -C "${repo_dir}" checkout --detach FETCH_HEAD
             version="$(python3 scripts/ci/read-project-version.py "${repo_dir}/pyproject.toml")"
-            if [ -z "${version}" ]; then
-              echo "Unable to resolve project.version from pyproject.toml" >&2
-              exit 1
-            fi
           else
             version="${source_git_ref#v}"
             if [ -z "${version}" ] || [ "${version}" = "${source_git_ref}" ]; then
