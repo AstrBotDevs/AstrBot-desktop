@@ -15,15 +15,16 @@
 !macro NSIS_HOOK_POSTINSTALL
   ; Recreate shortcuts to avoid stale links when users migrate from older installers.
   StrCpy $0 "$INSTDIR\${MAINBINARYNAME}.exe"
-  IfFileExists "$0" +2 0
-    Goto +9
+  ${If} ${FileExists} "$0"
+    Delete "$DESKTOP\${PRODUCTNAME}.lnk"
+    CreateShortCut "$DESKTOP\${PRODUCTNAME}.lnk" "$0"
 
-  Delete "$DESKTOP\${PRODUCTNAME}.lnk"
-  CreateShortCut "$DESKTOP\${PRODUCTNAME}.lnk" "$0"
-
-  CreateDirectory "$SMPROGRAMS\${PRODUCTNAME}"
-  Delete "$SMPROGRAMS\${PRODUCTNAME}\${PRODUCTNAME}.lnk"
-  CreateShortCut "$SMPROGRAMS\${PRODUCTNAME}\${PRODUCTNAME}.lnk" "$0"
+    CreateDirectory "$SMPROGRAMS\${PRODUCTNAME}"
+    Delete "$SMPROGRAMS\${PRODUCTNAME}\${PRODUCTNAME}.lnk"
+    CreateShortCut "$SMPROGRAMS\${PRODUCTNAME}\${PRODUCTNAME}.lnk" "$0"
+  ${Else}
+    DetailPrint "Skip shortcut recreation: main binary not found at $0"
+  ${EndIf}
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL

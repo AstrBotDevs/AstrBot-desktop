@@ -1520,6 +1520,15 @@ const DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: &str = r#"
   const invoke = window.__TAURI_INTERNALS__?.invoke;
   if (typeof invoke !== 'function') return;
 
+  const BRIDGE_COMMANDS = Object.freeze({
+    IS_DESKTOP_RUNTIME: 'desktop_bridge_is_desktop_runtime',
+    IS_ELECTRON_RUNTIME: 'desktop_bridge_is_electron_runtime',
+    GET_BACKEND_STATE: 'desktop_bridge_get_backend_state',
+    SET_AUTH_TOKEN: 'desktop_bridge_set_auth_token',
+    RESTART_BACKEND: 'desktop_bridge_restart_backend',
+    STOP_BACKEND: 'desktop_bridge_stop_backend',
+  });
+
   const invokeBridge = async (command, payload = {}) => {
     try {
       return await invoke(command, payload);
@@ -1567,9 +1576,209 @@ const DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: &str = r#"
   };
 
   const syncAuthToken = (token = getStoredAuthToken()) =>
-    invokeBridge('desktop_bridge_set_auth_token', {
+    invokeBridge(BRIDGE_COMMANDS.SET_AUTH_TOKEN, {
       authToken: typeof token === 'string' && token ? token : null
     });
+
+  const RUNTIME_BRIDGE_DETAIL_MAX_LENGTH = 240;
+  const RUNTIME_BRIDGE_DETAIL_MAX_ITEMS = 8;
+  const RUNTIME_BRIDGE_TRUE_STRINGS = new Set(['1', 'true', 'yes', 'on']);
+  const RUNTIME_BRIDGE_FALSE_STRINGS = new Set(['0', 'false', 'no', 'off']);
+  const RUNTIME_BRIDGE_SENSITIVE_KEY_PATTERN =
+    /(token|secret|password|passwd|authorization|cookie|api[_-]?key|access[_-]?key|refresh[_-]?token|credential)/i;
+
+  const truncateRuntimeBridgeDetail = (value) => {
+    if (typeof value !== 'string') {
+      return value;
+    }
+    if (value.length <= RUNTIME_BRIDGE_DETAIL_MAX_LENGTH) {
+      return value;
+    }
+    return `${value.slice(0, RUNTIME_BRIDGE_DETAIL_MAX_LENGTH)}...`;
+  };
+
+  const isSensitiveRuntimeBridgeKey = (key) =>
+    typeof key === 'string' && RUNTIME_BRIDGE_SENSITIVE_KEY_PATTERN.test(key);
+
+  const summarizeRuntimeBridgeValue = (value, depth = 0) => {
+    if (
+      value === null ||
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean'
+    ) {
+      return value;
+    }
+
+    if (value instanceof Error) {
+      return truncateRuntimeBridgeDetail(`${value.name}: ${value.message}`);
+    }
+
+    if (typeof value === 'undefined') {
+      return '[undefined]';
+    }
+
+    if (typeof value === 'function') {
+      return '[function]';
+    }
+
+    if (typeof value !== 'object') {
+      return `[${typeof value}]`;
+    }
+
+    if (depth >= 1) {
+      return Array.isArray(value) ? `[array:${value.length}]` : '[object]';
+    }
+
+    if (Array.isArray(value)) {
+      const sample = value
+        .slice(0, RUNTIME_BRIDGE_DETAIL_MAX_ITEMS)
+        .map((item) => summarizeRuntimeBridgeValue(item, depth + 1));
+      if (value.length > sample.length) {
+        sample.push(`[+${value.length - sample.length} items]`);
+      }
+      return sample;
+    }
+
+    const keys = Object.keys(value);
+    const sampledKeys = keys.slice(0, RUNTIME_BRIDGE_DETAIL_MAX_ITEMS);
+    const sampled = {};
+    for (const key of sampledKeys) {
+      if (isSensitiveRuntimeBridgeKey(key)) {
+        sampled[key] = '[redacted]';
+        continue;
+      }
+      sampled[key] = summarizeRuntimeBridgeValue(value[key], depth + 1);
+    }
+    if (keys.length > sampledKeys.length) {
+      sampled.__omittedKeys = keys.length - sampledKeys.length;
+    }
+    return sampled;
+  };
+
+  const stringifyRuntimeBridgeDetail = (value) => {
+    if (!value || typeof value !== 'object') {
+      return `type=${Object.prototype.toString.call(value)}`;
+    }
+
+    try {
+      return truncateRuntimeBridgeDetail(
+        JSON.stringify(summarizeRuntimeBridgeValue(value)),
+      );
+    } catch {
+      return `type=${Object.prototype.toString.call(value)}`;
+    }
+  };
+
+  const sanitizeRuntimeBridgeDetail = (detail) => {
+    if (detail instanceof Error) {
+      return truncateRuntimeBridgeDetail(`${detail.name}: ${detail.message}`);
+    }
+
+    if (typeof detail === 'string') {
+      return truncateRuntimeBridgeDetail(detail);
+    }
+
+    if (typeof detail === 'number' || typeof detail === 'boolean') {
+      return String(detail);
+    }
+
+    if (detail && typeof detail === 'object') {
+      const hasReason = typeof detail.reason === 'string' && detail.reason;
+      const hasOk = typeof detail.ok === 'boolean';
+      if (hasReason || hasOk) {
+        const summary = [];
+        if (hasOk) {
+          summary.push(`ok=${detail.ok}`);
+        }
+        if (hasReason) {
+          summary.push(`reason=${detail.reason}`);
+        }
+        return truncateRuntimeBridgeDetail(summary.join(' '));
+      }
+      return stringifyRuntimeBridgeDetail(detail);
+    }
+
+    return String(detail);
+  };
+
+  const logRuntimeBridgeFallback = (command, fallbackValue, detail) => {
+    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+      const sanitizedDetail = sanitizeRuntimeBridgeDetail(detail);
+      console.warn(
+        `[astrbotDesktop] ${command} fallback to ${fallbackValue}`,
+        sanitizedDetail,
+      );
+    }
+  };
+
+  const getStrictBooleanFallback = (command, fallbackValue) => {
+    if (typeof fallbackValue === 'boolean') {
+      return fallbackValue;
+    }
+    if (typeof fallbackValue === 'undefined') {
+      return false;
+    }
+    if (fallbackValue === null) {
+      return false;
+    }
+    if (typeof fallbackValue === 'number') {
+      if (fallbackValue === 1) {
+        return true;
+      }
+      if (fallbackValue === 0) {
+        return false;
+      }
+      logRuntimeBridgeFallback(
+        command,
+        false,
+        `invalid numeric fallback (${fallbackValue}), force false`,
+      );
+      return false;
+    }
+    if (typeof fallbackValue === 'string') {
+      const normalized = fallbackValue.trim().toLowerCase();
+      if (RUNTIME_BRIDGE_TRUE_STRINGS.has(normalized)) {
+        return true;
+      }
+      if (RUNTIME_BRIDGE_FALSE_STRINGS.has(normalized)) {
+        return false;
+      }
+      logRuntimeBridgeFallback(
+        command,
+        false,
+        `invalid string fallback (${truncateRuntimeBridgeDetail(fallbackValue)}), force false`,
+      );
+      return false;
+    }
+
+    logRuntimeBridgeFallback(
+      command,
+      false,
+      `invalid fallback type (${typeof fallbackValue}), force false`,
+    );
+    return false;
+  };
+
+  const isRuntimeBridgeEnabled = async (command, fallbackValue) => {
+    const normalizedFallback = getStrictBooleanFallback(command, fallbackValue);
+
+    try {
+      const result = await invokeBridge(command);
+      if (typeof result === 'boolean') {
+        return result;
+      }
+      logRuntimeBridgeFallback(
+        command,
+        normalizedFallback,
+        `non-boolean result: ${String(result)}`,
+      );
+    } catch (error) {
+      logRuntimeBridgeFallback(command, normalizedFallback, error);
+    }
+
+    return normalizedFallback;
+  };
 
   const patchLocalStorageTokenSync = () => {
     try {
@@ -1609,20 +1818,22 @@ const DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: &str = r#"
   window.astrbotDesktop = {
     __tauriBridge: true,
     isDesktop: true,
-    isDesktopRuntime: () => Promise.resolve(true),
+    isDesktopRuntime: () =>
+      isRuntimeBridgeEnabled(BRIDGE_COMMANDS.IS_DESKTOP_RUNTIME, true),
     // Legacy aliases for current dashboard compatibility.
     isElectron: true,
-    isElectronRuntime: () => Promise.resolve(true),
-    getBackendState: () => invokeBridge('desktop_bridge_get_backend_state'),
+    isElectronRuntime: () =>
+      isRuntimeBridgeEnabled(BRIDGE_COMMANDS.IS_ELECTRON_RUNTIME, true),
+    getBackendState: () => invokeBridge(BRIDGE_COMMANDS.GET_BACKEND_STATE),
     restartBackend: async (authToken = null) => {
       const normalizedToken =
         typeof authToken === 'string' && authToken ? authToken : getStoredAuthToken();
       await syncAuthToken(normalizedToken);
-      return invokeBridge('desktop_bridge_restart_backend', {
+      return invokeBridge(BRIDGE_COMMANDS.RESTART_BACKEND, {
         authToken: normalizedToken
       });
     },
-    stopBackend: () => invokeBridge('desktop_bridge_stop_backend'),
+    stopBackend: () => invokeBridge(BRIDGE_COMMANDS.STOP_BACKEND),
     onTrayRestartBackend,
   };
 
