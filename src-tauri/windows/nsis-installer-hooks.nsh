@@ -13,6 +13,10 @@
   ${If} $DeleteAppDataCheckboxState = 1
   ${AndIf} $UpdateMode <> 1
     ExpandEnvStrings $0 "%USERPROFILE%"
-    RmDir /r "$0\.astrbot"
+    ${If} $0 != ""
+      RmDir /r "$0\.astrbot"
+    ${Else}
+      DetailPrint "Skip app data cleanup: USERPROFILE is empty."
+    ${EndIf}
   ${EndIf}
 !macroend

@@ -6,6 +6,7 @@ use std::os::windows::process::CommandExt;
 use std::{
     borrow::Cow,
     env,
+    ffi::OsString,
     fs::{self, OpenOptions},
     io::{Read, Write},
     net::{TcpStream, ToSocketAddrs},
@@ -35,6 +36,9 @@ const GRACEFUL_RESTART_POLL_INTERVAL_MS: u64 = 350;
 const GRACEFUL_STOP_TIMEOUT_MS: u64 = 10_000;
 const DEFAULT_BACKEND_PING_TIMEOUT_MS: u64 = 800;
 const BRIDGE_BACKEND_PING_TIMEOUT_ENV: &str = "ASTRBOT_BRIDGE_BACKEND_PING_TIMEOUT_MS";
+const DESKTOP_LOG_MAX_BYTES: u64 = 5 * 1024 * 1024;
+const BACKEND_LOG_MAX_BYTES: u64 = 20 * 1024 * 1024;
+const LOG_BACKUP_COUNT: usize = 5;
 const DESKTOP_LOG_FILE: &str = "desktop.log";
 const TRAY_ID: &str = "astrbot-tray";
 const TRAY_MENU_TOGGLE_WINDOW: &str = "tray_toggle_window";
@@ -47,6 +51,8 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 #[cfg(target_os = "windows")]
 const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 static BRIDGE_BACKEND_PING_TIMEOUT_MS: OnceLock<u64> = OnceLock::new();
+static MAIN_THREAD_ID: OnceLock<thread::ThreadId> = OnceLock::new();
+static DESKTOP_LOG_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy)]
 struct ShellTexts {
@@ -369,8 +375,10 @@ impl BackendState {
             );
         #[cfg(target_os = "windows")]
         {
-            // Keep packaged backend fully backgrounded; avoid showing a standalone console window.
-            command.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
+            // Keep packaged backend fully backgrounded; keep console visible for local/dev debugging.
+            if plan.packaged_mode {
+                command.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
+            }
         }
 
         if plan.packaged_mode {
@@ -400,6 +408,7 @@ impl BackendState {
                     )
                 })?;
             }
+            rotate_log_file_if_needed(&log_path, BACKEND_LOG_MAX_BYTES, LOG_BACKUP_COUNT);
             let stdout_file = OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -445,7 +454,7 @@ impl BackendState {
         let start_time = Instant::now();
 
         loop {
-            if self.ping_backend(800) {
+            if self.ping_backend(DEFAULT_BACKEND_PING_TIMEOUT_MS) {
                 return Ok(());
             }
 
@@ -801,7 +810,12 @@ Content-Length: {}\r\n\
             .child
             .lock()
             .map(|guard| guard.is_some())
-            .unwrap_or(false);
+            .unwrap_or_else(|error| {
+                append_desktop_log(&format!(
+                    "backend bridge: child process mutex poisoned in bridge_state: {error}"
+                ));
+                true
+            });
         let can_manage = has_managed_child || self.resolve_launch_plan(app).is_ok();
         BackendBridgeState {
             running: self.ping_backend(bridge_backend_ping_timeout_ms()),
@@ -901,6 +915,7 @@ fn desktop_bridge_stop_backend(app_handle: AppHandle) -> BackendBridgeResult {
 }
 
 fn main() {
+    let _ = MAIN_THREAD_ID.set(thread::current().id());
     append_desktop_log("desktop process starting");
     append_desktop_log(&format!(
         "desktop log path: {}",
@@ -1796,6 +1811,11 @@ fn append_desktop_log(message: &str) {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
+    let _guard = match DESKTOP_LOG_WRITE_LOCK.get_or_init(|| Mutex::new(())).lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    rotate_log_file_if_needed(&path, DESKTOP_LOG_MAX_BYTES, LOG_BACKUP_COUNT);
     let timestamp = chrono::Local::now()
         .format("%Y-%m-%d %H:%M:%S%.3f %z")
         .to_string();
@@ -1805,6 +1825,42 @@ fn append_desktop_log(message: &str) {
         .append(true)
         .open(path)
         .and_then(|mut file| std::io::Write::write_all(&mut file, line.as_bytes()));
+}
+
+fn rotate_log_file_if_needed(path: &Path, max_bytes: u64, backup_count: usize) {
+    if max_bytes == 0 || backup_count == 0 {
+        return;
+    }
+
+    let Ok(metadata) = fs::metadata(path) else {
+        return;
+    };
+    if metadata.len() < max_bytes {
+        return;
+    }
+
+    let oldest = rotated_log_path(path, backup_count);
+    let _ = fs::remove_file(oldest);
+
+    for index in (1..backup_count).rev() {
+        let source = rotated_log_path(path, index);
+        if !source.exists() {
+            continue;
+        }
+        let target = rotated_log_path(path, index + 1);
+        let _ = fs::remove_file(&target);
+        let _ = fs::rename(&source, &target);
+    }
+
+    let rotated = rotated_log_path(path, 1);
+    let _ = fs::remove_file(&rotated);
+    let _ = fs::rename(path, rotated);
+}
+
+fn rotated_log_path(path: &Path, index: usize) -> PathBuf {
+    let mut value = OsString::from(path.as_os_str());
+    value.push(format!(".{index}"));
+    PathBuf::from(value)
 }
 
 fn show_startup_error(app_handle: &AppHandle, message: &str) {
@@ -1837,6 +1893,15 @@ where
     T: Send + 'static,
     F: FnOnce(&AppHandle) -> Result<T, String> + Send + 'static,
 {
+    if MAIN_THREAD_ID
+        .get()
+        .is_some_and(|id| *id == thread::current().id())
+    {
+        return Err(format!(
+            "refuse to run '{action_name}' via run_on_main_thread_with_result from main thread"
+        ));
+    }
+
     let app_handle_for_main = app_handle.clone();
     let (sender, receiver) = mpsc::channel();
     app_handle
