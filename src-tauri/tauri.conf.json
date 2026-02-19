@@ -37,7 +37,8 @@
         "languages": [
           "SimpChinese",
           "English"
-        ]
+        ],
+        "installerHooks": "windows/nsis-installer-hooks.nsh"
       }
     },
     "icon": [

@@ -69,6 +69,7 @@ jobs:
 
       - name: Ensure Tauri resource placeholders
         if: steps.detect-tauri.outputs.has_tauri == 'true'
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p resources/webui resources/backend
