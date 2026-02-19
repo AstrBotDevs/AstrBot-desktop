@@ -16,6 +16,8 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     path::BaseDirectory,
@@ -31,6 +33,7 @@ const GRACEFUL_RESTART_REQUEST_TIMEOUT_MS: u64 = 2_500;
 const GRACEFUL_RESTART_START_TIME_TIMEOUT_MS: u64 = 1_800;
 const GRACEFUL_RESTART_POLL_INTERVAL_MS: u64 = 350;
 const GRACEFUL_STOP_TIMEOUT_MS: u64 = 10_000;
+const BRIDGE_BACKEND_PING_TIMEOUT_MS: u64 = 180;
 const DESKTOP_LOG_FILE: &str = "desktop.log";
 const TRAY_ID: &str = "astrbot-tray";
 const TRAY_MENU_TOGGLE_WINDOW: &str = "tray_toggle_window";
@@ -38,6 +41,10 @@ const TRAY_MENU_RELOAD_WINDOW: &str = "tray_reload_window";
 const TRAY_MENU_RESTART_BACKEND: &str = "tray_restart_backend";
 const TRAY_MENU_QUIT: &str = "tray_quit";
 const DEFAULT_SHELL_LOCALE: &str = "zh-CN";
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+#[cfg(target_os = "windows")]
+const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 
 #[derive(Debug, Clone, Copy)]
 struct ShellTexts {
@@ -358,6 +365,11 @@ impl BackendState {
                 "PYTHONIOENCODING",
                 env::var("PYTHONIOENCODING").unwrap_or_else(|_| "utf-8".to_string()),
             );
+        #[cfg(target_os = "windows")]
+        {
+            // Keep packaged backend fully backgrounded; avoid showing a standalone console window.
+            command.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
+        }
 
         if plan.packaged_mode {
             command.env("ASTRBOT_ELECTRON_CLIENT", "1");
@@ -783,9 +795,10 @@ Content-Length: {}\r\n\
     }
 
     fn bridge_state(&self, app: &AppHandle) -> BackendBridgeState {
-        let can_manage = self.resolve_launch_plan(app).is_ok();
+        let has_managed_child = self.child.lock().map(|guard| guard.is_some()).unwrap_or(false);
+        let can_manage = has_managed_child || self.resolve_launch_plan(app).is_ok();
         BackendBridgeState {
-            running: self.ping_backend(800),
+            running: self.ping_backend(BRIDGE_BACKEND_PING_TIMEOUT_MS),
             spawning: self.is_spawning.load(Ordering::Relaxed),
             restarting: self.is_restarting.load(Ordering::Relaxed),
             can_manage,
