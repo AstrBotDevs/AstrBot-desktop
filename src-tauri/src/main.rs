@@ -13,7 +13,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc, Mutex, OnceLock,
     },
     thread,
@@ -41,6 +41,7 @@ const RUN_ON_MAIN_THREAD_TIMEOUT: Duration = Duration::from_secs(30);
 const DESKTOP_LOG_MAX_BYTES: u64 = 5 * 1024 * 1024;
 const BACKEND_LOG_MAX_BYTES: u64 = 20 * 1024 * 1024;
 const LOG_BACKUP_COUNT: usize = 5;
+const BACKEND_LOG_ROTATION_CHECK_INTERVAL: Duration = Duration::from_secs(20);
 const DESKTOP_LOG_FILE: &str = "desktop.log";
 const TRAY_ID: &str = "astrbot-tray";
 const TRAY_MENU_TOGGLE_WINDOW: &str = "tray_toggle_window";
@@ -56,6 +57,7 @@ static BACKEND_PING_TIMEOUT_MS: OnceLock<u64> = OnceLock::new();
 static BRIDGE_BACKEND_PING_TIMEOUT_MS: OnceLock<u64> = OnceLock::new();
 static MAIN_THREAD_ID: OnceLock<thread::ThreadId> = OnceLock::new();
 static DESKTOP_LOG_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static BACKEND_LOG_ROTATION_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Copy)]
 struct ShellTexts {
@@ -401,7 +403,8 @@ impl BackendState {
             command.env("ASTRBOT_WEBUI_DIR", webui_dir);
         }
 
-        if let Some(log_path) = backend_log_path(plan.root_dir.as_deref()) {
+        let backend_log_path = backend_log_path(plan.root_dir.as_deref());
+        if let Some(log_path) = backend_log_path.as_ref() {
             if let Some(log_parent) = log_path.parent() {
                 fs::create_dir_all(log_parent).map_err(|error| {
                     format!(
@@ -411,11 +414,11 @@ impl BackendState {
                     )
                 })?;
             }
-            rotate_log_file_if_needed(&log_path, BACKEND_LOG_MAX_BYTES, LOG_BACKUP_COUNT);
+            rotate_log_file_if_needed(log_path, BACKEND_LOG_MAX_BYTES, LOG_BACKUP_COUNT, "backend");
             let stdout_file = OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(&log_path)
+                .open(log_path)
                 .map_err(|error| {
                     format!(
                         "Failed to open backend log {}: {}",
@@ -429,6 +432,7 @@ impl BackendState {
             command.stdout(Stdio::from(stdout_file));
             command.stderr(Stdio::from(stderr_file));
         } else {
+            self.stop_backend_log_rotation_worker();
             command.stdout(Stdio::null());
             command.stderr(Stdio::null());
         }
@@ -440,6 +444,7 @@ impl BackendState {
                 error
             )
         })?;
+        let child_pid = child.id();
         append_desktop_log(&format!(
             "spawned backend: cmd={:?}, cwd={}",
             build_debug_command(plan),
@@ -449,6 +454,11 @@ impl BackendState {
             .child
             .lock()
             .map_err(|_| "Backend process lock poisoned.")? = Some(child);
+        if let Some(log_path) = backend_log_path {
+            self.start_backend_log_rotation_worker(log_path, child_pid);
+        } else {
+            self.stop_backend_log_rotation_worker();
+        }
         Ok(())
     }
 
@@ -739,6 +749,7 @@ Content-Length: {}\r\n\
     }
 
     fn stop_backend(&self) -> Result<(), String> {
+        self.stop_backend_log_rotation_worker();
         let mut guard = self
             .child
             .lock()
@@ -757,6 +768,29 @@ Content-Length: {}\r\n\
             "Backend process did not exit after {}ms graceful stop timeout.",
             GRACEFUL_STOP_TIMEOUT_MS
         ))
+    }
+
+    fn stop_backend_log_rotation_worker(&self) {
+        BACKEND_LOG_ROTATION_GENERATION.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn start_backend_log_rotation_worker(&self, log_path: PathBuf, child_pid: u32) {
+        let generation = BACKEND_LOG_ROTATION_GENERATION.fetch_add(1, Ordering::Relaxed) + 1;
+        thread::spawn(move || {
+            let log_scope = format!("backend(pid={child_pid})");
+            loop {
+                thread::sleep(BACKEND_LOG_ROTATION_CHECK_INTERVAL);
+                if BACKEND_LOG_ROTATION_GENERATION.load(Ordering::Relaxed) != generation {
+                    break;
+                }
+                rotate_active_log_file_if_needed(
+                    &log_path,
+                    BACKEND_LOG_MAX_BYTES,
+                    LOG_BACKUP_COUNT,
+                    &log_scope,
+                );
+            }
+        });
     }
 
     fn stop_backend_for_bridge(&self) -> Result<(), String> {
@@ -1834,7 +1868,7 @@ fn append_desktop_log(message: &str) {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
-    rotate_log_file_if_needed(&path, DESKTOP_LOG_MAX_BYTES, LOG_BACKUP_COUNT);
+    rotate_log_file_if_needed(&path, DESKTOP_LOG_MAX_BYTES, LOG_BACKUP_COUNT, "desktop");
     let timestamp = chrono::Local::now()
         .format("%Y-%m-%d %H:%M:%S%.3f %z")
         .to_string();
@@ -1846,7 +1880,7 @@ fn append_desktop_log(message: &str) {
         .and_then(|mut file| std::io::Write::write_all(&mut file, line.as_bytes()));
 }
 
-fn rotate_log_file_if_needed(path: &Path, max_bytes: u64, backup_count: usize) {
+fn rotate_log_file_if_needed(path: &Path, max_bytes: u64, backup_count: usize, log_scope: &str) {
     if max_bytes == 0 || backup_count == 0 {
         return;
     }
@@ -1856,7 +1890,7 @@ fn rotate_log_file_if_needed(path: &Path, max_bytes: u64, backup_count: usize) {
         Err(error) => {
             if error.kind() != std::io::ErrorKind::NotFound {
                 eprintln!(
-                    "desktop log rotation: failed to read metadata for {}: {}",
+                    "[log rotation:{log_scope}] failed to read metadata for {}: {}",
                     path.display(),
                     error
                 );
@@ -1872,7 +1906,7 @@ fn rotate_log_file_if_needed(path: &Path, max_bytes: u64, backup_count: usize) {
     if let Err(error) = fs::remove_file(&oldest) {
         if error.kind() != std::io::ErrorKind::NotFound {
             eprintln!(
-                "desktop log rotation: failed to remove oldest backup {}: {}",
+                "[log rotation:{log_scope}] failed to remove oldest backup {}: {}",
                 oldest.display(),
                 error
             );
@@ -1888,7 +1922,7 @@ fn rotate_log_file_if_needed(path: &Path, max_bytes: u64, backup_count: usize) {
         if let Err(error) = fs::remove_file(&target) {
             if error.kind() != std::io::ErrorKind::NotFound {
                 eprintln!(
-                    "desktop log rotation: failed to remove backup {}: {}",
+                    "[log rotation:{log_scope}] failed to remove backup {}: {}",
                     target.display(),
                     error
                 );
@@ -1896,7 +1930,7 @@ fn rotate_log_file_if_needed(path: &Path, max_bytes: u64, backup_count: usize) {
         }
         if let Err(error) = fs::rename(&source, &target) {
             eprintln!(
-                "desktop log rotation: failed to rename {} to {}: {}",
+                "[log rotation:{log_scope}] failed to rename {} to {}: {}",
                 source.display(),
                 target.display(),
                 error
@@ -1908,7 +1942,7 @@ fn rotate_log_file_if_needed(path: &Path, max_bytes: u64, backup_count: usize) {
     if let Err(error) = fs::remove_file(&rotated) {
         if error.kind() != std::io::ErrorKind::NotFound {
             eprintln!(
-                "desktop log rotation: failed to remove first backup {}: {}",
+                "[log rotation:{log_scope}] failed to remove first backup {}: {}",
                 rotated.display(),
                 error
             );
@@ -1916,9 +1950,99 @@ fn rotate_log_file_if_needed(path: &Path, max_bytes: u64, backup_count: usize) {
     }
     if let Err(error) = fs::rename(path, &rotated) {
         eprintln!(
-            "desktop log rotation: failed to rotate {} to {}: {}",
+            "[log rotation:{log_scope}] failed to rotate {} to {}: {}",
             path.display(),
             rotated.display(),
+            error
+        );
+    }
+}
+
+fn rotate_active_log_file_if_needed(
+    path: &Path,
+    max_bytes: u64,
+    backup_count: usize,
+    log_scope: &str,
+) {
+    if max_bytes == 0 || backup_count == 0 {
+        return;
+    }
+
+    let metadata = match fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                eprintln!(
+                    "[log rotation:{log_scope}] failed to read metadata for {}: {}",
+                    path.display(),
+                    error
+                );
+            }
+            return;
+        }
+    };
+    if metadata.len() < max_bytes {
+        return;
+    }
+
+    let oldest = rotated_log_path(path, backup_count);
+    if let Err(error) = fs::remove_file(&oldest) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            eprintln!(
+                "[log rotation:{log_scope}] failed to remove oldest backup {}: {}",
+                oldest.display(),
+                error
+            );
+        }
+    }
+
+    for index in (1..backup_count).rev() {
+        let source = rotated_log_path(path, index);
+        if !source.exists() {
+            continue;
+        }
+        let target = rotated_log_path(path, index + 1);
+        if let Err(error) = fs::remove_file(&target) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                eprintln!(
+                    "[log rotation:{log_scope}] failed to remove backup {}: {}",
+                    target.display(),
+                    error
+                );
+            }
+        }
+        if let Err(error) = fs::rename(&source, &target) {
+            eprintln!(
+                "[log rotation:{log_scope}] failed to rename {} to {}: {}",
+                source.display(),
+                target.display(),
+                error
+            );
+        }
+    }
+
+    let rotated = rotated_log_path(path, 1);
+    if let Err(error) = fs::remove_file(&rotated) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            eprintln!(
+                "[log rotation:{log_scope}] failed to remove first backup {}: {}",
+                rotated.display(),
+                error
+            );
+        }
+    }
+    if let Err(error) = fs::copy(path, &rotated) {
+        eprintln!(
+            "[log rotation:{log_scope}] failed to copy {} to {}: {}",
+            path.display(),
+            rotated.display(),
+            error
+        );
+    }
+    if let Err(error) = OpenOptions::new().write(true).truncate(true).open(path) {
+        eprintln!(
+            "[log rotation:{log_scope}] failed to truncate active log {}: {}",
+            path.display(),
             error
         );
     }
@@ -1967,10 +2091,9 @@ where
     T: Send + 'static,
     F: FnOnce(&AppHandle) -> Result<T, String> + Send + 'static,
 {
-    if MAIN_THREAD_ID
-        .get()
-        .is_some_and(|id| *id == thread::current().id())
-    {
+    let current_thread_id = thread::current().id();
+    let main_thread_id = MAIN_THREAD_ID.get().copied();
+    if main_thread_id.is_none() || main_thread_id == Some(current_thread_id) {
         return action(app_handle);
     }
 
