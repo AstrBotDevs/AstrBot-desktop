@@ -25,9 +25,6 @@ permissions:
 env:
   ASTRBOT_SOURCE_GIT_URL: ${{ vars.ASTRBOT_SOURCE_GIT_URL || 'https://github.com/AstrBotDevs/AstrBot.git' }}
   ASTRBOT_SOURCE_GIT_REF: ${{ vars.ASTRBOT_SOURCE_GIT_REF || 'master' }}
-  WINDOWS_INSTALLER_EXE_GLOBS: |
-    src-tauri/target/release/bundle/nsis/*.exe
-    src-tauri/target/release/bundle/nsis-web/*.exe
 
 jobs:
   resolve_build_context:
@@ -130,6 +127,10 @@ jobs:
     if: ${{ needs.resolve_build_context.outputs.should_build == 'true' }}
     name: ${{ matrix.os_name }}-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
+    env:
+      WINDOWS_INSTALLER_EXE_GLOBS: |
+        src-tauri/target/release/bundle/nsis/*.exe
+        src-tauri/target/release/bundle/nsis-web/*.exe
     strategy:
       fail-fast: false
       matrix:
