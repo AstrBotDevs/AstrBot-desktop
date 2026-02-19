@@ -1581,6 +1581,11 @@ const DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: &str = r#"
     });
 
   const RUNTIME_BRIDGE_DETAIL_MAX_LENGTH = 240;
+  const RUNTIME_BRIDGE_DETAIL_MAX_ITEMS = 8;
+  const RUNTIME_BRIDGE_TRUE_STRINGS = new Set(['1', 'true', 'yes', 'on']);
+  const RUNTIME_BRIDGE_FALSE_STRINGS = new Set(['0', 'false', 'no', 'off']);
+  const RUNTIME_BRIDGE_SENSITIVE_KEY_PATTERN =
+    /(token|secret|password|passwd|authorization|cookie|api[_-]?key|access[_-]?key|refresh[_-]?token|credential)/i;
 
   const truncateRuntimeBridgeDetail = (value) => {
     if (typeof value !== 'string') {
@@ -1592,40 +1597,74 @@ const DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: &str = r#"
     return `${value.slice(0, RUNTIME_BRIDGE_DETAIL_MAX_LENGTH)}...`;
   };
 
+  const isSensitiveRuntimeBridgeKey = (key) =>
+    typeof key === 'string' && RUNTIME_BRIDGE_SENSITIVE_KEY_PATTERN.test(key);
+
+  const summarizeRuntimeBridgeValue = (value, depth = 0) => {
+    if (
+      value === null ||
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean'
+    ) {
+      return value;
+    }
+
+    if (value instanceof Error) {
+      return truncateRuntimeBridgeDetail(`${value.name}: ${value.message}`);
+    }
+
+    if (typeof value === 'undefined') {
+      return '[undefined]';
+    }
+
+    if (typeof value === 'function') {
+      return '[function]';
+    }
+
+    if (typeof value !== 'object') {
+      return `[${typeof value}]`;
+    }
+
+    if (depth >= 1) {
+      return Array.isArray(value) ? `[array:${value.length}]` : '[object]';
+    }
+
+    if (Array.isArray(value)) {
+      const sample = value
+        .slice(0, RUNTIME_BRIDGE_DETAIL_MAX_ITEMS)
+        .map((item) => summarizeRuntimeBridgeValue(item, depth + 1));
+      if (value.length > sample.length) {
+        sample.push(`[+${value.length - sample.length} items]`);
+      }
+      return sample;
+    }
+
+    const keys = Object.keys(value);
+    const sampledKeys = keys.slice(0, RUNTIME_BRIDGE_DETAIL_MAX_ITEMS);
+    const sampled = {};
+    for (const key of sampledKeys) {
+      if (isSensitiveRuntimeBridgeKey(key)) {
+        sampled[key] = '[redacted]';
+        continue;
+      }
+      sampled[key] = summarizeRuntimeBridgeValue(value[key], depth + 1);
+    }
+    if (keys.length > sampledKeys.length) {
+      sampled.__omittedKeys = keys.length - sampledKeys.length;
+    }
+    return sampled;
+  };
+
   const stringifyRuntimeBridgeDetail = (value) => {
     if (!value || typeof value !== 'object') {
       return `type=${Object.prototype.toString.call(value)}`;
     }
 
     try {
-      if (Array.isArray(value)) {
-        const sample = value.slice(0, 8);
-        const omitted = value.length > sample.length ? ` (+${value.length - sample.length} items)` : '';
-        return `${truncateRuntimeBridgeDetail(JSON.stringify(sample))}${omitted}`;
-      }
-
-      const keys = Object.keys(value);
-      const sampledKeys = keys.slice(0, 8);
-      const sampled = {};
-      for (const key of sampledKeys) {
-        const item = value[key];
-        if (
-          item === null ||
-          typeof item === 'string' ||
-          typeof item === 'number' ||
-          typeof item === 'boolean'
-        ) {
-          sampled[key] = item;
-        } else if (item instanceof Error) {
-          sampled[key] = `${item.name}: ${item.message}`;
-        } else if (Array.isArray(item)) {
-          sampled[key] = `[array:${item.length}]`;
-        } else {
-          sampled[key] = `[${typeof item}]`;
-        }
-      }
-      const omitted = keys.length > sampledKeys.length ? ` (+${keys.length - sampledKeys.length} keys)` : '';
-      return `${truncateRuntimeBridgeDetail(JSON.stringify(sampled))}${omitted}`;
+      return truncateRuntimeBridgeDetail(
+        JSON.stringify(summarizeRuntimeBridgeValue(value)),
+      );
     } catch {
       return `type=${Object.prototype.toString.call(value)}`;
     }
@@ -1678,6 +1717,38 @@ const DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: &str = r#"
       return fallbackValue;
     }
     if (typeof fallbackValue === 'undefined') {
+      return false;
+    }
+    if (fallbackValue === null) {
+      return false;
+    }
+    if (typeof fallbackValue === 'number') {
+      if (fallbackValue === 1) {
+        return true;
+      }
+      if (fallbackValue === 0) {
+        return false;
+      }
+      logRuntimeBridgeFallback(
+        command,
+        false,
+        `invalid numeric fallback (${fallbackValue}), force false`,
+      );
+      return false;
+    }
+    if (typeof fallbackValue === 'string') {
+      const normalized = fallbackValue.trim().toLowerCase();
+      if (RUNTIME_BRIDGE_TRUE_STRINGS.has(normalized)) {
+        return true;
+      }
+      if (RUNTIME_BRIDGE_FALSE_STRINGS.has(normalized)) {
+        return false;
+      }
+      logRuntimeBridgeFallback(
+        command,
+        false,
+        `invalid string fallback (${truncateRuntimeBridgeDetail(fallbackValue)}), force false`,
+      );
       return false;
     }
 
