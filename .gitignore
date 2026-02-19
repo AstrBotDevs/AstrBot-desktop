@@ -7,10 +7,8 @@ vendor/
 runtime/
 
 # generated resources
-resources/backend/*
-!resources/backend/.gitkeep
-resources/webui/*
-!resources/webui/.gitkeep
+resources/backend/
+resources/webui/
 
 # rust/tauri build outputs
 src-tauri/target/
