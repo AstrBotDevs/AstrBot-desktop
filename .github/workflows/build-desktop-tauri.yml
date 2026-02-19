@@ -8,21 +8,16 @@ on:
         required: false
         default: https://github.com/AstrBotDevs/AstrBot.git
       source_git_ref:
-        description: AstrBot source git ref (branch/tag/sha)
+        description: AstrBot source git ref (branch/tag/sha), empty means default ref
         required: false
-        default: master
-  pull_request:
-    branches:
-      - main
-      - master
-    paths:
-      - 'scripts/**'
-      - 'src-tauri/**'
-      - 'ui/**'
-      - 'resources/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - '.github/workflows/build-desktop-tauri.yml'
+        default: ""
+      publish_release:
+        description: Publish GitHub Release after successful builds
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    - cron: '0 * * * *'
 
 permissions:
   contents: read
@@ -32,7 +27,105 @@ env:
   ASTRBOT_SOURCE_GIT_REF: ${{ vars.ASTRBOT_SOURCE_GIT_REF || 'master' }}
 
 jobs:
+  resolve_build_context:
+    name: Resolve Build Context
+    runs-on: ubuntu-latest
+    outputs:
+      source_git_url: ${{ steps.resolve.outputs.source_git_url }}
+      source_git_ref: ${{ steps.resolve.outputs.source_git_ref }}
+      astrbot_version: ${{ steps.resolve.outputs.astrbot_version }}
+      should_build: ${{ steps.resolve.outputs.should_build }}
+    steps:
+      - name: Resolve source, version and trigger guard
+        id: resolve
+        env:
+          ASTRBOT_SOURCE_GIT_URL: ${{ env.ASTRBOT_SOURCE_GIT_URL }}
+          ASTRBOT_SOURCE_GIT_REF: ${{ env.ASTRBOT_SOURCE_GIT_REF }}
+          WORKFLOW_SOURCE_GIT_URL: ${{ github.event.inputs.source_git_url }}
+          WORKFLOW_SOURCE_GIT_REF: ${{ github.event.inputs.source_git_ref }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          source_git_url="${ASTRBOT_SOURCE_GIT_URL}"
+          source_git_ref="${ASTRBOT_SOURCE_GIT_REF}"
+          should_build="true"
+
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            if [ -n "${WORKFLOW_SOURCE_GIT_URL:-}" ]; then
+              source_git_url="${WORKFLOW_SOURCE_GIT_URL}"
+            fi
+            if [ -n "${WORKFLOW_SOURCE_GIT_REF:-}" ]; then
+              source_git_ref="${WORKFLOW_SOURCE_GIT_REF}"
+            fi
+          fi
+
+          if [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
+            latest_tag="$(git ls-remote --tags --refs "${source_git_url}" \
+              | awk '{print $2}' \
+              | sed 's#refs/tags/##' \
+              | sort -V \
+              | tail -n 1)"
+            if [ -z "${latest_tag}" ]; then
+              echo "Unable to resolve latest tag from ${source_git_url}" >&2
+              exit 1
+            fi
+            source_git_ref="${latest_tag}"
+            echo "Scheduled run detected latest upstream tag: ${source_git_ref}"
+
+            http_status="$(curl -sS -o /dev/null -w '%{http_code}' \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GH_REPOSITORY}/releases/tags/${source_git_ref}")"
+            if [ "${http_status}" = "200" ]; then
+              should_build="false"
+              echo "Release ${source_git_ref} already exists. Tag unchanged, skipping build."
+            else
+              echo "Release ${source_git_ref} not found (HTTP ${http_status}). Build will run."
+            fi
+          fi
+
+          version=""
+          if [ "${should_build}" = "true" ]; then
+            workdir="$(mktemp -d)"
+            repo_dir="${workdir}/AstrBot"
+            git init "${repo_dir}"
+            git -C "${repo_dir}" remote add origin "${source_git_url}"
+            git -C "${repo_dir}" fetch --depth 1 origin "${source_git_ref}"
+            git -C "${repo_dir}" checkout --detach FETCH_HEAD
+            version="$(python3 - <<'PY' "${repo_dir}/pyproject.toml"
+import pathlib
+import sys
+import tomllib
+
+pyproject = pathlib.Path(sys.argv[1])
+data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+version = data.get("project", {}).get("version")
+if not version:
+    raise SystemExit("Unable to resolve project.version from pyproject.toml")
+print(version)
+PY
+)"
+          else
+            version="${source_git_ref#v}"
+            if [ -z "${version}" ] || [ "${version}" = "${source_git_ref}" ]; then
+              version="unknown"
+            fi
+          fi
+
+          echo "source_git_url=${source_git_url}" >> "${GITHUB_OUTPUT}"
+          echo "source_git_ref=${source_git_ref}" >> "${GITHUB_OUTPUT}"
+          echo "astrbot_version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "should_build=${should_build}" >> "${GITHUB_OUTPUT}"
+          echo "Resolved source: ${source_git_url}@${source_git_ref}"
+          echo "Resolved AstrBot version: ${version}"
+          echo "Build enabled: ${should_build}"
+
   build:
+    needs: resolve_build_context
+    if: ${{ needs.resolve_build_context.outputs.should_build == 'true' }}
     name: ${{ matrix.os_name }}-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -100,8 +193,8 @@ jobs:
       - name: Build desktop installers (Linux)
         if: startsWith(matrix.runner, 'ubuntu')
         env:
-          ASTRBOT_SOURCE_GIT_URL: ${{ github.event.inputs.source_git_url || env.ASTRBOT_SOURCE_GIT_URL }}
-          ASTRBOT_SOURCE_GIT_REF: ${{ github.event.inputs.source_git_ref || env.ASTRBOT_SOURCE_GIT_REF }}
+          ASTRBOT_SOURCE_GIT_URL: ${{ needs.resolve_build_context.outputs.source_git_url }}
+          ASTRBOT_SOURCE_GIT_REF: ${{ needs.resolve_build_context.outputs.source_git_ref }}
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
         run: cargo tauri build --bundles deb,rpm
@@ -109,8 +202,9 @@ jobs:
       - name: Build desktop installers (Non-Linux)
         if: ${{ !startsWith(matrix.runner, 'ubuntu') }}
         env:
-          ASTRBOT_SOURCE_GIT_URL: ${{ github.event.inputs.source_git_url || env.ASTRBOT_SOURCE_GIT_URL }}
-          ASTRBOT_SOURCE_GIT_REF: ${{ github.event.inputs.source_git_ref || env.ASTRBOT_SOURCE_GIT_REF }}
+          ASTRBOT_SOURCE_GIT_URL: ${{ needs.resolve_build_context.outputs.source_git_url }}
+          ASTRBOT_SOURCE_GIT_REF: ${{ needs.resolve_build_context.outputs.source_git_ref }}
+          ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS: ${{ vars.ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS || '' }}
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
         run: pnpm run build
@@ -118,7 +212,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: astrbot-desktop-tauri-${{ matrix.os_name }}-${{ matrix.arch }}
+          name: astrbot-desktop-tauri-${{ needs.resolve_build_context.outputs.astrbot_version }}-${{ matrix.os_name }}-${{ matrix.arch }}
           if-no-files-found: error
           path: |
             src-tauri/target/release/bundle/dmg/*.dmg
@@ -128,3 +222,36 @@ jobs:
             src-tauri/target/release/bundle/**/*.rpm
             src-tauri/target/release/bundle/**/*.msi
             src-tauri/target/release/bundle/**/*.exe
+
+  release:
+    name: Publish GitHub Release
+    if: ${{ needs.resolve_build_context.outputs.should_build == 'true' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == 'true')) }}
+    needs:
+      - resolve_build_context
+      - build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: astrbot-desktop-tauri-${{ needs.resolve_build_context.outputs.astrbot_version }}-*
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Show artifacts
+        run: find release-artifacts -type f | sort
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.resolve_build_context.outputs.astrbot_version }}
+          name: AstrBot Desktop v${{ needs.resolve_build_context.outputs.astrbot_version }}
+          body: |
+            Automated desktop package release.
+            - Source: `${{ needs.resolve_build_context.outputs.source_git_url }}`
+            - Ref: `${{ needs.resolve_build_context.outputs.source_git_ref }}`
+          generate_release_notes: true
+          files: release-artifacts/**/*
+          fail_on_unmatched_files: true
