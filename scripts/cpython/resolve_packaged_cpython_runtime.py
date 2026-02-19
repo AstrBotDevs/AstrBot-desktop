@@ -47,7 +47,12 @@ def _build_request(url: str) -> urllib.request.Request:
         "Accept": "application/vnd.github+json",
         "User-Agent": "astrbot-desktop-tauri",
     }
-    github_token = (os.environ.get("GITHUB_TOKEN") or "").strip()
+    github_token = (
+        os.environ.get("GITHUB_TOKEN")
+        or os.environ.get("GH_TOKEN")
+        or os.environ.get("ASTRBOT_GITHUB_TOKEN")
+        or ""
+    ).strip()
     if github_token:
         headers["Authorization"] = f"Bearer {github_token}"
     return urllib.request.Request(url, headers=headers)

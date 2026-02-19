@@ -1070,18 +1070,7 @@ fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
 
             let app_handle_cloned = app_handle.clone();
             thread::spawn(move || {
-                let state = app_handle_cloned.state::<BackendState>();
-                match state.restart_backend(&app_handle_cloned, None) {
-                    Ok(()) => {
-                        append_desktop_log("backend restarted from tray menu");
-                        reload_main_window(&app_handle_cloned);
-                    }
-                    Err(error) => {
-                        append_desktop_log(&format!(
-                            "backend restart from tray menu failed: {error}"
-                        ));
-                    }
-                }
+                restart_backend_from_tray(&app_handle_cloned);
             });
         }
         TRAY_MENU_QUIT => {
@@ -1112,11 +1101,35 @@ fn emit_tray_restart_backend_event(app_handle: &AppHandle) {
         return;
     };
 
-    let script = "window.dispatchEvent(new Event('astrbot-desktop:tray-restart-backend'));";
+    let script = r#"
+(() => {
+  if (typeof window.__astrbotDesktopEmitTrayRestart === 'function') {
+    window.__astrbotDesktopEmitTrayRestart();
+    return;
+  }
+  const state =
+    window.__astrbotDesktopTrayRestartState ||
+    (window.__astrbotDesktopTrayRestartState = { handlers: new Set(), pending: 0 });
+  state.pending = Number(state.pending || 0) + 1;
+})();
+"#;
     if let Err(error) = window.eval(script) {
         append_desktop_log(&format!(
             "failed to emit tray restart backend event to webview: {error}"
         ));
+    }
+}
+
+fn restart_backend_from_tray(app_handle: &AppHandle) {
+    let state = app_handle.state::<BackendState>();
+    match state.restart_backend(app_handle, None) {
+        Ok(()) => {
+            append_desktop_log("backend restarted from tray menu");
+            reload_main_window(app_handle);
+        }
+        Err(error) => {
+            append_desktop_log(&format!("backend restart from tray menu failed: {error}"));
+        }
     }
 }
 
@@ -1308,11 +1321,33 @@ const DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: &str = r#"
     }
   };
 
+  const trayRestartState =
+    window.__astrbotDesktopTrayRestartState ||
+    (window.__astrbotDesktopTrayRestartState = { handlers: new Set(), pending: 0 });
+
+  const emitTrayRestart = () => {
+    if (trayRestartState.handlers.size === 0) {
+      trayRestartState.pending = Number(trayRestartState.pending || 0) + 1;
+      return;
+    }
+    for (const handler of trayRestartState.handlers) {
+      try {
+        handler();
+      } catch {}
+    }
+  };
+
+  window.__astrbotDesktopEmitTrayRestart = emitTrayRestart;
+
   const onTrayRestartBackend = (callback) => {
     if (typeof callback !== 'function') return () => {};
     const handler = () => callback();
-    window.addEventListener('astrbot-desktop:tray-restart-backend', handler);
-    return () => window.removeEventListener('astrbot-desktop:tray-restart-backend', handler);
+    trayRestartState.handlers.add(handler);
+    while (trayRestartState.pending > 0) {
+      trayRestartState.pending -= 1;
+      handler();
+    }
+    return () => trayRestartState.handlers.delete(handler);
   };
 
   const getStoredAuthToken = () => {

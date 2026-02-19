@@ -13,7 +13,6 @@ const PYTHON_BUILD_STANDALONE_RELEASE =
 const PYTHON_BUILD_STANDALONE_VERSION =
   process.env.ASTRBOT_PBS_VERSION?.trim() || '3.12.12';
 const mode = process.argv[2] || 'all';
-const PNPM_BIN = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
@@ -113,11 +112,12 @@ const ensureSourceRepo = (sourceDir) => {
   }
 };
 
-const runChecked = (cmd, args, cwd, envExtra = {}) => {
+const runChecked = (cmd, args, cwd, envExtra = {}, spawnExtra = {}) => {
   const result = spawnSync(cmd, args, {
     cwd,
     stdio: 'inherit',
     env: { ...process.env, ...envExtra },
+    ...spawnExtra,
   });
   if (result.error) {
     throw result.error;
@@ -125,6 +125,12 @@ const runChecked = (cmd, args, cwd, envExtra = {}) => {
   if (result.status !== 0) {
     throw new Error(`Command failed: ${cmd} ${args.join(' ')}`);
   }
+};
+
+const runPnpmChecked = (args, cwd, envExtra = {}) => {
+  runChecked('pnpm', args, cwd, envExtra, {
+    shell: process.platform === 'win32',
+  });
 };
 
 const ensurePackageInstall = (packageDir, installLabel) => {
@@ -139,13 +145,67 @@ const ensurePackageInstall = (packageDir, installLabel) => {
   if (existsSync(lockfilePath)) {
     installArgs.push('--frozen-lockfile');
   }
-  runChecked(PNPM_BIN, installArgs, packageDir);
+  runPnpmChecked(installArgs, packageDir);
 };
 
 const syncResourceDir = async (source, target) => {
   await rm(target, { recursive: true, force: true });
   await mkdir(path.dirname(target), { recursive: true });
   await cp(source, target, { recursive: true });
+};
+
+const patchMonacoCssNestingWarnings = async (dashboardDir) => {
+  const patchRules = [
+    {
+      file: path.join(
+        dashboardDir,
+        'node_modules',
+        'monaco-editor',
+        'esm',
+        'vs',
+        'editor',
+        'browser',
+        'widget',
+        'multiDiffEditor',
+        'style.css',
+      ),
+      selector: 'a',
+    },
+    {
+      file: path.join(
+        dashboardDir,
+        'node_modules',
+        'monaco-editor',
+        'esm',
+        'vs',
+        'editor',
+        'contrib',
+        'inlineEdits',
+        'browser',
+        'inlineEditsWidget.css',
+      ),
+      selector: 'svg',
+    },
+  ];
+
+  for (const { file, selector } of patchRules) {
+    if (!existsSync(file)) {
+      continue;
+    }
+    const css = await readFile(file, 'utf8');
+    const pattern = new RegExp(`^(\\s*)${selector}\\s*\\{`, 'm');
+    if (!pattern.test(css)) {
+      continue;
+    }
+
+    const patched = css.replace(pattern, `$1& ${selector} {`);
+    if (patched !== css) {
+      await writeFile(file, patched, 'utf8');
+      console.log(
+        `[prepare-resources] Patched Monaco nested selector "${selector}" in ${path.relative(projectRoot, file)}`,
+      );
+    }
+  }
 };
 
 const readAstrbotVersionFromPyproject = async (sourceDir) => {
@@ -324,7 +384,8 @@ const ensureBundledRuntime = () => {
 const prepareWebui = async (sourceDir) => {
   const dashboardDir = path.join(sourceDir, 'dashboard');
   ensurePackageInstall(dashboardDir, 'AstrBot dashboard');
-  runChecked(PNPM_BIN, ['--dir', dashboardDir, 'build'], sourceDir);
+  await patchMonacoCssNestingWarnings(dashboardDir);
+  runPnpmChecked(['--dir', dashboardDir, 'build'], sourceDir);
 
   const sourceWebuiDir = path.join(sourceDir, 'dashboard', 'dist');
   if (!existsSync(path.join(sourceWebuiDir, 'index.html'))) {
