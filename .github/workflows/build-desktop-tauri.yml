@@ -95,19 +95,11 @@ jobs:
             git -C "${repo_dir}" remote add origin "${source_git_url}"
             git -C "${repo_dir}" fetch --depth 1 origin "${source_git_ref}"
             git -C "${repo_dir}" checkout --detach FETCH_HEAD
-            version="$(python3 - <<'PY' "${repo_dir}/pyproject.toml"
-import pathlib
-import sys
-import tomllib
-
-pyproject = pathlib.Path(sys.argv[1])
-data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-version = data.get("project", {}).get("version")
-if not version:
-    raise SystemExit("Unable to resolve project.version from pyproject.toml")
-print(version)
-PY
-)"
+            version="$(python3 -c "import pathlib, sys, tomllib; data = tomllib.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8')); print(data.get('project', {}).get('version') or '')" "${repo_dir}/pyproject.toml")"
+            if [ -z "${version}" ]; then
+              echo "Unable to resolve project.version from pyproject.toml" >&2
+              exit 1
+            fi
           else
             version="${source_git_ref#v}"
             if [ -z "${version}" ] || [ "${version}" = "${source_git_ref}" ]; then

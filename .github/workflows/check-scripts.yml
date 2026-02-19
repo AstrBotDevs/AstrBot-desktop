@@ -1,0 +1,42 @@
+name: Check Scripts
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scripts:
+    name: node + python syntax checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check Node scripts syntax
+        run: |
+          set -euo pipefail
+          while IFS= read -r file; do
+            echo "Checking ${file}"
+            node --check "${file}"
+          done < <(find scripts -type f -name '*.mjs' | sort)
+
+      - name: Check Python scripts syntax
+        run: |
+          set -euo pipefail
+          python3 -m compileall -q scripts
