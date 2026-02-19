@@ -1571,29 +1571,34 @@ const DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: &str = r#"
       authToken: typeof token === 'string' && token ? token : null
     });
 
+  const logRuntimeBridgeFallback = (command, fallbackValue, detail) => {
+    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+      console.warn(
+        `[astrbotDesktop] ${command} fallback to ${fallbackValue}`,
+        detail,
+      );
+    }
+  };
+
   const isRuntimeBridgeEnabled = async (command, fallbackValue) => {
+    const normalizedFallback =
+      typeof fallbackValue === 'boolean' ? fallbackValue : Boolean(fallbackValue);
+
     try {
       const result = await invokeBridge(command);
       if (typeof result === 'boolean') {
         return result;
       }
-
-      if (typeof console !== 'undefined' && typeof console.warn === 'function') {
-        console.warn(
-          `[astrbotDesktop] ${command} returned non-boolean result, fallback to ${fallbackValue}`,
-          result,
-        );
-      }
+      logRuntimeBridgeFallback(
+        command,
+        normalizedFallback,
+        `non-boolean result: ${String(result)}`,
+      );
     } catch (error) {
-      if (typeof console !== 'undefined' && typeof console.warn === 'function') {
-        console.warn(
-          `[astrbotDesktop] ${command} failed, fallback to ${fallbackValue}`,
-          error,
-        );
-      }
+      logRuntimeBridgeFallback(command, normalizedFallback, error);
     }
 
-    return fallbackValue;
+    return normalizedFallback;
   };
 
   const patchLocalStorageTokenSync = () => {

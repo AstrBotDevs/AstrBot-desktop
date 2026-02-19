@@ -23,7 +23,7 @@
     Delete "$SMPROGRAMS\${PRODUCTNAME}\${PRODUCTNAME}.lnk"
     CreateShortCut "$SMPROGRAMS\${PRODUCTNAME}\${PRODUCTNAME}.lnk" "$0"
   ${Else}
-    DetailPrint "Skip shortcut recreation: main binary not found: $0"
+    DetailPrint "Skip shortcut recreation: main binary not found"
   ${EndIf}
 !macroend
 
