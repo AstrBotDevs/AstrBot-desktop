@@ -14,7 +14,7 @@ use std::{
     process::{Child, Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc, Arc, Mutex, OnceLock,
+        Arc, Mutex, OnceLock,
     },
     thread,
     time::{Duration, Instant},
@@ -37,7 +37,6 @@ const GRACEFUL_STOP_TIMEOUT_MS: u64 = 10_000;
 const DEFAULT_BACKEND_PING_TIMEOUT_MS: u64 = 800;
 const BACKEND_PING_TIMEOUT_ENV: &str = "ASTRBOT_BACKEND_PING_TIMEOUT_MS";
 const BRIDGE_BACKEND_PING_TIMEOUT_ENV: &str = "ASTRBOT_BRIDGE_BACKEND_PING_TIMEOUT_MS";
-const RUN_ON_MAIN_THREAD_TIMEOUT: Duration = Duration::from_secs(30);
 const DESKTOP_LOG_MAX_BYTES: u64 = 5 * 1024 * 1024;
 const BACKEND_LOG_MAX_BYTES: u64 = 20 * 1024 * 1024;
 const LOG_BACKUP_COUNT: usize = 5;
@@ -167,7 +166,7 @@ impl BackendState {
 
         let _spawn_guard = AtomicFlagGuard::set(&self.is_spawning);
         let plan = self.resolve_launch_plan(app)?;
-        self.start_backend_process(&plan)?;
+        self.start_backend_process(app, &plan)?;
         self.wait_for_backend(&plan)
     }
 
@@ -333,7 +332,7 @@ impl BackendState {
         })
     }
 
-    fn start_backend_process(&self, plan: &LaunchPlan) -> Result<(), String> {
+    fn start_backend_process(&self, app: &AppHandle, plan: &LaunchPlan) -> Result<(), String> {
         if self
             .child
             .lock()
@@ -415,7 +414,13 @@ impl BackendState {
                     )
                 })?;
             }
-            rotate_log_file_if_needed(log_path, BACKEND_LOG_MAX_BYTES, LOG_BACKUP_COUNT, "backend");
+            rotate_log_if_needed(
+                log_path,
+                BACKEND_LOG_MAX_BYTES,
+                LOG_BACKUP_COUNT,
+                "backend",
+                false,
+            );
             let stdout_file = OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -456,7 +461,7 @@ impl BackendState {
             .lock()
             .map_err(|_| "Backend process lock poisoned.")? = Some(child);
         if let Some(log_path) = backend_log_path {
-            self.start_backend_log_rotation_worker(log_path, child_pid);
+            self.start_backend_log_rotation_worker(app, log_path, child_pid);
         } else {
             self.stop_backend_log_rotation_worker();
         }
@@ -786,7 +791,48 @@ Content-Length: {}\r\n\
         }
     }
 
-    fn start_backend_log_rotation_worker(&self, log_path: PathBuf, child_pid: u32) {
+    fn managed_child_still_running(&self, child_pid: u32) -> bool {
+        let mut guard = match self.child.lock() {
+            Ok(guard) => guard,
+            Err(error) => {
+                append_desktop_log(&format!(
+                    "backend child lock poisoned while checking log rotator worker pid={child_pid}: {error}"
+                ));
+                return false;
+            }
+        };
+
+        let Some(child) = guard.as_mut() else {
+            return false;
+        };
+        if child.id() != child_pid {
+            return false;
+        }
+
+        match child.try_wait() {
+            Ok(None) => true,
+            Ok(Some(status)) => {
+                append_desktop_log(&format!(
+                    "backend process exited, stop log rotator worker: pid={child_pid}, status={status}"
+                ));
+                *guard = None;
+                false
+            }
+            Err(error) => {
+                append_desktop_log(&format!(
+                    "failed to poll backend process status for log rotator worker pid={child_pid}: {error}"
+                ));
+                false
+            }
+        }
+    }
+
+    fn start_backend_log_rotation_worker(
+        &self,
+        app: &AppHandle,
+        log_path: PathBuf,
+        child_pid: u32,
+    ) {
         self.stop_backend_log_rotation_worker();
         let stop_flag = Arc::new(AtomicBool::new(false));
         match self.log_rotator_stop.lock() {
@@ -801,21 +847,35 @@ Content-Length: {}\r\n\
             }
         }
 
+        let app_handle = app.clone();
         thread::spawn(move || {
             let log_scope = format!("backend(pid={child_pid})");
             loop {
                 if stop_flag.load(Ordering::Relaxed) {
                     break;
                 }
+                {
+                    let state = app_handle.state::<BackendState>();
+                    if !state.managed_child_still_running(child_pid) {
+                        break;
+                    }
+                }
                 thread::sleep(BACKEND_LOG_ROTATION_CHECK_INTERVAL);
                 if stop_flag.load(Ordering::Relaxed) {
                     break;
                 }
-                rotate_active_log_file_if_needed(
+                {
+                    let state = app_handle.state::<BackendState>();
+                    if !state.managed_child_still_running(child_pid) {
+                        break;
+                    }
+                }
+                rotate_log_if_needed(
                     &log_path,
                     BACKEND_LOG_MAX_BYTES,
                     LOG_BACKUP_COUNT,
                     &log_scope,
+                    true,
                 );
             }
         });
@@ -866,7 +926,7 @@ Content-Length: {}\r\n\
 
         self.stop_backend()?;
         let _spawn_guard = AtomicFlagGuard::set(&self.is_spawning);
-        self.start_backend_process(&plan)?;
+        self.start_backend_process(app, &plan)?;
         self.wait_for_backend(&plan)
     }
 
@@ -879,7 +939,7 @@ Content-Length: {}\r\n\
                 append_desktop_log(&format!(
                     "backend bridge: child process mutex poisoned in bridge_state: {error}"
                 ));
-                true
+                false
             });
         let can_manage = has_managed_child || self.resolve_launch_plan(app).is_ok();
         BackendBridgeState {
@@ -1053,10 +1113,15 @@ fn main() {
 
                 match startup_result {
                     Ok(()) => {
-                        if let Err(error) = run_on_main_thread_with_result(
+                        if let Err(error) = run_on_main_thread_dispatch(
                             &startup_app_handle,
                             "navigate backend",
-                            navigate_main_window_to_backend,
+                            move |main_app| match navigate_main_window_to_backend(main_app) {
+                                Ok(()) => {}
+                                Err(navigate_error) => {
+                                    show_startup_error(main_app, &navigate_error);
+                                }
+                            },
                         ) {
                             show_startup_error_on_main_thread(&startup_app_handle, &error);
                         }
@@ -1896,7 +1961,13 @@ fn append_desktop_log(message: &str) {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
-    rotate_log_file_if_needed(&path, DESKTOP_LOG_MAX_BYTES, LOG_BACKUP_COUNT, "desktop");
+    rotate_log_if_needed(
+        &path,
+        DESKTOP_LOG_MAX_BYTES,
+        LOG_BACKUP_COUNT,
+        "desktop",
+        false,
+    );
     let timestamp = chrono::Local::now()
         .format("%Y-%m-%d %H:%M:%S%.3f %z")
         .to_string();
@@ -1908,17 +1979,12 @@ fn append_desktop_log(message: &str) {
         .and_then(|mut file| std::io::Write::write_all(&mut file, line.as_bytes()));
 }
 
-enum RotationMode {
-    Rename,
-    CopyAndTruncate,
-}
-
-fn rotate_log_core(
+fn rotate_log_if_needed(
     path: &Path,
     max_bytes: u64,
     backup_count: usize,
     log_scope: &str,
-    mode: RotationMode,
+    copy_and_truncate: bool,
 ) {
     if max_bytes == 0 || backup_count == 0 {
         return;
@@ -1988,19 +2054,18 @@ fn rotate_log_core(
         }
     }
 
-    match mode {
-        RotationMode::Rename => {
-            if let Err(error) = fs::rename(path, &rotated) {
-                eprintln!(
-                    "[log rotation:{log_scope}] failed to rotate {} to {}: {}",
-                    path.display(),
-                    rotated.display(),
-                    error
-                );
+    if copy_and_truncate {
+        match fs::copy(path, &rotated) {
+            Ok(_) => {
+                if let Err(error) = OpenOptions::new().write(true).truncate(true).open(path) {
+                    eprintln!(
+                        "[log rotation:{log_scope}] failed to truncate active log {}: {}",
+                        path.display(),
+                        error
+                    );
+                }
             }
-        }
-        RotationMode::CopyAndTruncate => {
-            if let Err(error) = fs::copy(path, &rotated) {
+            Err(error) => {
                 eprintln!(
                     "[log rotation:{log_scope}] failed to copy {} to {}: {}",
                     path.display(),
@@ -2008,40 +2073,15 @@ fn rotate_log_core(
                     error
                 );
             }
-            if let Err(error) = OpenOptions::new().write(true).truncate(true).open(path) {
-                eprintln!(
-                    "[log rotation:{log_scope}] failed to truncate active log {}: {}",
-                    path.display(),
-                    error
-                );
-            }
         }
+    } else if let Err(error) = fs::rename(path, &rotated) {
+        eprintln!(
+            "[log rotation:{log_scope}] failed to rotate {} to {}: {}",
+            path.display(),
+            rotated.display(),
+            error
+        );
     }
-}
-
-fn rotate_log_file_if_needed(path: &Path, max_bytes: u64, backup_count: usize, log_scope: &str) {
-    rotate_log_core(
-        path,
-        max_bytes,
-        backup_count,
-        log_scope,
-        RotationMode::Rename,
-    );
-}
-
-fn rotate_active_log_file_if_needed(
-    path: &Path,
-    max_bytes: u64,
-    backup_count: usize,
-    log_scope: &str,
-) {
-    rotate_log_core(
-        path,
-        max_bytes,
-        backup_count,
-        log_scope,
-        RotationMode::CopyAndTruncate,
-    );
 }
 
 fn rotated_log_path(path: &Path, index: usize) -> PathBuf {
@@ -2059,9 +2099,8 @@ fn show_startup_error(app_handle: &AppHandle, message: &str) {
 fn show_startup_error_on_main_thread(app_handle: &AppHandle, message: &str) {
     let message_owned = message.to_string();
     if let Err(error) =
-        run_on_main_thread_with_result(app_handle, "show startup error", move |main_app| {
+        run_on_main_thread_dispatch(app_handle, "show startup error", move |main_app| {
             show_startup_error(main_app, &message_owned);
-            Ok(())
         })
     {
         append_desktop_log(&format!(
@@ -2071,48 +2110,25 @@ fn show_startup_error_on_main_thread(app_handle: &AppHandle, message: &str) {
     }
 }
 
-/// Run an action on the main thread and wait for its result.
-///
-/// If called from the main thread, this executes `action` directly.
-///
-/// # Important
-/// This helper blocks the calling thread while waiting for the main-thread result.
-/// Avoid calling it directly on async executor worker threads.
-/// The `action` must not block (directly or indirectly) on the calling thread.
-/// Doing so can create a circular dependency and deadlock.
-fn run_on_main_thread_with_result<T, F>(
+fn run_on_main_thread_dispatch<F>(
     app_handle: &AppHandle,
     action_name: &str,
     action: F,
-) -> Result<T, String>
+) -> Result<(), String>
 where
-    T: Send + 'static,
-    F: FnOnce(&AppHandle) -> Result<T, String> + Send + 'static,
+    F: FnOnce(&AppHandle) + Send + 'static,
 {
     let current_thread_id = thread::current().id();
     let main_thread_id = MAIN_THREAD_ID.get().copied();
     if main_thread_id.is_none() || main_thread_id == Some(current_thread_id) {
-        return action(app_handle);
+        action(app_handle);
+        return Ok(());
     }
 
     let app_handle_for_main = app_handle.clone();
-    let (sender, receiver) = mpsc::channel();
     app_handle
         .run_on_main_thread(move || {
-            let result = action(&app_handle_for_main);
-            let _ = sender.send(result);
+            action(&app_handle_for_main);
         })
-        .map_err(|error| format!("failed to schedule '{action_name}' on main thread: {error}"))?;
-
-    receiver
-        .recv_timeout(RUN_ON_MAIN_THREAD_TIMEOUT)
-        .map_err(|error| match error {
-            mpsc::RecvTimeoutError::Timeout => format!(
-                "timed out after {:?} waiting for '{action_name}' result from main thread",
-                RUN_ON_MAIN_THREAD_TIMEOUT
-            ),
-            mpsc::RecvTimeoutError::Disconnected => {
-                format!("failed to receive '{action_name}' result from main thread: channel disconnected")
-            }
-        })?
+        .map_err(|error| format!("failed to schedule '{action_name}' on main thread: {error}"))
 }
