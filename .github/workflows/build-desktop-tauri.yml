@@ -112,10 +112,12 @@ jobs:
             fi
           fi
 
-          echo "source_git_url=${source_git_url}" >> "${GITHUB_OUTPUT}"
-          echo "source_git_ref=${source_git_ref}" >> "${GITHUB_OUTPUT}"
-          echo "astrbot_version=${version}" >> "${GITHUB_OUTPUT}"
-          echo "should_build=${should_build}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "source_git_url=${source_git_url}"
+            echo "source_git_ref=${source_git_ref}"
+            echo "astrbot_version=${version}"
+            echo "should_build=${should_build}"
+          } >> "${GITHUB_OUTPUT}"
           echo "Resolved source: ${source_git_url}@${source_git_ref}"
           echo "Resolved AstrBot version: ${version}"
           echo "Build enabled: ${should_build}"
