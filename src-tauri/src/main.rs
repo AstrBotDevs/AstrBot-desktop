@@ -950,34 +950,22 @@ fn main() {
         })
         .setup(|app| {
             let app_handle = app.handle().clone();
-            let state = app_handle.state::<BackendState>();
-            if let Err(error) = state.ensure_backend_ready(&app_handle) {
-                show_startup_error(&app_handle, &error);
-                return Ok(());
-            }
-
-            let Some(window) = app_handle.get_webview_window("main") else {
-                show_startup_error(
-                    &app_handle,
-                    "Main window is unavailable after backend startup.",
-                );
-                return Ok(());
-            };
-
-            let js = format!(
-                "window.location.replace({});",
-                serde_json::to_string(&state.backend_url).unwrap_or_else(|_| "\"/\"".to_string())
-            );
-            if let Err(error) = window.eval(&js) {
-                show_startup_error(
-                    &app_handle,
-                    &format!("Failed to navigate to backend dashboard: {error}"),
-                );
-            }
-
             if let Err(error) = setup_tray(&app_handle) {
                 append_desktop_log(&format!("failed to initialize tray: {error}"));
             }
+
+            let startup_app_handle = app_handle.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                let state = startup_app_handle.state::<BackendState>();
+                if let Err(error) = state.ensure_backend_ready(&startup_app_handle) {
+                    show_startup_error(&startup_app_handle, &error);
+                    return;
+                }
+
+                if let Err(error) = navigate_main_window_to_backend(&startup_app_handle) {
+                    show_startup_error(&startup_app_handle, &error);
+                }
+            });
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -1231,6 +1219,21 @@ fn reload_main_window(app_handle: &AppHandle) {
     if let Err(error) = window.reload() {
         append_desktop_log(&format!("failed to reload main window: {error}"));
     }
+}
+
+fn navigate_main_window_to_backend(app_handle: &AppHandle) -> Result<(), String> {
+    let state = app_handle.state::<BackendState>();
+    let backend_url =
+        serde_json::to_string(&state.backend_url).unwrap_or_else(|_| "\"/\"".to_string());
+
+    let Some(window) = app_handle.get_webview_window("main") else {
+        return Err("Main window is unavailable after backend startup.".to_string());
+    };
+
+    let js = format!("window.location.replace({backend_url});");
+    window
+        .eval(&js)
+        .map_err(|error| format!("Failed to navigate to backend dashboard: {error}"))
 }
 
 fn shell_texts_for_locale(locale: &str) -> ShellTexts {
