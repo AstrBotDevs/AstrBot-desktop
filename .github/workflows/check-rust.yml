@@ -18,13 +18,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
 
+      - name: Detect Tauri crate
+        id: detect-tauri
+        run: |
+          set -euo pipefail
+          if [ -d src-tauri ] && [ -f src-tauri/Cargo.toml ] && [ -f src-tauri/Cargo.lock ]; then
+            echo "has_tauri=true" >> "${GITHUB_OUTPUT}"
+            echo "Detected src-tauri crate."
+          else
+            echo "has_tauri=false" >> "${GITHUB_OUTPUT}"
+            echo "src-tauri/Cargo.toml or Cargo.lock missing; skip Rust checks."
+          fi
+
       - name: Setup Rust
+        if: steps.detect-tauri.outputs.has_tauri == 'true'
         uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: stable
           components: rustfmt, clippy
 
       - name: Install Linux dependencies
+        if: steps.detect-tauri.outputs.has_tauri == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -34,22 +48,37 @@ jobs:
             librsvg2-dev \
             patchelf
 
+      - name: Determine Rust toolchain hash
+        if: steps.detect-tauri.outputs.has_tauri == 'true'
+        id: rust-version
+        run: |
+          set -euo pipefail
+          echo "rustc_hash=$(rustc -Vv | sha256sum | cut -d' ' -f1)" >> "${GITHUB_OUTPUT}"
+
       - name: Cache Cargo registry, git, and target
+        if: steps.detect-tauri.outputs.has_tauri == 'true'
         uses: actions/cache@v5.0.3
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ steps.rust-version.outputs.rustc_hash }}-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-cargo-${{ steps.rust-version.outputs.rustc_hash }}-
 
       - name: rustfmt
+        if: steps.detect-tauri.outputs.has_tauri == 'true'
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 
       - name: clippy
+        if: steps.detect-tauri.outputs.has_tauri == 'true'
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
 
       - name: cargo check
+        if: steps.detect-tauri.outputs.has_tauri == 'true'
         run: cargo check --manifest-path src-tauri/Cargo.toml --locked
+
+      - name: Skip notice
+        if: steps.detect-tauri.outputs.has_tauri != 'true'
+        run: echo "Rust checks skipped because src-tauri crate files are missing."

@@ -12,9 +12,12 @@ def _load_toml_module():
 
         return tomllib
     except ModuleNotFoundError:
-        import tomli
+        try:
+            import tomli
 
-        return tomli
+            return tomli
+        except ModuleNotFoundError:
+            return None
 
 
 def main() -> int:
@@ -34,6 +37,9 @@ def main() -> int:
         return 1
 
     toml_module = _load_toml_module()
+    if toml_module is None:
+        print("No TOML parser available: install Python 3.11+ or add dependency 'tomli'.", file=sys.stderr)
+        return 1
     try:
         data = toml_module.loads(pyproject_text)
     except Exception as exc:
