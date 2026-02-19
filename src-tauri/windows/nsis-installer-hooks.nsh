@@ -12,6 +12,20 @@
   DetailPrint "Skip backend process cleanup: script not found: $1"
 !macroend
 
+!macro NSIS_HOOK_POSTINSTALL
+  ; Recreate shortcuts to avoid stale links when users migrate from older installers.
+  StrCpy $0 "$INSTDIR\${MAINBINARYNAME}.exe"
+  IfFileExists "$0" +2 0
+    Goto +9
+
+  Delete "$DESKTOP\${PRODUCTNAME}.lnk"
+  CreateShortCut "$DESKTOP\${PRODUCTNAME}.lnk" "$0"
+
+  CreateDirectory "$SMPROGRAMS\${PRODUCTNAME}"
+  Delete "$SMPROGRAMS\${PRODUCTNAME}\${PRODUCTNAME}.lnk"
+  CreateShortCut "$SMPROGRAMS\${PRODUCTNAME}\${PRODUCTNAME}.lnk" "$0"
+!macroend
+
 !macro NSIS_HOOK_POSTUNINSTALL
   ; Keep behavior aligned with NSIS checkbox: only remove user data when user asked for it.
   ${If} $DeleteAppDataCheckboxState = 1

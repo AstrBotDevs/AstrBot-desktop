@@ -955,6 +955,11 @@ fn desktop_bridge_is_desktop_runtime() -> bool {
 }
 
 #[tauri::command]
+fn desktop_bridge_is_electron_runtime() -> bool {
+    desktop_bridge_is_desktop_runtime()
+}
+
+#[tauri::command]
 fn desktop_bridge_get_backend_state(app_handle: AppHandle) -> BackendBridgeState {
     let state = app_handle.state::<BackendState>();
     state.bridge_state(&app_handle)
@@ -1039,6 +1044,7 @@ fn main() {
         .manage(BackendState::default())
         .invoke_handler(tauri::generate_handler![
             desktop_bridge_is_desktop_runtime,
+            desktop_bridge_is_electron_runtime,
             desktop_bridge_get_backend_state,
             desktop_bridge_set_auth_token,
             desktop_bridge_restart_backend,
@@ -1604,6 +1610,9 @@ const DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: &str = r#"
     __tauriBridge: true,
     isDesktop: true,
     isDesktopRuntime: () => Promise.resolve(true),
+    // Legacy aliases for current dashboard compatibility.
+    isElectron: true,
+    isElectronRuntime: () => Promise.resolve(true),
     getBackendState: () => invokeBridge('desktop_bridge_get_backend_state'),
     restartBackend: async (authToken = null) => {
       const normalizedToken =

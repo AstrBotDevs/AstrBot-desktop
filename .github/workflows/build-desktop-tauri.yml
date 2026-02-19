@@ -210,6 +210,23 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: pnpm run build
 
+      - name: Verify macOS DMG integrity
+        if: startsWith(matrix.runner, 'macos')
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dmg_files=(src-tauri/target/release/bundle/dmg/*.dmg)
+          if [ "${#dmg_files[@]}" -eq 0 ]; then
+            echo "No DMG files found under src-tauri/target/release/bundle/dmg"
+            exit 1
+          fi
+
+          for dmg in "${dmg_files[@]}"; do
+            echo "Verifying ${dmg}"
+            hdiutil verify "${dmg}"
+          done
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v6.0.0
         with:
