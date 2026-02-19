@@ -33,8 +33,8 @@ const GRACEFUL_RESTART_REQUEST_TIMEOUT_MS: u64 = 2_500;
 const GRACEFUL_RESTART_START_TIME_TIMEOUT_MS: u64 = 1_800;
 const GRACEFUL_RESTART_POLL_INTERVAL_MS: u64 = 350;
 const GRACEFUL_STOP_TIMEOUT_MS: u64 = 10_000;
-const BACKEND_PING_TIMEOUT_MS: u64 = 800;
-const BRIDGE_BACKEND_PING_TIMEOUT_DEFAULT_MS: u64 = 800;
+const DEFAULT_BACKEND_PING_TIMEOUT_MS: u64 = 800;
+const BRIDGE_BACKEND_PING_TIMEOUT_ENV: &str = "ASTRBOT_BRIDGE_BACKEND_PING_TIMEOUT_MS";
 const DESKTOP_LOG_FILE: &str = "desktop.log";
 const TRAY_ID: &str = "astrbot-tray";
 const TRAY_MENU_TOGGLE_WINDOW: &str = "tray_toggle_window";
@@ -141,7 +141,7 @@ impl Default for BackendState {
 
 impl BackendState {
     fn ensure_backend_ready(&self, app: &AppHandle) -> Result<(), String> {
-        if self.ping_backend(BACKEND_PING_TIMEOUT_MS) {
+        if self.ping_backend(DEFAULT_BACKEND_PING_TIMEOUT_MS) {
             append_desktop_log("backend already reachable, skip spawn");
             return Ok(());
         }
@@ -757,7 +757,7 @@ Content-Length: {}\r\n\
             return self.stop_backend();
         }
 
-        if self.ping_backend(BACKEND_PING_TIMEOUT_MS) {
+        if self.ping_backend(DEFAULT_BACKEND_PING_TIMEOUT_MS) {
             return Err("Backend is running but not managed by desktop process.".to_string());
         }
         Ok(())
@@ -1750,11 +1750,19 @@ fn resolve_resource_path(app: &AppHandle, relative_path: &str) -> Option<PathBuf
 
 fn bridge_backend_ping_timeout_ms() -> u64 {
     *BRIDGE_BACKEND_PING_TIMEOUT_MS.get_or_init(|| {
-        env::var("ASTRBOT_BRIDGE_BACKEND_PING_TIMEOUT_MS")
-            .ok()
-            .and_then(|value| value.trim().parse::<u64>().ok())
-            .filter(|timeout_ms| *timeout_ms > 0)
-            .unwrap_or(BRIDGE_BACKEND_PING_TIMEOUT_DEFAULT_MS)
+        match env::var(BRIDGE_BACKEND_PING_TIMEOUT_ENV) {
+            Ok(raw) => match raw.trim().parse::<u64>() {
+                Ok(timeout_ms) if timeout_ms > 0 => timeout_ms,
+                _ => {
+                    append_desktop_log(&format!(
+                        "invalid {}='{}', fallback to {}ms",
+                        BRIDGE_BACKEND_PING_TIMEOUT_ENV, raw, DEFAULT_BACKEND_PING_TIMEOUT_MS
+                    ));
+                    DEFAULT_BACKEND_PING_TIMEOUT_MS
+                }
+            },
+            Err(_) => DEFAULT_BACKEND_PING_TIMEOUT_MS,
+        }
     })
 }
 
