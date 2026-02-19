@@ -13,8 +13,8 @@ use std::{
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
-        mpsc, Mutex, OnceLock,
+        atomic::{AtomicBool, Ordering},
+        mpsc, Arc, Mutex, OnceLock,
     },
     thread,
     time::{Duration, Instant},
@@ -57,7 +57,6 @@ static BACKEND_PING_TIMEOUT_MS: OnceLock<u64> = OnceLock::new();
 static BRIDGE_BACKEND_PING_TIMEOUT_MS: OnceLock<u64> = OnceLock::new();
 static MAIN_THREAD_ID: OnceLock<thread::ThreadId> = OnceLock::new();
 static DESKTOP_LOG_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-static BACKEND_LOG_ROTATION_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Copy)]
 struct ShellTexts {
@@ -97,6 +96,7 @@ struct BackendState {
     child: Mutex<Option<Child>>,
     backend_url: String,
     restart_auth_token: Mutex<Option<String>>,
+    log_rotator_stop: Mutex<Option<Arc<AtomicBool>>>,
     is_quitting: AtomicBool,
     is_spawning: AtomicBool,
     is_restarting: AtomicBool,
@@ -143,6 +143,7 @@ impl Default for BackendState {
                     .unwrap_or_else(|_| DEFAULT_BACKEND_URL.to_string()),
             ),
             restart_auth_token: Mutex::new(None),
+            log_rotator_stop: Mutex::new(None),
             is_quitting: AtomicBool::new(false),
             is_spawning: AtomicBool::new(false),
             is_restarting: AtomicBool::new(false),
@@ -771,16 +772,43 @@ Content-Length: {}\r\n\
     }
 
     fn stop_backend_log_rotation_worker(&self) {
-        BACKEND_LOG_ROTATION_GENERATION.fetch_add(1, Ordering::Relaxed);
+        match self.log_rotator_stop.lock() {
+            Ok(mut guard) => {
+                if let Some(flag) = guard.take() {
+                    flag.store(true, Ordering::Relaxed);
+                }
+            }
+            Err(error) => {
+                append_desktop_log(&format!(
+                    "backend log rotator stop flag lock poisoned: {error}"
+                ));
+            }
+        }
     }
 
     fn start_backend_log_rotation_worker(&self, log_path: PathBuf, child_pid: u32) {
-        let generation = BACKEND_LOG_ROTATION_GENERATION.fetch_add(1, Ordering::Relaxed) + 1;
+        self.stop_backend_log_rotation_worker();
+        let stop_flag = Arc::new(AtomicBool::new(false));
+        match self.log_rotator_stop.lock() {
+            Ok(mut guard) => {
+                *guard = Some(stop_flag.clone());
+            }
+            Err(error) => {
+                append_desktop_log(&format!(
+                    "backend log rotator stop flag lock poisoned on start: {error}"
+                ));
+                return;
+            }
+        }
+
         thread::spawn(move || {
             let log_scope = format!("backend(pid={child_pid})");
             loop {
+                if stop_flag.load(Ordering::Relaxed) {
+                    break;
+                }
                 thread::sleep(BACKEND_LOG_ROTATION_CHECK_INTERVAL);
-                if BACKEND_LOG_ROTATION_GENERATION.load(Ordering::Relaxed) != generation {
+                if stop_flag.load(Ordering::Relaxed) {
                     break;
                 }
                 rotate_active_log_file_if_needed(
@@ -2048,6 +2076,8 @@ fn show_startup_error_on_main_thread(app_handle: &AppHandle, message: &str) {
 /// If called from the main thread, this executes `action` directly.
 ///
 /// # Important
+/// This helper blocks the calling thread while waiting for the main-thread result.
+/// Avoid calling it directly on async executor worker threads.
 /// The `action` must not block (directly or indirectly) on the calling thread.
 /// Doing so can create a circular dependency and deadlock.
 fn run_on_main_thread_with_result<T, F>(
