@@ -50,7 +50,7 @@ runs:
     - name: Install Tauri CLI (Windows)
       if: runner.os == 'Windows'
       shell: pwsh
-      run: cargo install tauri-cli --version ${{ inputs.tauri-cli-version }} --locked
+      run: cargo install tauri-cli --version "${{ inputs.tauri-cli-version }}" --locked
 
     - name: Install dependencies (non-Windows)
       if: runner.os != 'Windows'
