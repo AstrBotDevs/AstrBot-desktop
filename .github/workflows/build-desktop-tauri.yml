@@ -208,27 +208,33 @@ jobs:
 
           max_attempts=2
           attempt=1
-          # Match on stable error fragments so minor upstream wording changes do not disable retries.
-          retry_pattern='bundle_dmg|hdiutil: detach:.*timeout|hdiutil: detach:.*not detached|failed to bundle project'
+          # Only retry on known transient DMG detach failures.
+          retry_pattern='hdiutil: detach:.*(timeout|not detached)|DiskArbitration expired'
+          log_file=""
+
+          cleanup_log_file() {
+            if [ -n "${log_file:-}" ]; then
+              rm -f "${log_file}" || true
+              log_file=""
+            fi
+          }
+          trap cleanup_log_file EXIT
 
           while [ "${attempt}" -le "${max_attempts}" ]; do
             log_file="$(mktemp -t tauri-macos-build.XXXXXX.log)"
             echo "macOS build attempt ${attempt}/${max_attempts} (arch=${{ matrix.arch }}, target=${{ matrix.target }})"
 
             if cargo tauri build --verbose --target ${{ matrix.target }} 2>&1 | tee "${log_file}"; then
-              rm -f "${log_file}"
               exit 0
             fi
 
             if [ "${attempt}" -ge "${max_attempts}" ]; then
               echo "macOS build failed after ${max_attempts} attempts."
-              rm -f "${log_file}"
               exit 1
             fi
 
             if ! grep -Eq "${retry_pattern}" "${log_file}"; then
               echo "macOS build failed with a non-retryable error. Skip retry."
-              rm -f "${log_file}"
               exit 1
             fi
 
@@ -256,7 +262,7 @@ jobs:
               fi
             fi
             rm -f src-tauri/target/${{ matrix.target }}/release/bundle/macos/rw.*.dmg || true
-            rm -f "${log_file}"
+            cleanup_log_file
 
             attempt=$((attempt + 1))
             sleep 5
