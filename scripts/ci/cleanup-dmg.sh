@@ -263,8 +263,8 @@ terminate_pid_soft_then_hard() {
 
 cleanup_stale_dmg_state() {
   local dmg_mounts
-  dmg_mounts="$(mount | awk -v mount_regex="${rw_dmg_mountpoint_regex}" '
-    $1 ~ /^\/dev\/disk/ && $3 ~ mount_regex { print $3 }
+  dmg_mounts="$(mount | awk -F ' on | \\(' -v mount_regex="${rw_dmg_mountpoint_regex}" '
+    $1 ~ /^\/dev\/disk/ && $2 ~ mount_regex { print $2 }
   ' || true)"
   if [ -n "${dmg_mounts}" ]; then
     while IFS= read -r mount_point; do

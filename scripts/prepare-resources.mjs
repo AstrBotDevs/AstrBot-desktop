@@ -212,8 +212,8 @@ const patchMonacoCssNestingWarnings = async (dashboardDir) => {
 const LEGACY_DESKTOP_BRIDGE_PATTERNS = {
   trayRestartGuard:
     /if\s*\(\s*!desktopBridge\?\.isElectron\s*\|\|\s*!desktopBridge\.onTrayRestartBackend\s*\)\s*\{/,
-  typeIsElectron: /^\s+isElectron:\s*boolean;\r?\n/m,
-  typeIsElectronRuntime: /^\s+isElectronRuntime:\s*\(\)\s*=>\s*Promise<boolean>;\r?\n/m,
+  typeIsElectron: /^(\s+)isElectron:\s*boolean;(\r?\n)/m,
+  typeIsElectronRuntime: /^(\s+)isElectronRuntime:\s*\(\)\s*=>\s*Promise<boolean>;(\r?\n)/m,
   electronAppFlagToken: /\bisElectronApp\b/,
   electronAppFlagReplace: /\bisElectronApp\b/g,
   desktopReleaseEnvGuard:
@@ -297,11 +297,11 @@ const patchLegacyDesktopBridgeArtifacts = async (dashboardDir) => {
       let patched = source;
       patched = patched.replace(
         LEGACY_DESKTOP_BRIDGE_PATTERNS.typeIsElectron,
-        '      isDesktop: boolean;\n',
+        '$1isDesktop: boolean;$2',
       );
       patched = patched.replace(
         LEGACY_DESKTOP_BRIDGE_PATTERNS.typeIsElectronRuntime,
-        '      isDesktopRuntime: () => Promise<boolean>;\n',
+        '$1isDesktopRuntime: () => Promise<boolean>;$2',
       );
       return patched;
     },
