@@ -285,9 +285,12 @@ jobs:
           detach_attempts=3
           detach_sleep_seconds=2
           rw_dmg_image_prefix='/src-tauri/target/'
-          rw_dmg_image_suffix_regex='/bundle/macos/rw\\..*\\.dmg$'
+          rw_dmg_image_suffix_regex='/bundle/macos/rw\..*\.dmg$'
+          allow_global_helper_cleanup="${ASTRBOT_DESKTOP_MACOS_ALLOW_GLOBAL_HELPER_KILL:-0}"
           log_file=""
           workspace_root="${GITHUB_WORKSPACE:-$(pwd)}"
+          workspace_root_raw="${workspace_root%/}"
+          workspace_root="${workspace_root_raw}"
           workspace_root="${workspace_root%/}"
 
           cleanup_log_file() {
@@ -313,6 +316,74 @@ jobs:
             return 1
           }
 
+          canonicalize_path() {
+            local raw_path="$1"
+            python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "${raw_path}"
+          }
+
+          is_workspace_rw_dmg_image() {
+            local image="$1"
+            local normalized_image
+            normalized_image="$(canonicalize_path "${image}")"
+            local candidate
+            for candidate in "${image}" "${normalized_image}"; do
+              if [[ "${candidate}" == "${workspace_root}${rw_dmg_image_prefix}"* ]] &&
+                 [[ "${candidate}" =~ ${rw_dmg_image_suffix_regex} ]]; then
+                return 0
+              fi
+              if [[ "${candidate}" == "${workspace_root_raw}${rw_dmg_image_prefix}"* ]] &&
+                 [[ "${candidate}" =~ ${rw_dmg_image_suffix_regex} ]]; then
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          collect_dmg_records() {
+            hdiutil info 2>/dev/null | awk '
+              BEGIN { image = ""; dev = ""; pid = "" }
+              /^image-path[[:space:]]*:/ {
+                line = $0
+                sub(/^image-path[[:space:]]*:[[:space:]]*/, "", line)
+                image = line
+                next
+              }
+              /^\/dev\/disk[0-9]+/ && dev == "" {
+                dev = $1
+                next
+              }
+              /^process ID[[:space:]]*:/ {
+                line = $0
+                sub(/^process ID[[:space:]]*:[[:space:]]*/, "", line)
+                pid = line
+                next
+              }
+              /^=+/ {
+                if (image != "") {
+                  print image "\t" dev "\t" pid
+                }
+                image = ""
+                dev = ""
+                pid = ""
+                next
+              }
+              END {
+                if (image != "") {
+                  print image "\t" dev "\t" pid
+                }
+              }
+            '
+          }
+
+          terminate_pid_soft_then_hard() {
+            local pid="$1"
+            kill -TERM "${pid}" 2>/dev/null || return 0
+            sleep 1
+            if kill -0 "${pid}" 2>/dev/null; then
+              kill -KILL "${pid}" 2>/dev/null || true
+            fi
+          }
+
           cleanup_stale_dmg_state() {
             local dmg_mounts
             dmg_mounts="$(mount | awk '$3 ~ /^\/Volumes\/dmg\./ { print $3 }' || true)"
@@ -324,40 +395,27 @@ jobs:
               done <<< "${dmg_mounts}"
             fi
 
+            local dmg_records
+            dmg_records="$(collect_dmg_records)"
+
             local workspace_disks
-            workspace_disks="$(hdiutil info 2>/dev/null | awk \
-              -v root="${workspace_root}" \
-              -v image_prefix="${rw_dmg_image_prefix}" \
-              -v image_suffix_re="${rw_dmg_image_suffix_regex}" '
-              BEGIN { image = ""; dev = "" }
-              /^image-path[[:space:]]*:/ {
-                line = $0
-                sub(/^image-path[[:space:]]*:[[:space:]]*/, "", line)
-                image = line
-                next
-              }
-              /^\/dev\/disk[0-9]+/ && dev == "" {
-                dev = $1
-                next
-              }
-              /^=+/ {
-                if (index(image, root image_prefix) == 1 &&
-                    image ~ image_suffix_re &&
-                    dev != "") {
-                  print dev
-                }
-                image = ""
-                dev = ""
-                next
-              }
-              END {
-                if (index(image, root image_prefix) == 1 &&
-                    image ~ image_suffix_re &&
-                    dev != "") {
-                  print dev
-                }
-              }
-            ' | sort -u)"
+            workspace_disks=""
+            local workspace_helper_pids
+            workspace_helper_pids=""
+            while IFS=$'\t' read -r image disk pid; do
+              [ -z "${image:-}" ] && continue
+              if ! is_workspace_rw_dmg_image "${image}"; then
+                continue
+              fi
+              if [[ "${disk}" =~ ^/dev/disk[0-9]+$ ]]; then
+                workspace_disks+="${disk}"$'\n'
+              fi
+              if [[ "${pid}" =~ ^[0-9]+$ ]]; then
+                workspace_helper_pids+="${pid}"$'\n'
+              fi
+            done <<< "${dmg_records}"
+            workspace_disks="$(printf '%s\n' "${workspace_disks}" | awk 'NF' | sort -u)"
+            workspace_helper_pids="$(printf '%s\n' "${workspace_helper_pids}" | awk 'NF' | sort -u)"
 
             if [ -n "${workspace_disks}" ]; then
               while IFS= read -r disk; do
@@ -369,55 +427,23 @@ jobs:
 
             # Prefer process IDs linked to this workspace's RW DMG images.
             local helper_pids
-            helper_pids="$(hdiutil info 2>/dev/null | awk \
-              -v root="${workspace_root}" \
-              -v image_prefix="${rw_dmg_image_prefix}" \
-              -v image_suffix_re="${rw_dmg_image_suffix_regex}" '
-              BEGIN { image = ""; pid = "" }
-              /^image-path[[:space:]]*:/ {
-                line = $0
-                sub(/^image-path[[:space:]]*:[[:space:]]*/, "", line)
-                image = line
-                next
-              }
-              /^process ID[[:space:]]*:/ {
-                line = $0
-                sub(/^process ID[[:space:]]*:[[:space:]]*/, "", line)
-                pid = line
-                next
-              }
-              /^=+/ {
-                if (index(image, root image_prefix) == 1 &&
-                    image ~ image_suffix_re &&
-                    pid ~ /^[0-9]+$/) {
-                  print pid
-                }
-                image = ""
-                pid = ""
-                next
-              }
-              END {
-                if (index(image, root image_prefix) == 1 &&
-                    image ~ image_suffix_re &&
-                    pid ~ /^[0-9]+$/) {
-                  print pid
-                }
-              }
-            ' | sort -u)"
+            helper_pids="${workspace_helper_pids}"
 
             # Fallback: exact process-name match only, avoid broad -f substring patterns.
-            if [ -z "${helper_pids}" ]; then
+            if [ -z "${helper_pids}" ] && [ "${allow_global_helper_cleanup}" = "1" ]; then
               helper_pids="$(
                 pgrep -x diskimages-helper || true
                 pgrep -x diskimages-help || true
               )"
+            elif [ -z "${helper_pids}" ]; then
+              echo "Skip global disk image helper cleanup (set ASTRBOT_DESKTOP_MACOS_ALLOW_GLOBAL_HELPER_KILL=1 to enable)." >&2
             fi
             helper_pids="$(printf '%s\n' "${helper_pids}" | awk 'NF' | sort -u)"
             if [ -n "${helper_pids}" ]; then
               while IFS= read -r pid; do
                 [ -z "${pid}" ] && continue
                 echo "Killing stale disk image helper pid=${pid}"
-                kill "${pid}" || true
+                terminate_pid_soft_then_hard "${pid}"
               done <<< "${helper_pids}"
             fi
           }
