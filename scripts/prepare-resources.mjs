@@ -8,6 +8,7 @@ const DEFAULT_ASTRBOT_SOURCE_GIT_URL = 'https://github.com/AstrBotDevs/AstrBot.g
 const sourceRepoUrlRaw =
   process.env.ASTRBOT_SOURCE_GIT_URL?.trim() || DEFAULT_ASTRBOT_SOURCE_GIT_URL;
 const sourceRepoRefRaw = process.env.ASTRBOT_SOURCE_GIT_REF?.trim() || '';
+const desktopVersionOverride = process.env.ASTRBOT_DESKTOP_VERSION?.trim() || '';
 const PYTHON_BUILD_STANDALONE_RELEASE =
   process.env.ASTRBOT_PBS_RELEASE?.trim() || '20260211';
 const PYTHON_BUILD_STANDALONE_VERSION =
@@ -427,12 +428,35 @@ const ensureStartupShellAssets = () => {
 
 const main = async () => {
   const sourceDir = resolveSourceDir();
+  const needsSourceRepo = mode !== 'version' || !desktopVersionOverride;
   await mkdir(path.join(projectRoot, 'resources'), { recursive: true });
-  ensureSourceRepo(sourceDir);
+  if (needsSourceRepo) {
+    ensureSourceRepo(sourceDir);
+  } else {
+    console.log(
+      '[prepare-resources] Skip source repo sync in version-only mode because ASTRBOT_DESKTOP_VERSION is set.',
+    );
+  }
   ensureStartupShellAssets();
-  const astrbotVersion = await readAstrbotVersionFromPyproject(sourceDir);
+  const astrbotVersion = desktopVersionOverride || (await readAstrbotVersionFromPyproject(sourceDir));
+
+  if (desktopVersionOverride && needsSourceRepo) {
+    const sourceVersion = await readAstrbotVersionFromPyproject(sourceDir);
+    if (sourceVersion !== desktopVersionOverride) {
+      console.warn(
+        `[prepare-resources] Version override drift detected: ASTRBOT_DESKTOP_VERSION=${desktopVersionOverride}, source pyproject version=${sourceVersion} (${sourceDir})`,
+      );
+    }
+  }
+
   await syncDesktopVersionFiles(astrbotVersion);
-  console.log(`[prepare-resources] Synced desktop version to AstrBot ${astrbotVersion}`);
+  if (desktopVersionOverride) {
+    console.log(
+      `[prepare-resources] Synced desktop version to override ${astrbotVersion} (ASTRBOT_DESKTOP_VERSION)`,
+    );
+  } else {
+    console.log(`[prepare-resources] Synced desktop version to AstrBot ${astrbotVersion}`);
+  }
 
   if (mode === 'version') {
     return;

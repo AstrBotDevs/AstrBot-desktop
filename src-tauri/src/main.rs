@@ -103,6 +103,7 @@ struct BackendState {
     is_quitting: AtomicBool,
     is_spawning: AtomicBool,
     is_restarting: AtomicBool,
+    exit_cleanup_started: AtomicBool,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -137,7 +138,6 @@ enum GracefulRestartOutcome {
 #[derive(Debug, Clone, Copy)]
 struct TrayOriginDecision {
     uses_backend_origin: bool,
-    should_log_mismatch: bool,
 }
 
 struct AtomicFlagGuard<'a> {
@@ -171,6 +171,7 @@ impl Default for BackendState {
             is_quitting: AtomicBool::new(false),
             is_spawning: AtomicBool::new(false),
             is_restarting: AtomicBool::new(false),
+            exit_cleanup_started: AtomicBool::new(false),
         }
     }
 }
@@ -1050,16 +1051,17 @@ Content-Length: {}\r\n\
     fn is_quitting(&self) -> bool {
         self.is_quitting.load(Ordering::Relaxed)
     }
+
+    fn try_begin_exit_cleanup(&self) -> bool {
+        self.exit_cleanup_started
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    }
 }
 
 #[tauri::command]
 fn desktop_bridge_is_desktop_runtime() -> bool {
     true
-}
-
-#[tauri::command]
-fn desktop_bridge_is_electron_runtime() -> bool {
-    desktop_bridge_is_desktop_runtime()
 }
 
 #[tauri::command]
@@ -1147,7 +1149,6 @@ fn main() {
         .manage(BackendState::default())
         .invoke_handler(tauri::generate_handler![
             desktop_bridge_is_desktop_runtime,
-            desktop_bridge_is_electron_runtime,
             desktop_bridge_get_backend_state,
             desktop_bridge_set_auth_token,
             desktop_bridge_restart_backend,
@@ -1239,19 +1240,41 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| match event {
-            RunEvent::ExitRequested { .. } => {
+            RunEvent::ExitRequested { api, .. } => {
                 let state = app_handle.state::<BackendState>();
+                // Prevent immediate process exit so backend shutdown can run in the runtime's
+                // blocking pool; we exit explicitly after stop_backend() finishes.
+                api.prevent_exit();
                 state.mark_quitting();
-                if let Err(error) = state.stop_backend() {
-                    append_desktop_log(&format!(
-                        "backend graceful stop on ExitRequested failed: {error}"
-                    ));
+                if !state.try_begin_exit_cleanup() {
+                    append_desktop_log("exit requested while backend cleanup is already running");
+                    return;
                 }
+
+                append_desktop_log("exit requested, stopping backend asynchronously");
+                let app_handle_cloned = app_handle.clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    let state = app_handle_cloned.state::<BackendState>();
+                    if let Err(error) = state.stop_backend() {
+                        append_desktop_log(&format!(
+                            "backend graceful stop on ExitRequested failed: {error}"
+                        ));
+                    }
+
+                    append_desktop_log("backend stop finished, exiting desktop process");
+                    app_handle_cloned.exit(0);
+                });
             }
             RunEvent::Exit => {
                 let state = app_handle.state::<BackendState>();
+                state.mark_quitting();
+                if !state.try_begin_exit_cleanup() {
+                    return;
+                }
+
+                append_desktop_log("exit event triggered fallback backend cleanup");
                 if let Err(error) = state.stop_backend() {
-                    append_desktop_log(&format!("backend graceful stop on Exit failed: {error}"));
+                    append_desktop_log(&format!("backend fallback stop on Exit failed: {error}"));
                 }
             }
             _ => {}
@@ -1365,10 +1388,6 @@ fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
         TRAY_MENU_RESTART_BACKEND => {
             append_desktop_log("tray requested backend restart");
             show_main_window(app_handle);
-            if main_window_uses_backend_origin(app_handle) {
-                emit_tray_restart_backend_event(app_handle);
-                return;
-            }
 
             let app_handle_cloned = app_handle.clone();
             thread::spawn(move || match do_restart_backend(&app_handle_cloned, None) {
@@ -1387,51 +1406,6 @@ fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
             app_handle.exit(0);
         }
         _ => {}
-    }
-}
-
-fn main_window_uses_backend_origin(app_handle: &AppHandle) -> bool {
-    let Some(window) = app_handle.get_webview_window("main") else {
-        return false;
-    };
-    let Ok(window_url) = window.url() else {
-        return false;
-    };
-    let state = app_handle.state::<BackendState>();
-    let Ok(backend_url) = Url::parse(&state.backend_url) else {
-        return false;
-    };
-    let decision = tray_origin_decision(&backend_url, &window_url);
-    if !decision.uses_backend_origin && decision.should_log_mismatch {
-        append_desktop_log(&format!(
-            "tray restart fallback to desktop-managed flow due to origin mismatch: backend={} window={}",
-            backend_url, window_url
-        ));
-    }
-    decision.uses_backend_origin
-}
-
-fn emit_tray_restart_backend_event(app_handle: &AppHandle) {
-    let Some(window) = app_handle.get_webview_window("main") else {
-        return;
-    };
-
-    let script = r#"
-(() => {
-  if (typeof window.__astrbotDesktopEmitTrayRestart === 'function') {
-    window.__astrbotDesktopEmitTrayRestart();
-    return;
-  }
-  const state =
-    window.__astrbotDesktopTrayRestartState ||
-    (window.__astrbotDesktopTrayRestartState = { handlers: new Set(), pending: 0 });
-  state.pending = Number(state.pending || 0) + 1;
-})();
-"#;
-    if let Err(error) = window.eval(script) {
-        append_desktop_log(&format!(
-            "failed to emit tray restart backend event to webview: {error}"
-        ));
     }
 }
 
@@ -1645,7 +1619,6 @@ const DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: &str = r#"
 
   const BRIDGE_COMMANDS = Object.freeze({
     IS_DESKTOP_RUNTIME: 'desktop_bridge_is_desktop_runtime',
-    IS_ELECTRON_RUNTIME: 'desktop_bridge_is_electron_runtime',
     GET_BACKEND_STATE: 'desktop_bridge_get_backend_state',
     SET_AUTH_TOKEN: 'desktop_bridge_set_auth_token',
     RESTART_BACKEND: 'desktop_bridge_restart_backend',
@@ -1943,10 +1916,6 @@ const DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: &str = r#"
     isDesktop: true,
     isDesktopRuntime: () =>
       isRuntimeBridgeEnabled(BRIDGE_COMMANDS.IS_DESKTOP_RUNTIME, true),
-    // Legacy aliases for current dashboard compatibility.
-    isElectron: true,
-    isElectronRuntime: () =>
-      isRuntimeBridgeEnabled(BRIDGE_COMMANDS.IS_ELECTRON_RUNTIME, true),
     getBackendState: () => invokeBridge(BRIDGE_COMMANDS.GET_BACKEND_STATE),
     restartBackend: async (authToken = null) => {
       const normalizedToken =
@@ -1983,7 +1952,6 @@ fn tray_origin_decision(backend_url: &Url, window_url: &Url) -> TrayOriginDecisi
     if same_origin(backend_url, window_url) {
         return TrayOriginDecision {
             uses_backend_origin: true,
-            should_log_mismatch: false,
         };
     }
     let backend_scheme = backend_url.scheme();
@@ -1991,7 +1959,6 @@ fn tray_origin_decision(backend_url: &Url, window_url: &Url) -> TrayOriginDecisi
     if !matches!(backend_scheme, "http" | "https") || !matches!(window_scheme, "http" | "https") {
         return TrayOriginDecision {
             uses_backend_origin: false,
-            should_log_mismatch: false,
         };
     }
 
@@ -2000,14 +1967,12 @@ fn tray_origin_decision(backend_url: &Url, window_url: &Url) -> TrayOriginDecisi
     if !loopback_http {
         return TrayOriginDecision {
             uses_backend_origin: false,
-            should_log_mismatch: false,
         };
     }
 
     let same_port = backend_url.port_or_known_default() == window_url.port_or_known_default();
     TrayOriginDecision {
         uses_backend_origin: same_port,
-        should_log_mismatch: !same_port,
     }
 }
 
