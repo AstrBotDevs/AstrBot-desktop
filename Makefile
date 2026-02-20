@@ -11,7 +11,6 @@ ASTRBOT_SOURCE_GIT_URL ?= https://github.com/AstrBotDevs/AstrBot.git
 ASTRBOT_SOURCE_GIT_REF ?= master
 ASTRBOT_BUILD_SOURCE_DIR ?=
 ASTRBOT_RESET_ENV_SCRIPT ?= .astrbot-reset-env.sh
-ASTRBOT_RESET_ENV_OVERWRITE ?= 0
 RUST_MANIFEST ?= src-tauri/Cargo.toml
 NODE_MODULES_DIR ?= node_modules
 PNPM_STORE_DIR ?= .pnpm-store
@@ -50,7 +49,6 @@ help:
 	@echo "  make clean-vendor       Remove vendor and runtime"
 	@echo "  make clean-node         Remove node_modules and pnpm store"
 	@echo "  make clean-env          Generate shell script to unset build env vars"
-	@echo "                          (set ASTRBOT_RESET_ENV_OVERWRITE=1 to overwrite existing script)"
 	@echo "                          (then source the script in current shell)"
 	@echo "  make clean              Clean all build artifacts"
 	@echo "  make clean-all          Alias of clean"
@@ -150,13 +148,10 @@ clean-node:
 clean-env:
 	@set -e; \
 	reset_script="$(ASTRBOT_RESET_ENV_SCRIPT)"; \
-	if [ -f "$$reset_script" ] && [ "$(ASTRBOT_RESET_ENV_OVERWRITE)" != "1" ]; then \
-		echo "Refusing to overwrite existing $$reset_script"; \
-		echo "Run with ASTRBOT_RESET_ENV_OVERWRITE=1 to overwrite it."; \
-		exit 1; \
-	fi; \
 	if [ -f "$$reset_script" ]; then \
-		echo "Overwriting $$reset_script"; \
+		echo "$$reset_script already exists"; \
+		echo "Run: source $$reset_script"; \
+		exit 0; \
 	fi; \
 	{ \
 		echo "#!/usr/bin/env sh"; \
