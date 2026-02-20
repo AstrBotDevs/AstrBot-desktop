@@ -892,16 +892,15 @@ Content-Length: {}\r\n\
 
         let _restart_guard = AtomicFlagGuard::set(&self.is_restarting);
         let plan = self.resolve_launch_plan(app)?;
-        let has_managed_child = self
-            .child
-            .lock()
-            .map(|guard| guard.is_some())
-            .unwrap_or_else(|error| {
-                append_desktop_log(&format!(
-                    "backend child lock poisoned while resolving restart strategy: {error}"
-                ));
-                false
-            });
+        let has_managed_child = match self.child.lock() {
+            Ok(guard) => guard.is_some(),
+            Err(error) => {
+                let message =
+                    format!("backend child lock poisoned while resolving restart strategy: {error}");
+                append_desktop_log(&message);
+                return Err(message);
+            }
+        };
         let normalized_param = Self::sanitize_auth_token(auth_token);
         if let Some(token) = normalized_param.as_deref() {
             self.set_restart_auth_token(Some(token));
