@@ -202,7 +202,52 @@ jobs:
           ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS: ${{ vars.ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS || '' }}
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
-        run: cargo tauri build --verbose --target ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          max_attempts=2
+          attempt=1
+          retry_pattern='bundle_dmg\.sh|hdiutil: detach: timeout for DiskArbitration expired|hdiutil: detach: drive not detached|failed to bundle project error running bundle_dmg\.sh'
+
+          while [ "${attempt}" -le "${max_attempts}" ]; do
+            log_file="$(mktemp -t tauri-macos-build.XXXXXX.log)"
+            echo "macOS build attempt ${attempt}/${max_attempts} (arch=${{ matrix.arch }}, target=${{ matrix.target }})"
+
+            if cargo tauri build --verbose --target ${{ matrix.target }} 2>&1 | tee "${log_file}"; then
+              rm -f "${log_file}"
+              exit 0
+            fi
+
+            if [ "${attempt}" -ge "${max_attempts}" ]; then
+              echo "macOS build failed after ${max_attempts} attempts."
+              rm -f "${log_file}"
+              exit 1
+            fi
+
+            if ! grep -Eq "${retry_pattern}" "${log_file}"; then
+              echo "macOS build failed with a non-retryable error. Skip retry."
+              rm -f "${log_file}"
+              exit 1
+            fi
+
+            echo "Detected transient DMG detach/bundling error. Cleaning up stale dmg mounts before retry..."
+            dmg_mounts="$(mount | awk '$3 ~ /^\/Volumes\/dmg\./ { print $3 }' || true)"
+            if [ -n "${dmg_mounts}" ]; then
+              while IFS= read -r mount_point; do
+                [ -z "${mount_point}" ] && continue
+                echo "Detaching ${mount_point}"
+                hdiutil detach "${mount_point}" || hdiutil detach -force "${mount_point}" || true
+              done <<< "${dmg_mounts}"
+            fi
+
+            pkill -f diskimages-help || true
+            rm -f src-tauri/target/${{ matrix.target }}/release/bundle/macos/rw.*.dmg || true
+            rm -f "${log_file}"
+
+            attempt=$((attempt + 1))
+            sleep 5
+          done
 
       - name: Dump macOS bundling diagnostics
         if: steps.build_macos.outcome == 'failure'
