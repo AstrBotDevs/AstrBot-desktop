@@ -42,7 +42,15 @@
   ${AndIf} $UpdateMode <> 1
     ExpandEnvStrings $0 "%USERPROFILE%"
     ${If} $0 != ""
-      RmDir /r "$0\.astrbot"
+      StrCpy $2 "$0\.astrbot"
+      StrCpy $3 "警告：将永久删除 AstrBot 的本地数据目录：$2$\r$\n$\r$\n包括配置、日志、数据库、插件数据和缓存，删除后不可恢复。$\r$\n$\r$\n确定继续删除吗？$\r$\n$\r$\nWarning: This will permanently remove AstrBot local data at:$\r$\n$2$\r$\n$\r$\nThis includes config/logs/databases/plugin data/cache and cannot be recovered.$\r$\n$\r$\nContinue?"
+      MessageBox MB_ICONEXCLAMATION|MB_YESNO|MB_DEFBUTTON2 "$3" IDYES astrbot_delete_app_data_confirmed
+      StrCpy $DeleteAppDataCheckboxState 0
+      DetailPrint "Skip app data cleanup: user canceled delete confirmation."
+      Goto astrbot_delete_app_data_done
+      astrbot_delete_app_data_confirmed:
+      RmDir /r "$2"
+      astrbot_delete_app_data_done:
     ${Else}
       DetailPrint "Skip app data cleanup: USERPROFILE is empty."
     ${EndIf}

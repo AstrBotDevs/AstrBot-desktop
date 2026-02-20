@@ -8,10 +8,10 @@ use std::{
     env,
     ffi::OsString,
     fs::{self, OpenOptions},
-    io::{Read, Write},
+    io::{self, Read, Write},
     net::{IpAddr, TcpStream, ToSocketAddrs},
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::{Child, Command, ExitStatus, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex, OnceLock,
@@ -34,6 +34,11 @@ const GRACEFUL_RESTART_REQUEST_TIMEOUT_MS: u64 = 2_500;
 const GRACEFUL_RESTART_START_TIME_TIMEOUT_MS: u64 = 1_800;
 const GRACEFUL_RESTART_POLL_INTERVAL_MS: u64 = 350;
 const GRACEFUL_STOP_TIMEOUT_MS: u64 = 10_000;
+const FORCE_STOP_WAIT_MIN_MS: u64 = 200;
+#[cfg(target_os = "windows")]
+const FORCE_STOP_WAIT_MAX_WINDOWS_MS: u64 = 2_200;
+#[cfg(not(target_os = "windows"))]
+const FORCE_STOP_WAIT_MAX_NON_WINDOWS_MS: u64 = 1_500;
 const DEFAULT_BACKEND_PING_TIMEOUT_MS: u64 = 800;
 const BACKEND_PING_TIMEOUT_ENV: &str = "ASTRBOT_BACKEND_PING_TIMEOUT_MS";
 const BRIDGE_BACKEND_PING_TIMEOUT_ENV: &str = "ASTRBOT_BRIDGE_BACKEND_PING_TIMEOUT_MS";
@@ -2380,28 +2385,100 @@ fn wait_for_child_exit(child: &mut Child, timeout: Duration) -> bool {
     }
 }
 
-fn stop_child_process_gracefully(child: &mut Child, timeout: Duration) -> bool {
-    #[cfg(target_os = "windows")]
-    {
-        let _ = Command::new("taskkill")
-            .args(["/pid", &child.id().to_string(), "/t"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .stdin(Stdio::null())
-            .status();
-        return wait_for_child_exit(child, timeout);
+fn run_stop_command(pid: u32, label: &str, program: &str, args: &[&str]) -> io::Result<ExitStatus> {
+    let status = Command::new(program)
+        .args(args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .stdin(Stdio::null())
+        .status();
+
+    match &status {
+        Ok(exit_status) if exit_status.success() => {}
+        Ok(exit_status) => append_desktop_log(&format!(
+            "{label} returned non-zero: pid={pid}, status={exit_status:?}"
+        )),
+        Err(error) => append_desktop_log(&format!(
+            "{label} failed to start: pid={pid}, error={error}"
+        )),
     }
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = Command::new("kill")
-            .args(["-TERM", &child.id().to_string()])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .stdin(Stdio::null())
-            .status();
-        wait_for_child_exit(child, timeout)
+    status
+}
+
+fn compute_followup_wait(timeout: Duration, max_extra_wait: Duration) -> Duration {
+    if timeout.is_zero() {
+        Duration::ZERO
+    } else {
+        (timeout / 4)
+            .max(Duration::from_millis(FORCE_STOP_WAIT_MIN_MS))
+            .min(max_extra_wait)
     }
+}
+
+/// Attempt to stop a child process gracefully within `timeout`.
+///
+/// On the force-kill path, a follow-up wait is derived from `timeout` (`timeout / 4`)
+/// and capped per-platform:
+/// - Windows: up to 2200ms.
+/// - Non-Windows: up to 1500ms.
+#[cfg(target_os = "windows")]
+fn stop_child_process_gracefully(child: &mut Child, timeout: Duration) -> bool {
+    let pid = child.id();
+    let pid_arg = pid.to_string();
+
+    let graceful_status = run_stop_command(
+        pid,
+        "taskkill graceful stop",
+        "taskkill",
+        &["/pid", &pid_arg, "/t"],
+    );
+
+    if wait_for_child_exit(child, timeout) {
+        return true;
+    }
+
+    let force_status = run_stop_command(
+        pid,
+        "taskkill force stop",
+        "taskkill",
+        &["/pid", &pid_arg, "/t", "/f"],
+    );
+
+    let followup_wait = compute_followup_wait(
+        timeout,
+        Duration::from_millis(FORCE_STOP_WAIT_MAX_WINDOWS_MS),
+    );
+    append_desktop_log(&format!(
+        "child graceful stop timed out, force-kill issued: pid={pid}, graceful={graceful_status:?}, force={force_status:?}, followup_wait_ms={}",
+        followup_wait.as_millis(),
+    ));
+    wait_for_child_exit(child, followup_wait)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn stop_child_process_gracefully(child: &mut Child, timeout: Duration) -> bool {
+    let pid = child.id();
+    let pid_arg = pid.to_string();
+
+    let graceful_status = run_stop_command(pid, "kill -TERM", "kill", &["-TERM", &pid_arg]);
+
+    if wait_for_child_exit(child, timeout) {
+        return true;
+    }
+
+    let force_status = run_stop_command(pid, "kill -KILL", "kill", &["-KILL", &pid_arg]);
+
+    let followup_wait = compute_followup_wait(
+        timeout,
+        Duration::from_millis(FORCE_STOP_WAIT_MAX_NON_WINDOWS_MS),
+    );
+    append_desktop_log(&format!(
+        "child graceful stop timed out, force-kill issued: pid={pid}, graceful={graceful_status:?}, force={force_status:?}, followup_wait_ms={}",
+        followup_wait.as_millis(),
+    ));
+
+    wait_for_child_exit(child, followup_wait)
 }
 
 fn build_debug_command(plan: &LaunchPlan) -> Vec<String> {

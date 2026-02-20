@@ -278,11 +278,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          max_attempts=2
+          max_attempts=3
           attempt=1
           # Only retry on known transient DMG detach failures.
           retry_pattern='hdiutil: detach:.*(timeout|not detached)|DiskArbitration expired'
+          cleanup_script="scripts/ci/cleanup-dmg.sh"
           log_file=""
+          if [ ! -f "${cleanup_script}" ]; then
+            echo "Missing DMG cleanup script: ${cleanup_script}" >&2
+            exit 1
+          fi
 
           cleanup_log_file() {
             if [ -n "${log_file:-}" ]; then
@@ -292,7 +297,14 @@ jobs:
           }
           trap cleanup_log_file EXIT
 
+          cleanup_stale_dmg_state() {
+            bash "${cleanup_script}"
+          }
+
           while [ "${attempt}" -le "${max_attempts}" ]; do
+            echo "Cleaning stale DMG state before attempt ${attempt}/${max_attempts}..."
+            cleanup_stale_dmg_state
+
             log_file="$(mktemp -t tauri-macos-build.XXXXXX.log)"
             echo "macOS build attempt ${attempt}/${max_attempts} (arch=${{ matrix.arch }}, target=${{ matrix.target }})"
 
@@ -311,28 +323,7 @@ jobs:
             fi
 
             echo "Detected transient DMG detach/bundling error. Cleaning up stale dmg mounts before retry..."
-            dmg_mounts="$(mount | awk '$3 ~ /^\/Volumes\/dmg\./ { print $3 }' || true)"
-            if [ -n "${dmg_mounts}" ]; then
-              while IFS= read -r mount_point; do
-                [ -z "${mount_point}" ] && continue
-                echo "Detaching ${mount_point}"
-                hdiutil detach "${mount_point}" || hdiutil detach -force "${mount_point}" || true
-              done <<< "${dmg_mounts}"
-
-              # Avoid broad pkill: only target likely disk image helper binaries.
-              helper_pids="$(
-                pgrep -f '/System/Library/PrivateFrameworks/.*/diskimages-helper' || true
-                pgrep -f '/usr/libexec/diskimages-helper' || true
-                pgrep -f 'diskimages-help' || true
-              )"
-              helper_pids="$(printf '%s\n' "${helper_pids}" | awk 'NF' | sort -u)"
-              if [ -n "${helper_pids}" ]; then
-                while IFS= read -r pid; do
-                  [ -z "${pid}" ] && continue
-                  kill "${pid}" || true
-                done <<< "${helper_pids}"
-              fi
-            fi
+            cleanup_stale_dmg_state
             rm -f src-tauri/target/${{ matrix.target }}/release/bundle/macos/rw.*.dmg || true
             cleanup_log_file
 

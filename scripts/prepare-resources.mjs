@@ -209,6 +209,157 @@ const patchMonacoCssNestingWarnings = async (dashboardDir) => {
   }
 };
 
+const LEGACY_DESKTOP_BRIDGE_PATTERNS = {
+  trayRestartGuard:
+    /if\s*\(\s*!desktopBridge\?\.isElectron\s*\|\|\s*!desktopBridge\.onTrayRestartBackend\s*\)\s*\{/,
+  typeIsElectron: /^(\s+)isElectron:\s*boolean;(\r?\n)/m,
+  typeIsElectronRuntime: /^(\s+)isElectronRuntime:\s*\(\)\s*=>\s*Promise<boolean>;(\r?\n)/m,
+  electronAppFlagToken: /\bisElectronApp\b/,
+  electronAppFlagReplace: /\bisElectronApp\b/g,
+  desktopReleaseEnvGuard:
+    /typeof\s+window\s*!==\s*'undefined'\s*&&\s*!!window\.astrbotDesktop\?\.isElectron/,
+  desktopReleaseRuntimeGuard:
+    /isDesktopReleaseMode\.value\s*=\s*!!window\.astrbotDesktop\?\.isElectron\s*\|\|\s*\r?\n\s*!!\(\s*await\s+window\.astrbotDesktop\?\.isElectronRuntime\?\.\(\)\s*\)\s*;/,
+  legacyRuntimeUsage: /window\.astrbotDesktop\?\.isElectronRuntime\?\.\(\)/,
+  restartGuard: /if\s*\(\s*desktopBridge\?\.isElectron\s*\)\s*\{/,
+};
+
+const MODERN_DESKTOP_BRIDGE_PATTERNS = {
+  trayRestartGuard: /if\s*\(\s*!desktopBridge\?\.onTrayRestartBackend\s*\)\s*\{/,
+  desktopBridgeTypeIsDesktop: /^\s+isDesktop:\s*boolean;\r?\n/m,
+  desktopBridgeTypeRuntime: /^\s+isDesktopRuntime:\s*\(\)\s*=>\s*Promise<boolean>;\r?\n/m,
+  restartCapabilityGuard: /const hasDesktopRestartCapability\s*=/,
+};
+
+const patchRequiredLegacyFile = async ({ filePath, transform, patchLabel, isAlreadyModern }) => {
+  if (!existsSync(filePath)) {
+    throw new Error(
+      `[prepare-resources] Missing required file for ${patchLabel}: ${path.relative(projectRoot, filePath)}`,
+    );
+  }
+
+  const source = await readFile(filePath, 'utf8');
+  const patched = transform(source);
+
+  // Invariant: transformed content must be modern/compatible.
+  if (!isAlreadyModern(patched)) {
+    throw new Error(
+      `[prepare-resources] ${patchLabel} failed invariant check in ${path.relative(projectRoot, filePath)}`,
+    );
+  }
+
+  if (patched !== source) {
+    await writeFile(filePath, patched, 'utf8');
+    console.log(
+      `[prepare-resources] Patched ${patchLabel} in ${path.relative(projectRoot, filePath)}`,
+    );
+    return;
+  }
+
+  if (!isAlreadyModern(source)) {
+    throw new Error(
+      `[prepare-resources] ${patchLabel} did not match expected legacy pattern in ${path.relative(projectRoot, filePath)}`,
+    );
+  }
+
+  console.warn(
+    `[prepare-resources] WARN: No changes applied for ${patchLabel} in ${path.relative(projectRoot, filePath)} (already compatible)`,
+  );
+};
+
+const patchLegacyDesktopBridgeArtifacts = async (dashboardDir) => {
+  const hasModernTrayRestartGuard = (source) =>
+    MODERN_DESKTOP_BRIDGE_PATTERNS.trayRestartGuard.test(source);
+  const hasModernDesktopBridgeTypes = (source) =>
+    MODERN_DESKTOP_BRIDGE_PATTERNS.desktopBridgeTypeIsDesktop.test(source) &&
+    MODERN_DESKTOP_BRIDGE_PATTERNS.desktopBridgeTypeRuntime.test(source);
+  const hasLegacyDesktopReleaseGuards = (source) =>
+    LEGACY_DESKTOP_BRIDGE_PATTERNS.electronAppFlagToken.test(source) ||
+    LEGACY_DESKTOP_BRIDGE_PATTERNS.desktopReleaseEnvGuard.test(source) ||
+    LEGACY_DESKTOP_BRIDGE_PATTERNS.legacyRuntimeUsage.test(source);
+  const hasModernRestartCapabilityGuard = (source) =>
+    MODERN_DESKTOP_BRIDGE_PATTERNS.restartCapabilityGuard.test(source);
+
+  await patchRequiredLegacyFile({
+    filePath: path.join(dashboardDir, 'src', 'App.vue'),
+    transform: (source) =>
+      source.replace(
+        LEGACY_DESKTOP_BRIDGE_PATTERNS.trayRestartGuard,
+        'if (!desktopBridge?.onTrayRestartBackend) {',
+      ),
+    patchLabel: 'tray restart desktop guard',
+    isAlreadyModern: hasModernTrayRestartGuard,
+  });
+
+  await patchRequiredLegacyFile({
+    filePath: path.join(dashboardDir, 'src', 'types', 'electron-bridge.d.ts'),
+    transform: (source) => {
+      let patched = source;
+      patched = patched.replace(
+        LEGACY_DESKTOP_BRIDGE_PATTERNS.typeIsElectron,
+        '$1isDesktop: boolean;$2',
+      );
+      patched = patched.replace(
+        LEGACY_DESKTOP_BRIDGE_PATTERNS.typeIsElectronRuntime,
+        '$1isDesktopRuntime: () => Promise<boolean>;$2',
+      );
+      return patched;
+    },
+    patchLabel: 'desktop bridge type definitions',
+    isAlreadyModern: hasModernDesktopBridgeTypes,
+  });
+
+  await patchRequiredLegacyFile({
+    filePath: path.join(dashboardDir, 'src', 'layouts', 'full', 'vertical-header', 'VerticalHeader.vue'),
+    transform: (source) => {
+      let patched = source.replaceAll(
+        LEGACY_DESKTOP_BRIDGE_PATTERNS.electronAppFlagReplace,
+        'isDesktopReleaseMode',
+      );
+      patched = patched.replace(
+        LEGACY_DESKTOP_BRIDGE_PATTERNS.desktopReleaseEnvGuard,
+        'false',
+      );
+      patched = patched.replace(
+        LEGACY_DESKTOP_BRIDGE_PATTERNS.desktopReleaseRuntimeGuard,
+        'isDesktopReleaseMode.value = false;',
+      );
+      return patched;
+    },
+    patchLabel: 'desktop update mode guards',
+    isAlreadyModern: (source) => !hasLegacyDesktopReleaseGuards(source),
+  });
+
+  await patchRequiredLegacyFile({
+    filePath: path.join(dashboardDir, 'src', 'utils', 'restartAstrBot.ts'),
+    transform: (source) => {
+      if (MODERN_DESKTOP_BRIDGE_PATTERNS.restartCapabilityGuard.test(source)) {
+        return source;
+      }
+      return source.replace(
+        LEGACY_DESKTOP_BRIDGE_PATTERNS.restartGuard,
+        `const hasDesktopRestartCapability =
+    !!desktopBridge &&
+    typeof desktopBridge.restartBackend === 'function' &&
+    typeof desktopBridge.isDesktopRuntime === 'function'
+
+  let isDesktopRuntime = false
+  if (hasDesktopRestartCapability) {
+    try {
+      isDesktopRuntime = !!(await desktopBridge.isDesktopRuntime())
+    } catch (_error) {
+      isDesktopRuntime = false
+    }
+  }
+
+  if (hasDesktopRestartCapability && isDesktopRuntime) {`,
+      );
+    },
+    patchLabel: 'desktop restart capability guard',
+    isAlreadyModern: hasModernRestartCapabilityGuard,
+  });
+};
+
 const readAstrbotVersionFromPyproject = async (sourceDir) => {
   const pyprojectPath = path.join(sourceDir, 'pyproject.toml');
   if (!existsSync(pyprojectPath)) {
@@ -386,6 +537,7 @@ const prepareWebui = async (sourceDir) => {
   const dashboardDir = path.join(sourceDir, 'dashboard');
   ensurePackageInstall(dashboardDir, 'AstrBot dashboard');
   await patchMonacoCssNestingWarnings(dashboardDir);
+  await patchLegacyDesktopBridgeArtifacts(dashboardDir);
   runPnpmChecked(['--dir', dashboardDir, 'build'], sourceDir);
 
   const sourceWebuiDir = path.join(sourceDir, 'dashboard', 'dist');
