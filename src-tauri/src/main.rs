@@ -1248,6 +1248,8 @@ fn main() {
         .run(|app_handle, event| match event {
             RunEvent::ExitRequested { api, .. } => {
                 let state = app_handle.state::<BackendState>();
+                // Prevent immediate process exit so backend shutdown can run in the runtime's
+                // blocking pool; we exit explicitly after stop_backend() finishes.
                 api.prevent_exit();
                 state.mark_quitting();
                 if !state.try_begin_exit_cleanup() {
