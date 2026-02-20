@@ -1627,16 +1627,18 @@ fn update_tray_menu_labels(app_handle: &AppHandle) {
 
 const DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT_TEMPLATE: &str = r#"
 (() => {
+  const existingTrayRestartState = window.__astrbotDesktopTrayRestartState;
   if (
     window.astrbotDesktop &&
     window.astrbotDesktop.__tauriBridge === true &&
-    typeof window.astrbotDesktop.onTrayRestartBackend === 'function'
+    typeof window.astrbotDesktop.onTrayRestartBackend === 'function' &&
+    typeof existingTrayRestartState?.unlistenTrayRestartBackendEvent === 'function'
   ) {
     return;
   }
 
   const invoke = window.__TAURI_INTERNALS__?.invoke;
-  const tauriEvent = window.__TAURI_INTERNALS__?.event;
+  const tauriEvent = window.__TAURI_INTERNALS__?.event ?? window.__TAURI__?.event;
   if (typeof invoke !== 'function') return;
 
   const BRIDGE_COMMANDS = Object.freeze({
@@ -1692,7 +1694,10 @@ const DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT_TEMPLATE: &str = r#"
 
   const listenToTrayRestartBackendEvent = async () => {
     const listen = tauriEvent?.listen;
-    if (typeof listen !== 'function') return;
+    if (typeof listen !== 'function') {
+      console.warn('Tray restart backend event listen API is unavailable');
+      return;
+    }
     if (typeof trayRestartState.unlistenTrayRestartBackendEvent === 'function') return;
     try {
       const unlisten = await listen(TRAY_RESTART_BACKEND_EVENT, () => {
