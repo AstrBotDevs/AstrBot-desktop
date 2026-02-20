@@ -19,7 +19,7 @@ if ([string]::IsNullOrWhiteSpace($installRootRaw)) {
     exit 0
 }
 
-$installRoot = $installRootRaw.ToLowerInvariant()
+$installRoot = $installRootRaw
 $installRootWithSep = $installRoot + [string][char]92
 $currentPid = $PID
 $targetProcessNames = @(
@@ -40,8 +40,8 @@ function Test-IsUnderInstallRoot {
     }
 
     try {
-        $normalized = [System.IO.Path]::GetFullPath($PathValue).TrimEnd([char]92).ToLowerInvariant()
-        return $normalized -eq $installRoot -or $normalized.StartsWith($installRootWithSep)
+        $normalized = [System.IO.Path]::GetFullPath($PathValue).TrimEnd([char]92)
+        return $normalized -ieq $installRoot -or $normalized.StartsWith($installRootWithSep, [System.StringComparison]::OrdinalIgnoreCase)
     } catch {
         return $false
     }
