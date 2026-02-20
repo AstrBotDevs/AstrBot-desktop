@@ -288,13 +288,25 @@ jobs:
           rw_dmg_image_suffix_regex='/bundle/macos/rw\..*\.dmg$'
           # hdiutil temporary writable images often mount under /Volumes/dmg.*,
           # but macOS/tauri naming can vary; keep this pattern configurable.
-          rw_dmg_mountpoint_regex="${ASTRBOT_DESKTOP_MACOS_RW_DMG_MOUNT_REGEX:-^/Volumes/(dmg\\.|rw\\.|dmg-|rw-)}"
+          rw_dmg_mountpoint_regex="${ASTRBOT_DESKTOP_MACOS_RW_DMG_MOUNT_REGEX:-^/Volumes/(dmg\\.|rw\\.|dmg-|rw-).*}"
           allow_global_helper_cleanup="${ASTRBOT_DESKTOP_MACOS_ALLOW_GLOBAL_HELPER_KILL:-0}"
           log_file=""
           workspace_root="${GITHUB_WORKSPACE:-$(pwd)}"
           workspace_root="${workspace_root%/}"
           declare -a canonical_path_cache_keys=()
           declare -a canonical_path_cache_values=()
+          canonicalize_tool="none"
+          canonicalize_warned_failure=0
+
+          if command -v realpath >/dev/null 2>&1; then
+            canonicalize_tool="realpath"
+          elif command -v readlink >/dev/null 2>&1 && readlink -f / >/dev/null 2>&1; then
+            canonicalize_tool="readlink"
+          elif command -v python3 >/dev/null 2>&1; then
+            canonicalize_tool="python3"
+          else
+            echo "WARN: no realpath/readlink/python3 available; path canonicalization disabled" >&2
+          fi
 
           cleanup_log_file() {
             if [ -n "${log_file:-}" ]; then
@@ -330,8 +342,28 @@ jobs:
             done
 
             local resolved_path
-            if ! resolved_path="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "${raw_path}" 2>/dev/null)"; then
+            case "${canonicalize_tool}" in
+              realpath)
+                resolved_path="$(realpath "${raw_path}" 2>/dev/null)" || resolved_path=""
+                ;;
+              readlink)
+                resolved_path="$(readlink -f "${raw_path}" 2>/dev/null)" || resolved_path=""
+                ;;
+              python3)
+                resolved_path="$(
+                  python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "${raw_path}" 2>/dev/null
+                )" || resolved_path=""
+                ;;
+              *)
+                resolved_path="${raw_path}"
+                ;;
+            esac
+            if [ -z "${resolved_path}" ]; then
               resolved_path="${raw_path}"
+              if [ "${canonicalize_warned_failure}" = "0" ]; then
+                echo "WARN: failed to canonicalize path via ${canonicalize_tool}; using raw paths" >&2
+                canonicalize_warned_failure=1
+              fi
             fi
             canonical_path_cache_keys+=("${raw_path}")
             canonical_path_cache_values+=("${resolved_path}")

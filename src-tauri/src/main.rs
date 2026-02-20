@@ -2380,6 +2380,11 @@ fn wait_for_child_exit(child: &mut Child, timeout: Duration) -> bool {
     }
 }
 
+/// Attempt to stop a child process gracefully within `timeout`.
+///
+/// On the force-kill path this function may block past `timeout`:
+/// - On Windows, a follow-up wait after `/f` can extend total duration by ~2200ms.
+/// - On non-Windows platforms, a follow-up wait after `-KILL` can extend total duration by ~1500ms.
 fn stop_child_process_gracefully(child: &mut Child, timeout: Duration) -> bool {
     #[cfg(target_os = "windows")]
     {
@@ -2389,6 +2394,17 @@ fn stop_child_process_gracefully(child: &mut Child, timeout: Duration) -> bool {
             .stderr(Stdio::null())
             .stdin(Stdio::null())
             .status();
+        match &gentle_status {
+            Ok(status) if status.success() => {}
+            Ok(status) => append_desktop_log(&format!(
+                "taskkill graceful stop returned non-zero: pid={}, status={status:?}",
+                child.id()
+            )),
+            Err(error) => append_desktop_log(&format!(
+                "taskkill graceful stop failed to start: pid={}, error={error}",
+                child.id()
+            )),
+        }
         if !wait_for_child_exit(child, timeout) {
             let force_status = Command::new("taskkill")
                 .args(["/pid", &child.id().to_string(), "/t", "/f"])
@@ -2396,6 +2412,17 @@ fn stop_child_process_gracefully(child: &mut Child, timeout: Duration) -> bool {
                 .stderr(Stdio::null())
                 .stdin(Stdio::null())
                 .status();
+            match &force_status {
+                Ok(status) if status.success() => {}
+                Ok(status) => append_desktop_log(&format!(
+                    "taskkill force stop returned non-zero: pid={}, status={status:?}",
+                    child.id()
+                )),
+                Err(error) => append_desktop_log(&format!(
+                    "taskkill force stop failed to start: pid={}, error={error}",
+                    child.id()
+                )),
+            }
             append_desktop_log(&format!(
                 "backend graceful stop timed out, force-kill issued: pid={}, gentle={:?}, force={:?}",
                 child.id(),
@@ -2415,6 +2442,17 @@ fn stop_child_process_gracefully(child: &mut Child, timeout: Duration) -> bool {
             .stderr(Stdio::null())
             .stdin(Stdio::null())
             .status();
+        match &term_status {
+            Ok(status) if status.success() => {}
+            Ok(status) => append_desktop_log(&format!(
+                "kill -TERM returned non-zero: pid={}, status={status:?}",
+                child.id()
+            )),
+            Err(error) => append_desktop_log(&format!(
+                "kill -TERM failed to start: pid={}, error={error}",
+                child.id()
+            )),
+        }
         if !wait_for_child_exit(child, timeout) {
             let kill_status = Command::new("kill")
                 .args(["-KILL", &child.id().to_string()])
@@ -2422,6 +2460,17 @@ fn stop_child_process_gracefully(child: &mut Child, timeout: Duration) -> bool {
                 .stderr(Stdio::null())
                 .stdin(Stdio::null())
                 .status();
+            match &kill_status {
+                Ok(status) if status.success() => {}
+                Ok(status) => append_desktop_log(&format!(
+                    "kill -KILL returned non-zero: pid={}, status={status:?}",
+                    child.id()
+                )),
+                Err(error) => append_desktop_log(&format!(
+                    "kill -KILL failed to start: pid={}, error={error}",
+                    child.id()
+                )),
+            }
             append_desktop_log(&format!(
                 "backend graceful stop timed out, force-kill issued: pid={}, term={:?}, kill={:?}",
                 child.id(),
