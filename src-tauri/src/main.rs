@@ -98,6 +98,7 @@ struct BackendState {
     child: Mutex<Option<Child>>,
     backend_url: String,
     restart_auth_token: Mutex<Option<String>>,
+    startup_loading_mode: Mutex<Option<&'static str>>,
     log_rotator_stop: Mutex<Option<Arc<AtomicBool>>>,
     is_quitting: AtomicBool,
     is_spawning: AtomicBool,
@@ -165,6 +166,7 @@ impl Default for BackendState {
                     .unwrap_or_else(|_| DEFAULT_BACKEND_URL.to_string()),
             ),
             restart_auth_token: Mutex::new(None),
+            startup_loading_mode: Mutex::new(None),
             log_rotator_stop: Mutex::new(None),
             is_quitting: AtomicBool::new(false),
             is_spawning: AtomicBool::new(false),
@@ -1180,7 +1182,7 @@ fn main() {
                 append_desktop_log(&format!("page-load finished: {}", payload.url()));
                 if should_inject_desktop_bridge(webview.app_handle(), payload.url()) {
                     inject_desktop_bridge(webview);
-                } else if should_apply_startup_loading_mode(payload.url()) {
+                } else if should_apply_startup_loading_mode(webview, payload.url()) {
                     apply_startup_loading_mode(webview);
                 }
             }
@@ -2005,13 +2007,17 @@ fn inject_desktop_bridge(webview: &tauri::Webview<tauri::Wry>) {
     }
 }
 
-fn should_apply_startup_loading_mode(page_url: &Url) -> bool {
+fn should_apply_startup_loading_mode(webview: &tauri::Webview<tauri::Wry>, page_url: &Url) -> bool {
+    if webview.window().label() != "main" {
+        return false;
+    }
+
     if matches!(page_url.scheme(), "http" | "https") {
         return false;
     }
 
     let path = page_url.path();
-    path == "/" || path.ends_with("/index.html")
+    path == "/" || path == "/index.html"
 }
 
 fn apply_startup_loading_mode(webview: &tauri::Webview<tauri::Wry>) {
@@ -2027,6 +2033,38 @@ fn apply_startup_loading_mode(webview: &tauri::Webview<tauri::Wry>) {
 }
 
 fn resolve_startup_loading_mode(app_handle: &AppHandle) -> &'static str {
+    let state = app_handle.state::<BackendState>();
+    match state.startup_loading_mode.lock() {
+        Ok(guard) => {
+            if let Some(mode) = *guard {
+                return mode;
+            }
+        }
+        Err(error) => {
+            append_desktop_log(&format!(
+                "startup loading mode cache lock poisoned (read), recomputing mode: {error}"
+            ));
+        }
+    }
+
+    let mode = resolve_startup_loading_mode_uncached(&state, app_handle);
+    match state.startup_loading_mode.lock() {
+        Ok(mut guard) => {
+            *guard = Some(mode);
+        }
+        Err(error) => {
+            append_desktop_log(&format!(
+                "startup loading mode cache lock poisoned (write), skip cache update: {error}"
+            ));
+        }
+    }
+    mode
+}
+
+fn resolve_startup_loading_mode_uncached(
+    state: &BackendState,
+    app_handle: &AppHandle,
+) -> &'static str {
     if let Ok(raw_mode) = env::var(STARTUP_MODE_ENV) {
         let normalized = raw_mode.trim();
         if normalized.eq_ignore_ascii_case(STARTUP_MODE_PANEL_UPDATE) {
@@ -2041,7 +2079,6 @@ fn resolve_startup_loading_mode(app_handle: &AppHandle) -> &'static str {
         return STARTUP_MODE_LOADING;
     }
 
-    let state = app_handle.state::<BackendState>();
     match state.resolve_launch_plan(app_handle) {
         Ok(plan) => match plan.webui_dir {
             Some(webui_dir) => {
