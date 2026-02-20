@@ -283,12 +283,6 @@ jobs:
           # Only retry on known transient DMG detach failures.
           retry_pattern='hdiutil: detach:.*(timeout|not detached)|DiskArbitration expired'
           cleanup_script="scripts/ci/cleanup-dmg.sh"
-          export ASTRBOT_DESKTOP_MACOS_DETACH_ATTEMPTS="${ASTRBOT_DESKTOP_MACOS_DETACH_ATTEMPTS:-3}"
-          export ASTRBOT_DESKTOP_MACOS_DETACH_SLEEP_SECONDS="${ASTRBOT_DESKTOP_MACOS_DETACH_SLEEP_SECONDS:-2}"
-          export ASTRBOT_DESKTOP_MACOS_RW_DMG_IMAGE_PREFIX="${ASTRBOT_DESKTOP_MACOS_RW_DMG_IMAGE_PREFIX:-/src-tauri/target/}"
-          export ASTRBOT_DESKTOP_MACOS_RW_DMG_IMAGE_SUFFIX_REGEX="${ASTRBOT_DESKTOP_MACOS_RW_DMG_IMAGE_SUFFIX_REGEX:-/bundle/macos/rw\\..*\\.dmg$}"
-          export ASTRBOT_DESKTOP_MACOS_RW_DMG_MOUNT_REGEX="${ASTRBOT_DESKTOP_MACOS_RW_DMG_MOUNT_REGEX:-^/Volumes/(dmg\\.|rw\\.|dmg-|rw-).*}"
-          export ASTRBOT_DESKTOP_MACOS_ALLOW_GLOBAL_HELPER_KILL="${ASTRBOT_DESKTOP_MACOS_ALLOW_GLOBAL_HELPER_KILL:-0}"
           log_file=""
           if [ ! -f "${cleanup_script}" ]; then
             echo "Missing DMG cleanup script: ${cleanup_script}" >&2
@@ -304,7 +298,7 @@ jobs:
           trap cleanup_log_file EXIT
 
           cleanup_stale_dmg_state() {
-            bash "${cleanup_script}" || true
+            bash "${cleanup_script}"
           }
 
           while [ "${attempt}" -le "${max_attempts}" ]; do

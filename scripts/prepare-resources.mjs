@@ -210,7 +210,8 @@ const patchMonacoCssNestingWarnings = async (dashboardDir) => {
 };
 
 const patchLegacyDesktopBridgeArtifacts = async (dashboardDir) => {
-  const patchFile = async (filePath, transform, patchLabel) => {
+  const patchFile = async (filePath, transform, patchLabel, options = {}) => {
+    const { warnOnNoChange = false } = options;
     if (!existsSync(filePath)) {
       return;
     }
@@ -221,6 +222,10 @@ const patchLegacyDesktopBridgeArtifacts = async (dashboardDir) => {
       console.log(
         `[prepare-resources] Patched ${patchLabel} in ${path.relative(projectRoot, filePath)}`,
       );
+    } else if (warnOnNoChange) {
+      console.warn(
+        `[prepare-resources] WARN: No changes applied for ${patchLabel} in ${path.relative(projectRoot, filePath)}`,
+      );
     }
   };
 
@@ -228,41 +233,44 @@ const patchLegacyDesktopBridgeArtifacts = async (dashboardDir) => {
     path.join(dashboardDir, 'src', 'App.vue'),
     (source) =>
       source.replace(
-        /if\s*\(!desktopBridge\?\.\w+\s*\|\|\s*!desktopBridge\.onTrayRestartBackend\)\s*\{/,
+        /if\s*\(\s*!desktopBridge\?\.isElectron\s*\|\|\s*!desktopBridge\.onTrayRestartBackend\s*\)\s*\{/,
         'if (!desktopBridge?.onTrayRestartBackend) {',
       ),
     'tray restart desktop guard',
+    { warnOnNoChange: true },
   );
 
   await patchFile(
     path.join(dashboardDir, 'src', 'types', 'electron-bridge.d.ts'),
     (source) => {
       let patched = source;
-      patched = patched.replace(/^\s+is\w+:\s*boolean;\n/m, '      isDesktop: boolean;\n');
+      patched = patched.replace(/^\s+isElectron:\s*boolean;\n/m, '      isDesktop: boolean;\n');
       patched = patched.replace(
-        /^\s+is\w+Runtime:\s*\(\)\s*=>\s*Promise<boolean>;\n/m,
+        /^\s+isElectronRuntime:\s*\(\)\s*=>\s*Promise<boolean>;\n/m,
         '      isDesktopRuntime: () => Promise<boolean>;\n',
       );
       return patched;
     },
     'desktop bridge type definitions',
+    { warnOnNoChange: true },
   );
 
   await patchFile(
     path.join(dashboardDir, 'src', 'layouts', 'full', 'vertical-header', 'VerticalHeader.vue'),
     (source) => {
-      let patched = source.replaceAll(/\bis\w+App\b/g, 'isDesktopReleaseMode');
+      let patched = source.replaceAll(/\bisElectronApp\b/g, 'isDesktopReleaseMode');
       patched = patched.replace(
-        /typeof window !== 'undefined'\s*&&\s*!!window\.astrbotDesktop\?\.\w+/,
+        /typeof window !== 'undefined'\s*&&\s*!!window\.astrbotDesktop\?\.isElectron/,
         'false',
       );
       patched = patched.replace(
-        /isDesktopReleaseMode\.value\s*=\s*!!window\.astrbotDesktop\?\.\w+\s*\|\|\s*\n\s*!!\(await window\.astrbotDesktop\?\.\w+\?\.\(\)\);/,
+        /isDesktopReleaseMode\.value\s*=\s*!!window\.astrbotDesktop\?\.isElectron\s*\|\|\s*\n\s*!!\(await window\.astrbotDesktop\?\.isElectronRuntime\?\.\(\)\);/,
         'isDesktopReleaseMode.value = false;',
       );
       return patched;
     },
     'desktop update mode guards',
+    { warnOnNoChange: true },
   );
 
   await patchFile(
@@ -272,7 +280,7 @@ const patchLegacyDesktopBridgeArtifacts = async (dashboardDir) => {
         return source;
       }
       return source.replace(
-        /if\s*\(desktopBridge\?\.\w+\)\s*\{/,
+        /if\s*\(\s*desktopBridge\?\.isElectron\s*\)\s*\{/,
         `const hasDesktopRestartCapability =
     !!desktopBridge &&
     typeof desktopBridge.restartBackend === 'function' &&
@@ -291,6 +299,7 @@ const patchLegacyDesktopBridgeArtifacts = async (dashboardDir) => {
       );
     },
     'desktop restart capability guard',
+    { warnOnNoChange: true },
   );
 };
 

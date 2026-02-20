@@ -61,13 +61,17 @@ if [ -n "${ASTRBOT_DESKTOP_MACOS_WORKSPACE_ROOT:-}" ]; then
 elif [ -n "${GITHUB_WORKSPACE:-}" ]; then
   workspace_root="${GITHUB_WORKSPACE}"
 else
-  fail_or_skip_workspace_root \
-    "ASTRBOT_DESKTOP_MACOS_WORKSPACE_ROOT is required outside GitHub Actions" || exit 1
+  if ! fail_or_skip_workspace_root \
+    "ASTRBOT_DESKTOP_MACOS_WORKSPACE_ROOT is required outside GitHub Actions"; then
+    exit 1
+  fi
   exit 0
 fi
 workspace_root="${workspace_root%/}"
 if [ -z "${workspace_root}" ] || [ ! -d "${workspace_root}" ]; then
-  fail_or_skip_workspace_root "workspace root is invalid (${workspace_root})" || exit 1
+  if ! fail_or_skip_workspace_root "workspace root is invalid (${workspace_root})"; then
+    exit 1
+  fi
   exit 0
 fi
 
@@ -278,5 +282,9 @@ cleanup_stale_dmg_state() {
   fi
 }
 
-cleanup_stale_dmg_state || true
+if ! cleanup_stale_dmg_state; then
+  if [ "${strict_workspace_root}" = "1" ]; then
+    exit 1
+  fi
+fi
 exit 0
