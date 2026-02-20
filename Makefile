@@ -91,18 +91,13 @@ build:
 		echo "Using build source dir: $$build_source_dir"; \
 	fi; \
 	echo "Build resource source dir: $${build_source_dir:-<auto vendor from git ref>}"; \
+	export ASTRBOT_SOURCE_GIT_URL="$(ASTRBOT_SOURCE_GIT_URL)"; \
+	export ASTRBOT_SOURCE_GIT_REF="$(ASTRBOT_SOURCE_GIT_REF)"; \
+	export ASTRBOT_DESKTOP_VERSION="$$build_version"; \
 	if [ -n "$$build_source_dir" ]; then \
-		ASTRBOT_SOURCE_GIT_URL="$(ASTRBOT_SOURCE_GIT_URL)" \
-		ASTRBOT_SOURCE_GIT_REF="$(ASTRBOT_SOURCE_GIT_REF)" \
-		ASTRBOT_SOURCE_DIR="$$build_source_dir" \
-		ASTRBOT_DESKTOP_VERSION="$$build_version" \
-		pnpm run build; \
-	else \
-		ASTRBOT_SOURCE_GIT_URL="$(ASTRBOT_SOURCE_GIT_URL)" \
-		ASTRBOT_SOURCE_GIT_REF="$(ASTRBOT_SOURCE_GIT_REF)" \
-		ASTRBOT_DESKTOP_VERSION="$$build_version" \
-		pnpm run build; \
-	fi
+		export ASTRBOT_SOURCE_DIR="$$build_source_dir"; \
+	fi; \
+	pnpm run build
 
 rebuild: clean build
 

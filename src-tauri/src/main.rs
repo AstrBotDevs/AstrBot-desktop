@@ -24,7 +24,7 @@ use tauri::{
     path::BaseDirectory,
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     webview::PageLoadEvent,
-    AppHandle, Manager, RunEvent, WindowEvent,
+    AppHandle, Emitter, Manager, RunEvent, WindowEvent,
 };
 use url::Url;
 
@@ -52,6 +52,7 @@ const TRAY_MENU_TOGGLE_WINDOW: &str = "tray_toggle_window";
 const TRAY_MENU_RELOAD_WINDOW: &str = "tray_reload_window";
 const TRAY_MENU_RESTART_BACKEND: &str = "tray_restart_backend";
 const TRAY_MENU_QUIT: &str = "tray_quit";
+const TRAY_RESTART_BACKEND_EVENT: &str = "astrbot://tray-restart-backend";
 const DEFAULT_SHELL_LOCALE: &str = "zh-CN";
 const STARTUP_MODE_ENV: &str = "ASTRBOT_DESKTOP_STARTUP_MODE";
 // Keep in sync with STARTUP_MODES in ui/index.html.
@@ -1421,10 +1422,10 @@ fn emit_tray_restart_backend_event(app_handle: &AppHandle) {
         return;
     };
 
-    if let Err(error) = window.eval(
-        "if (typeof window !== 'undefined' && typeof window.__astrbotDesktopEmitTrayRestart === 'function') { window.__astrbotDesktopEmitTrayRestart(); }",
-    ) {
-        append_desktop_log(&format!("failed to emit tray restart event: {error}"));
+    if let Err(error) = window.emit(TRAY_RESTART_BACKEND_EVENT, ()) {
+        append_desktop_log(&format!(
+            "failed to emit tray restart backend event: {error}"
+        ));
     }
 }
 
@@ -1634,6 +1635,7 @@ const DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: &str = r#"
   }
 
   const invoke = window.__TAURI_INTERNALS__?.invoke;
+  const tauriEvent = window.__TAURI_INTERNALS__?.event;
   if (typeof invoke !== 'function') return;
 
   const BRIDGE_COMMANDS = Object.freeze({
@@ -1642,6 +1644,9 @@ const DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: &str = r#"
     SET_AUTH_TOKEN: 'desktop_bridge_set_auth_token',
     RESTART_BACKEND: 'desktop_bridge_restart_backend',
     STOP_BACKEND: 'desktop_bridge_stop_backend',
+  });
+  const BRIDGE_EVENTS = Object.freeze({
+    TRAY_RESTART_BACKEND: 'astrbot://tray-restart-backend',
   });
 
   const invokeBridge = async (command, payload = {}) => {
@@ -1668,8 +1673,6 @@ const DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: &str = r#"
     }
   };
 
-  window.__astrbotDesktopEmitTrayRestart = emitTrayRestart;
-
   const onTrayRestartBackend = (callback) => {
     if (typeof callback !== 'function') return () => {};
     const handler = () => callback();
@@ -1679,6 +1682,16 @@ const DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: &str = r#"
       handler();
     }
     return () => trayRestartState.handlers.delete(handler);
+  };
+
+  const listenToTrayRestartBackendEvent = async () => {
+    const listen = tauriEvent?.listen;
+    if (typeof listen !== 'function') return;
+    try {
+      await listen(BRIDGE_EVENTS.TRAY_RESTART_BACKEND, () => {
+        emitTrayRestart();
+      });
+    } catch {}
   };
 
   const getStoredAuthToken = () => {
@@ -1948,6 +1961,7 @@ const DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: &str = r#"
     onTrayRestartBackend,
   };
 
+  void listenToTrayRestartBackendEvent();
   patchLocalStorageTokenSync();
   void syncAuthToken();
 })();
