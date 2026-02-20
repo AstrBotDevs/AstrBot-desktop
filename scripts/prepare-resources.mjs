@@ -222,7 +222,10 @@ const DESKTOP_BRIDGE_PATTERNS = {
     /await\s+globalWaitingRef\s*\.\s*value\s*\?\.\s*check\s*\?\.\s*\(\s*[^)]*\s*\)\s*;?/,
   desktopRuntimeImport:
     /import\s+\{\s*getDesktopRuntimeInfo\s*\}\s+from\s+['"]@\/utils\/desktopRuntime['"]\s*;?/,
-  desktopRuntimeUsage: /await\s+getDesktopRuntimeInfo\s*\(\s*\)/,
+  desktopRuntimeUsageInRestart:
+    /hasDesktopRestartCapability[\s\S]{0,220}await\s+getDesktopRuntimeInfo\s*\(\s*\)/,
+  desktopRuntimeUsageInHeader:
+    /const\s+runtimeInfo\s*=\s*await\s+getDesktopRuntimeInfo\s*\(\s*\)\s*;?[\s\S]{0,220}isDesktopReleaseMode\.value\s*=\s*runtimeInfo\.isDesktopRuntime/,
   desktopReleaseModeFlag: /\bisDesktopReleaseMode\b/,
   desktopRuntimeProbeWarn: /console\.warn\([\s\S]*desktop runtime/i,
 };
@@ -248,7 +251,7 @@ const DESKTOP_BRIDGE_EXPECTATIONS = [
   },
   {
     filePath: ['src', 'utils', 'restartAstrBot.ts'],
-    pattern: DESKTOP_BRIDGE_PATTERNS.desktopRuntimeUsage,
+    pattern: DESKTOP_BRIDGE_PATTERNS.desktopRuntimeUsageInRestart,
     label: 'desktop runtime helper usage in restart flow',
     required: true,
   },
@@ -260,7 +263,7 @@ const DESKTOP_BRIDGE_EXPECTATIONS = [
   },
   {
     filePath: ['src', 'layouts', 'full', 'vertical-header', 'VerticalHeader.vue'],
-    pattern: DESKTOP_BRIDGE_PATTERNS.desktopRuntimeUsage,
+    pattern: DESKTOP_BRIDGE_PATTERNS.desktopRuntimeUsageInHeader,
     label: 'desktop runtime helper usage in header',
     required: true,
   },

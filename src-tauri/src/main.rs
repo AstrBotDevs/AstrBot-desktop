@@ -1984,6 +1984,11 @@ static DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: OnceLock<String> = OnceLock::new();
 fn desktop_bridge_bootstrap_script() -> &'static str {
     DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT
         .get_or_init(|| {
+            assert!(
+                DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT_TEMPLATE
+                    .contains(DESKTOP_BRIDGE_TRAY_EVENT_PLACEHOLDER),
+                "desktop bridge template is missing tray restart event placeholder"
+            );
             DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT_TEMPLATE.replace(
                 DESKTOP_BRIDGE_TRAY_EVENT_PLACEHOLDER,
                 TRAY_RESTART_BACKEND_EVENT,
