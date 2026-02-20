@@ -104,7 +104,6 @@ struct BackendState {
     is_spawning: AtomicBool,
     is_restarting: AtomicBool,
     exit_cleanup_started: AtomicBool,
-    exit_allowed: AtomicBool,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -173,7 +172,6 @@ impl Default for BackendState {
             is_spawning: AtomicBool::new(false),
             is_restarting: AtomicBool::new(false),
             exit_cleanup_started: AtomicBool::new(false),
-            exit_allowed: AtomicBool::new(false),
         }
     }
 }
@@ -1054,18 +1052,10 @@ Content-Length: {}\r\n\
         self.is_quitting.load(Ordering::Relaxed)
     }
 
-    fn is_exit_allowed(&self) -> bool {
-        self.exit_allowed.load(Ordering::Relaxed)
-    }
-
     fn try_begin_exit_cleanup(&self) -> bool {
         self.exit_cleanup_started
-            .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_ok()
-    }
-
-    fn allow_exit(&self) {
-        self.exit_allowed.store(true, Ordering::Relaxed);
     }
 }
 
@@ -1258,10 +1248,6 @@ fn main() {
         .run(|app_handle, event| match event {
             RunEvent::ExitRequested { api, .. } => {
                 let state = app_handle.state::<BackendState>();
-                if state.is_exit_allowed() {
-                    return;
-                }
-
                 api.prevent_exit();
                 state.mark_quitting();
                 if !state.try_begin_exit_cleanup() {
@@ -1271,26 +1257,14 @@ fn main() {
 
                 append_desktop_log("exit requested, stopping backend asynchronously");
                 let app_handle_cloned = app_handle.clone();
-                tauri::async_runtime::spawn(async move {
-                    let worker_handle = app_handle_cloned.clone();
-                    let stop_result = tauri::async_runtime::spawn_blocking(move || {
-                        let state = worker_handle.state::<BackendState>();
-                        state.stop_backend()
-                    })
-                    .await;
-
-                    match stop_result {
-                        Ok(Ok(())) => {}
-                        Ok(Err(error)) => append_desktop_log(&format!(
+                tauri::async_runtime::spawn_blocking(move || {
+                    let state = app_handle_cloned.state::<BackendState>();
+                    if let Err(error) = state.stop_backend() {
+                        append_desktop_log(&format!(
                             "backend graceful stop on ExitRequested failed: {error}"
-                        )),
-                        Err(error) => append_desktop_log(&format!(
-                            "backend graceful stop task failed on ExitRequested: {error}"
-                        )),
+                        ));
                     }
 
-                    let state = app_handle_cloned.state::<BackendState>();
-                    state.allow_exit();
                     append_desktop_log("backend stop finished, exiting desktop process");
                     app_handle_cloned.exit(0);
                 });
