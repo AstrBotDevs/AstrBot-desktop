@@ -210,10 +210,6 @@ const patchMonacoCssNestingWarnings = async (dashboardDir) => {
 };
 
 const patchLegacyDesktopBridgeArtifacts = async (dashboardDir) => {
-  const legacyDesktopFlag = `is${'Electron'}`;
-  const legacyDesktopRuntimeFn = `${legacyDesktopFlag}Runtime`;
-  const legacyDesktopModeVar = `${legacyDesktopFlag}App`;
-
   const patchFile = async (filePath, transform, patchLabel) => {
     if (!existsSync(filePath)) {
       return;
@@ -232,7 +228,7 @@ const patchLegacyDesktopBridgeArtifacts = async (dashboardDir) => {
     path.join(dashboardDir, 'src', 'App.vue'),
     (source) =>
       source.replace(
-        `if (!desktopBridge?.${legacyDesktopFlag} || !desktopBridge.onTrayRestartBackend) {`,
+        /if\s*\(!desktopBridge\?\.\w+\s*\|\|\s*!desktopBridge\.onTrayRestartBackend\)\s*\{/,
         'if (!desktopBridge?.onTrayRestartBackend) {',
       ),
     'tray restart desktop guard',
@@ -242,12 +238,9 @@ const patchLegacyDesktopBridgeArtifacts = async (dashboardDir) => {
     path.join(dashboardDir, 'src', 'types', 'electron-bridge.d.ts'),
     (source) => {
       let patched = source;
+      patched = patched.replace(/^\s+is\w+:\s*boolean;\n/m, '      isDesktop: boolean;\n');
       patched = patched.replace(
-        `      ${legacyDesktopFlag}: boolean;\n`,
-        '      isDesktop: boolean;\n',
-      );
-      patched = patched.replace(
-        `      ${legacyDesktopRuntimeFn}: () => Promise<boolean>;\n`,
+        /^\s+is\w+Runtime:\s*\(\)\s*=>\s*Promise<boolean>;\n/m,
         '      isDesktopRuntime: () => Promise<boolean>;\n',
       );
       return patched;
@@ -258,13 +251,13 @@ const patchLegacyDesktopBridgeArtifacts = async (dashboardDir) => {
   await patchFile(
     path.join(dashboardDir, 'src', 'layouts', 'full', 'vertical-header', 'VerticalHeader.vue'),
     (source) => {
-      let patched = source.replaceAll(legacyDesktopModeVar, 'isDesktopReleaseMode');
+      let patched = source.replaceAll(/\bis\w+App\b/g, 'isDesktopReleaseMode');
       patched = patched.replace(
-        `typeof window !== 'undefined' && !!window.astrbotDesktop?.${legacyDesktopFlag}`,
+        /typeof window !== 'undefined'\s*&&\s*!!window\.astrbotDesktop\?\.\w+/,
         'false',
       );
       patched = patched.replace(
-        `isDesktopReleaseMode.value = !!window.astrbotDesktop?.${legacyDesktopFlag} ||\n      !!(await window.astrbotDesktop?.${legacyDesktopRuntimeFn}?.());`,
+        /isDesktopReleaseMode\.value\s*=\s*!!window\.astrbotDesktop\?\.\w+\s*\|\|\s*\n\s*!!\(await window\.astrbotDesktop\?\.\w+\?\.\(\)\);/,
         'isDesktopReleaseMode.value = false;',
       );
       return patched;
