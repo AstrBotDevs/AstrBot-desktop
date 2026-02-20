@@ -278,7 +278,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          max_attempts=2
+          max_attempts=3
           attempt=1
           # Only retry on known transient DMG detach failures.
           retry_pattern='hdiutil: detach:.*(timeout|not detached)|DiskArbitration expired'
@@ -292,7 +292,91 @@ jobs:
           }
           trap cleanup_log_file EXIT
 
+          detach_target() {
+            local target="$1"
+            local pass=1
+            while [ "${pass}" -le 3 ]; do
+              if hdiutil detach "${target}"; then
+                return 0
+              fi
+              hdiutil detach -force "${target}" || true
+              sleep 2
+              pass=$((pass + 1))
+            done
+            return 1
+          }
+
+          cleanup_stale_dmg_state() {
+            local workspace_root
+            workspace_root="$(pwd)"
+
+            local dmg_mounts
+            dmg_mounts="$(mount | awk '$3 ~ /^\/Volumes\/dmg\./ { print $3 }' || true)"
+            if [ -n "${dmg_mounts}" ]; then
+              while IFS= read -r mount_point; do
+                [ -z "${mount_point}" ] && continue
+                echo "Detaching stale mount ${mount_point}"
+                detach_target "${mount_point}" || true
+              done <<< "${dmg_mounts}"
+            fi
+
+            local workspace_disks
+            workspace_disks="$(hdiutil info 2>/dev/null | awk -v root="${workspace_root}" '
+              BEGIN { image = ""; dev = "" }
+              /^image-path[[:space:]]*:/ {
+                line = $0
+                sub(/^image-path[[:space:]]*:[[:space:]]*/, "", line)
+                image = line
+                next
+              }
+              /^\/dev\/disk[0-9]+/ && dev == "" {
+                dev = $1
+                next
+              }
+              /^=+/ {
+                if (image ~ root "/src-tauri/target/.*/bundle/macos/rw\\..*\\.dmg" && dev != "") {
+                  print dev
+                }
+                image = ""
+                dev = ""
+                next
+              }
+              END {
+                if (image ~ root "/src-tauri/target/.*/bundle/macos/rw\\..*\\.dmg" && dev != "") {
+                  print dev
+                }
+              }
+            ' | sort -u)"
+
+            if [ -n "${workspace_disks}" ]; then
+              while IFS= read -r disk; do
+                [ -z "${disk}" ] && continue
+                echo "Detaching stale disk ${disk}"
+                detach_target "${disk}" || true
+              done <<< "${workspace_disks}"
+            fi
+
+            # Avoid broad process kills; only target likely disk image helper binaries.
+            local helper_pids
+            helper_pids="$(
+              pgrep -f '/System/Library/PrivateFrameworks/.*/diskimages-helper' || true
+              pgrep -f '/usr/libexec/diskimages-helper' || true
+              pgrep -f 'diskimages-help' || true
+            )"
+            helper_pids="$(printf '%s\n' "${helper_pids}" | awk 'NF' | sort -u)"
+            if [ -n "${helper_pids}" ]; then
+              while IFS= read -r pid; do
+                [ -z "${pid}" ] && continue
+                echo "Killing stale disk image helper pid=${pid}"
+                kill "${pid}" || true
+              done <<< "${helper_pids}"
+            fi
+          }
+
           while [ "${attempt}" -le "${max_attempts}" ]; do
+            echo "Cleaning stale DMG state before attempt ${attempt}/${max_attempts}..."
+            cleanup_stale_dmg_state
+
             log_file="$(mktemp -t tauri-macos-build.XXXXXX.log)"
             echo "macOS build attempt ${attempt}/${max_attempts} (arch=${{ matrix.arch }}, target=${{ matrix.target }})"
 
@@ -311,28 +395,7 @@ jobs:
             fi
 
             echo "Detected transient DMG detach/bundling error. Cleaning up stale dmg mounts before retry..."
-            dmg_mounts="$(mount | awk '$3 ~ /^\/Volumes\/dmg\./ { print $3 }' || true)"
-            if [ -n "${dmg_mounts}" ]; then
-              while IFS= read -r mount_point; do
-                [ -z "${mount_point}" ] && continue
-                echo "Detaching ${mount_point}"
-                hdiutil detach "${mount_point}" || hdiutil detach -force "${mount_point}" || true
-              done <<< "${dmg_mounts}"
-
-              # Avoid broad pkill: only target likely disk image helper binaries.
-              helper_pids="$(
-                pgrep -f '/System/Library/PrivateFrameworks/.*/diskimages-helper' || true
-                pgrep -f '/usr/libexec/diskimages-helper' || true
-                pgrep -f 'diskimages-help' || true
-              )"
-              helper_pids="$(printf '%s\n' "${helper_pids}" | awk 'NF' | sort -u)"
-              if [ -n "${helper_pids}" ]; then
-                while IFS= read -r pid; do
-                  [ -z "${pid}" ] && continue
-                  kill "${pid}" || true
-                done <<< "${helper_pids}"
-              fi
-            fi
+            cleanup_stale_dmg_state
             rm -f src-tauri/target/${{ matrix.target }}/release/bundle/macos/rw.*.dmg || true
             cleanup_log_file
 
