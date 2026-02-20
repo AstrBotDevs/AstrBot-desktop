@@ -29,11 +29,16 @@
     "active": true,
     "targets": "all",
     "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
       "wix": {
         "language": "zh-CN"
       },
       "nsis": {
         "installerIcon": "icons/icon.ico",
+        "compression": "zlib",
         "languages": [
           "SimpChinese",
           "English"

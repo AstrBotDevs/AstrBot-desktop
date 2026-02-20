@@ -1,0 +1,51 @@
+name: Setup Desktop Build
+description: Setup shared toolchains and dependencies for desktop CI builds.
+
+inputs:
+  python-version:
+    description: Python version.
+    required: false
+    default: '3.12'
+  node-version:
+    description: Node.js version.
+    required: false
+    default: '20'
+  rust-toolchain:
+    description: Rust toolchain channel.
+    required: false
+    default: stable
+  pnpm-version:
+    description: pnpm version.
+    required: false
+    default: 10.28.2
+  tauri-cli-version:
+    description: tauri-cli version.
+    required: false
+    default: 2.10.0
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Toolchains
+      uses: ./.github/actions/setup-toolchains
+      with:
+        python-version: ${{ inputs.python-version }}
+        node-version: ${{ inputs.node-version }}
+
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v4.2.0
+      with:
+        version: ${{ inputs.pnpm-version }}
+
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@v1
+      with:
+        toolchain: ${{ inputs.rust-toolchain }}
+
+    - name: Install Tauri CLI
+      shell: pwsh
+      run: cargo install tauri-cli --version ${{ inputs.tauri-cli-version }} --locked
+
+    - name: Install dependencies
+      shell: pwsh
+      run: pnpm install

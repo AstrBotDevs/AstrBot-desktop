@@ -1317,7 +1317,7 @@ fn main_window_uses_backend_origin(app_handle: &AppHandle) -> bool {
     let uses_backend_origin = same_backend_origin_for_tray(&backend_url, &window_url);
     if !uses_backend_origin {
         append_desktop_log(&format!(
-            "tray restart fallback to desktop-managed flow due origin mismatch: backend={} window={}",
+            "tray restart fallback to desktop-managed flow due to origin mismatch: backend={} window={}",
             backend_url, window_url
         ));
     }

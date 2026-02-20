@@ -140,25 +140,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
 
-      - name: Setup Toolchains
-        uses: ./.github/actions/setup-toolchains
-        with:
-          python-version: '3.12'
-          node-version: '20'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4.2.0
-        with:
-          version: 10.28.2
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@v1
-        with:
-          toolchain: stable
-
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version 2.10.0 --locked
-
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
@@ -169,8 +150,8 @@ jobs:
             librsvg2-dev \
             patchelf
 
-      - name: Install dependencies
-        run: pnpm install
+      - name: Setup desktop build environment
+        uses: ./.github/actions/setup-desktop-build
 
       - name: Build desktop installers (Linux)
         env:
@@ -186,7 +167,6 @@ jobs:
           name: astrbot-desktop-tauri-${{ needs.resolve_build_context.outputs.astrbot_version }}-linux-${{ matrix.arch }}
           if-no-files-found: error
           path: |
-            src-tauri/target/release/bundle/**/*.AppImage
             src-tauri/target/release/bundle/**/*.deb
             src-tauri/target/release/bundle/**/*.rpm
 
@@ -208,27 +188,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
 
-      - name: Setup Toolchains
-        uses: ./.github/actions/setup-toolchains
-        with:
-          python-version: '3.12'
-          node-version: '20'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4.2.0
-        with:
-          version: 10.28.2
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@v1
-        with:
-          toolchain: stable
-
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version 2.10.0 --locked
-
-      - name: Install dependencies
-        run: pnpm install
+      - name: Setup desktop build environment
+        uses: ./.github/actions/setup-desktop-build
 
       - name: Build desktop installers (macOS)
         env:
@@ -271,8 +232,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       WINDOWS_INSTALLER_EXE_GLOBS: |
-        src-tauri/target/release/bundle/nsis/*.exe
         src-tauri/target/release/bundle/nsis-web/*.exe
+        src-tauri/target/release/bundle/nsis/*.exe
     strategy:
       fail-fast: false
       matrix:
@@ -286,27 +247,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
 
-      - name: Setup Toolchains
-        uses: ./.github/actions/setup-toolchains
-        with:
-          python-version: '3.12'
-          node-version: '20'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4.2.0
-        with:
-          version: 10.28.2
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@v1
-        with:
-          toolchain: stable
-
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version 2.10.0 --locked
-
-      - name: Install dependencies
-        run: pnpm install
+      - name: Setup desktop build environment
+        uses: ./.github/actions/setup-desktop-build
 
       - name: Build desktop installers (Windows)
         env:
@@ -340,6 +282,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
       - name: Download build artifacts
         uses: actions/download-artifact@v7.0.0
         with:
@@ -365,6 +310,7 @@ jobs:
             Automated desktop package release.
             - Source: `${{ needs.resolve_build_context.outputs.source_git_url }}`
             - Ref: `${{ needs.resolve_build_context.outputs.source_git_ref }}`
+            - Windows tip: prefer `nsis-web` installer for smaller downloads and faster install startup.
           generate_release_notes: true
           files: release-artifacts/**/*
           fail_on_unmatched_files: true
