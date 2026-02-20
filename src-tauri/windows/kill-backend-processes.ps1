@@ -21,46 +21,70 @@ if ([string]::IsNullOrWhiteSpace($installRoot)) {
 
 $installRootWithSep = $installRoot + [string][char]92
 $currentPid = $PID
-$commandLineFallbackNames = @(
+$targetProcessNames = @(
     "python.exe",
     "pythonw.exe",
     "astrbot-desktop-tauri.exe",
     "astrbot.exe"
 )
 
-Get-CimInstance Win32_Process |
+function Test-IsUnderInstallRoot {
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$PathValue
+    )
+
+    if ([string]::IsNullOrWhiteSpace($PathValue)) {
+        return $false
+    }
+
+    try {
+        $normalized = [System.IO.Path]::GetFullPath($PathValue).TrimEnd([char]92).ToLowerInvariant()
+        return $normalized -eq $installRoot -or $normalized.StartsWith($installRootWithSep)
+    } catch {
+        return $false
+    }
+}
+
+function Get-CommandExecutablePath {
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$CommandLine
+    )
+
+    if ([string]::IsNullOrWhiteSpace($CommandLine)) {
+        return $null
+    }
+
+    $trimmed = $CommandLine.Trim()
+    if ($trimmed.StartsWith('"')) {
+        $endQuote = $trimmed.IndexOf('"', 1)
+        if ($endQuote -gt 1) {
+            return $trimmed.Substring(1, $endQuote - 1)
+        }
+        return $null
+    }
+
+    $firstSpace = $trimmed.IndexOf(' ')
+    if ($firstSpace -gt 0) {
+        return $trimmed.Substring(0, $firstSpace)
+    }
+    return $trimmed
+}
+
+$nameFilter = ($targetProcessNames | ForEach-Object { "Name='$_'" }) -join " OR "
+
+Get-CimInstance Win32_Process -Filter $nameFilter |
     ForEach-Object {
         if ($_.ProcessId -eq $currentPid) {
             return
         }
 
-        $shouldStop = $false
-
-        try {
-            if ($_.ExecutablePath) {
-                $exePath = [System.IO.Path]::GetFullPath($_.ExecutablePath).TrimEnd([char]92).ToLowerInvariant()
-                if ($exePath -eq $installRoot -or $exePath.StartsWith($installRootWithSep)) {
-                    $shouldStop = $true
-                }
-            }
-        } catch {
-            # Ignore per-process executable path errors and continue cleanup.
-        }
+        $shouldStop = Test-IsUnderInstallRoot -PathValue $_.ExecutablePath
 
         if (-not $shouldStop) {
-            try {
-                $name = [string]$_.Name
-                $nameLower = $name.ToLowerInvariant()
-                if ($_.CommandLine -and ($commandLineFallbackNames -contains $nameLower)) {
-                    $commandLine = [string]$_.CommandLine
-                    $commandLineLower = $commandLine.ToLowerInvariant()
-                    if ($commandLineLower.Contains($installRootWithSep) -or $commandLineLower.Contains($installRoot)) {
-                        $shouldStop = $true
-                    }
-                }
-            } catch {
-                # Ignore per-process command line errors and continue cleanup.
-            }
+            $commandExePath = Get-CommandExecutablePath -CommandLine $_.CommandLine
+            $shouldStop = Test-IsUnderInstallRoot -PathValue $commandExePath
         }
 
         if ($shouldStop) {
