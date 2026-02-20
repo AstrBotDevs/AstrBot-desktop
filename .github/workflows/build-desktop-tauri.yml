@@ -263,6 +263,12 @@ jobs:
       - name: Show artifacts
         run: find release-artifacts -type f | sort
 
+      - name: Validate artifact filename uniqueness
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/validate-release-artifacts.py release-artifacts
+
       - name: Create or update release
         uses: softprops/action-gh-release@v2.5.0
         with:
