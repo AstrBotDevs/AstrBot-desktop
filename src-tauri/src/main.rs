@@ -122,6 +122,13 @@ enum RestartStrategy {
     UnmanagedWithGracefulProbe,
 }
 
+#[derive(Debug)]
+enum GracefulRestartOutcome {
+    Completed,
+    WaitFailed(String),
+    RequestRejected,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct TrayOriginDecision {
     uses_backend_origin: bool,
@@ -923,6 +930,22 @@ Content-Length: {}\r\n\
         RestartStrategy::UnmanagedWithGracefulProbe
     }
 
+    fn try_graceful_restart_and_wait(
+        &self,
+        auth_token: Option<&str>,
+        previous_start_time: Option<i64>,
+        packaged_mode: bool,
+    ) -> GracefulRestartOutcome {
+        if !self.request_graceful_restart(auth_token) {
+            return GracefulRestartOutcome::RequestRejected;
+        }
+
+        match self.wait_for_graceful_restart(previous_start_time, packaged_mode) {
+            Ok(()) => GracefulRestartOutcome::Completed,
+            Err(error) => GracefulRestartOutcome::WaitFailed(error),
+        }
+    }
+
     fn restart_backend(&self, app: &AppHandle, auth_token: Option<&str>) -> Result<(), String> {
         append_desktop_log("backend restart requested");
 
@@ -941,38 +964,42 @@ Content-Length: {}\r\n\
                 "skip graceful restart for packaged windows managed backend; using managed restart",
             ),
             RestartStrategy::ManagedWithGracefulFallback => {
-                if self.request_graceful_restart(restart_auth_token.as_deref()) {
-                    match self.wait_for_graceful_restart(previous_start_time, plan.packaged_mode) {
-                        Ok(()) => {
-                            append_desktop_log("graceful restart completed via backend api");
-                            return Ok(());
-                        }
-                        Err(error) => append_desktop_log(&format!(
-                            "graceful restart did not complete, fallback to managed restart: {error}"
-                        )),
+                match self.try_graceful_restart_and_wait(
+                    restart_auth_token.as_deref(),
+                    previous_start_time,
+                    plan.packaged_mode,
+                ) {
+                    GracefulRestartOutcome::Completed => {
+                        append_desktop_log("graceful restart completed via backend api");
+                        return Ok(());
                     }
-                } else {
-                    append_desktop_log(
+                    GracefulRestartOutcome::WaitFailed(error) => append_desktop_log(&format!(
+                        "graceful restart did not complete, fallback to managed restart: {error}"
+                    )),
+                    GracefulRestartOutcome::RequestRejected => append_desktop_log(
                         "graceful restart request was rejected, fallback to managed restart",
-                    );
+                    ),
                 }
             }
             RestartStrategy::UnmanagedWithGracefulProbe => {
-                if self.request_graceful_restart(restart_auth_token.as_deref()) {
-                    match self.wait_for_graceful_restart(previous_start_time, plan.packaged_mode) {
-                        Ok(()) => {
-                            append_desktop_log("graceful restart completed via backend api");
-                            return Ok(());
-                        }
-                        Err(error) => append_desktop_log(&format!(
-                            "graceful restart did not complete for unmanaged backend, bootstrap managed restart: {error}"
-                        )),
+                match self.try_graceful_restart_and_wait(
+                    restart_auth_token.as_deref(),
+                    previous_start_time,
+                    plan.packaged_mode,
+                ) {
+                    GracefulRestartOutcome::Completed => {
+                        append_desktop_log("graceful restart completed via backend api");
+                        return Ok(());
                     }
-                } else {
-                    return Err(
-                        "graceful restart request was rejected and backend is not desktop-managed."
-                            .to_string(),
-                    );
+                    GracefulRestartOutcome::WaitFailed(error) => append_desktop_log(&format!(
+                        "graceful restart did not complete for unmanaged backend, bootstrap managed restart: {error}"
+                    )),
+                    GracefulRestartOutcome::RequestRejected => {
+                        return Err(
+                            "graceful restart request was rejected and backend is not desktop-managed."
+                                .to_string(),
+                        );
+                    }
                 }
             }
         }
