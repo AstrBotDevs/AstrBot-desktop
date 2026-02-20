@@ -2,11 +2,11 @@
 
 <div align="center">
 
-# AstrBot Desktop (Tauri)
+# AstrBot Desktop
 
-AstrBot 的独立桌面端仓库。
+AstrBot 桌面应用（Tauri）。
 
-<a href="https://github.com/AstrBotDevs/AstrBot">原始项目仓库</a> ｜
+<a href="https://github.com/AstrBotDevs/AstrBot">上游项目仓库</a> ｜
 <a href="https://astrbot.app/">官方文档</a> ｜
 <br>
 
@@ -19,13 +19,14 @@ AstrBot 的独立桌面端仓库。
 
 ## 一键安装（推荐）
 
-如果你只想使用软件，不需要本地构建，请直接从 Release下载系统对应安装包：
+如果你只想使用软件，不需要本地构建，请直接从 Releases 下载对应系统的安装包：
 
-最新版本：[`Releases`](./releases/latest)
+[`Releases`](https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest)
 
 ## 手动构建
 
-适用于需要调试桌面壳、替换上游分支、验证本地改动的场景。
+适用于需要调试桌面应用、切换上游分支或验证本地改动的场景。
+推荐优先使用 `make` 命令，仓库已封装常用流程。
 
 ### 1. 查看可用命令（推荐）
 
@@ -38,13 +39,13 @@ make help
 ### 2. 安装依赖
 
 ```bash
-pnpm install
+make deps
 ```
 
-也可使用：
+也可以使用：
 
 ```bash
-make deps
+pnpm install
 ```
 
 ### 3. 准备资源
@@ -53,31 +54,37 @@ make deps
 make prepare
 ```
 
-### 4. 本地开发运行
+也可以使用：
 
 ```bash
-pnpm run dev
+pnpm run prepare:resources
 ```
 
-也可使用：
+### 4. 本地开发运行
 
 ```bash
 make dev
 ```
 
-### 5. 构建安装包
+也可以使用：
 
 ```bash
-pnpm run build
+pnpm run dev
 ```
 
-也可使用：
+### 5. 构建安装包
 
 ```bash
 make build
 ```
 
-等价命令（直接走 Tauri CLI）：
+也可以使用：
+
+```bash
+pnpm run build
+```
+
+等价命令（直接使用 Tauri CLI）：
 
 ```bash
 cargo tauri build
@@ -86,10 +93,11 @@ cargo tauri build
 构建产物目录：
 
 - `src-tauri/target/release/bundle/`
+- 若使用 `--target` 显式指定目标（例如 CI 的 macOS 构建），产物目录为 `src-tauri/target/<target-triple>/release/bundle/`
 
 ## 常用维护命令
 
-代码检查：
+代码检查与测试：
 
 ```bash
 make lint
@@ -108,7 +116,7 @@ make doctor
 make clean
 ```
 
-仅清理大体积本地缓存：
+仅清理占用空间较大的本地缓存：
 
 ```bash
 make prune
@@ -116,11 +124,11 @@ make prune
 
 ## 上游仓库策略
 
-默认上游仓库为官方：
+默认上游仓库：
 
 - `https://github.com/AstrBotDevs/AstrBot.git`
 
-如需覆盖：
+如需覆盖默认值：
 
 ```bash
 export ASTRBOT_SOURCE_GIT_URL=https://github.com/AstrBotDevs/AstrBot.git
@@ -142,10 +150,10 @@ export ASTRBOT_SOURCE_GIT_REF=cpython-runtime-refactor
 
 ## 构建流程说明
 
-`src-tauri/tauri.conf.json` 已配置 `beforeBuildCommand=pnpm run prepare:resources`，构建时自动执行：
+`src-tauri/tauri.conf.json` 已配置 `beforeBuildCommand=pnpm run prepare:resources`，构建时会自动执行以下流程：
 
 1. 拉取或更新 AstrBot 上游源码
-2. 构建 dashboard 并同步 `resources/webui`
-3. 下载或复用 CPython runtime（缓存到 `runtime/`）
+2. 构建 Dashboard 并同步 `resources/webui`
+3. 下载或复用 CPython 运行时（缓存到 `runtime/`）
 4. 生成 `resources/backend`（含 Python 运行时、依赖、启动脚本）
 5. 调用 `cargo tauri build` 输出安装包
