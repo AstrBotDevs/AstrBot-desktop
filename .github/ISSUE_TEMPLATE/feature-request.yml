@@ -1,0 +1,54 @@
+name: "🎉 Feature Request / 功能建议"
+title: "[Feature] "
+description: Suggest a new feature or improvement for AstrBot Desktop. / 为 AstrBot Desktop 提交功能建议。
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Please explain the scenario and expected outcome clearly.
+        感谢提出建议。请尽量说明使用场景和预期效果。
+
+  - type: textarea
+    attributes:
+      label: Problem to solve / 要解决的问题
+      description: What pain point does this feature address?
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Proposed solution / 期望方案
+      description: Describe your ideal solution.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Alternatives considered / 备选方案
+      description: Any alternative approaches you considered.
+    validations:
+      required: false
+
+  - type: textarea
+    attributes:
+      label: Additional context / 补充信息
+      description: |
+        Screenshots, design references, related issues, or technical constraints.
+        可补充截图、参考链接、相关 issue 或技术约束。
+    validations:
+      required: false
+
+  - type: checkboxes
+    attributes:
+      label: Willing to submit a PR? / 是否愿意提交 PR？
+      options:
+        - label: Yes, I am willing to submit a PR. / 是，我愿意提交 PR。
+
+  - type: checkboxes
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I agree to follow the project's Code of Conduct. / 我同意遵守项目行为准则。
+          required: true
+
