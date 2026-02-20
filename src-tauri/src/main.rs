@@ -311,46 +311,13 @@ impl BackendState {
                 resolve_resource_path(app, "webui/index.html")
                     .and_then(|index_path| index_path.parent().map(Path::to_path_buf))
             });
-        let fallback_webui_dir = packaged_fallback_webui_dir(root_dir.as_deref());
-        let webui_dir = match embedded_webui_dir {
-            Some(candidate) if candidate.join("index.html").is_file() => candidate,
-            Some(candidate) => {
-                append_desktop_log(&format!(
-                    "packaged webui index is missing at {}, trying fallback data/dist",
-                    candidate.join("index.html").display()
-                ));
-                if let Some(fallback) = fallback_webui_dir {
-                    append_desktop_log(&format!(
-                        "using fallback webui directory: {}",
-                        fallback.display()
-                    ));
-                    fallback
-                } else {
-                    return Err(format!(
-                        "Packaged WebUI is unavailable. Missing embedded index at {} and fallback data/dist. Please reinstall AstrBot or download the matching dist.zip to data/dist.",
-                        candidate.join("index.html").display()
-                    ));
-                }
-            }
-            None => {
-                if let Some(fallback) = fallback_webui_dir {
-                    append_desktop_log(&format!(
-                        "embedded webui directory not found, using fallback webui directory: {}",
-                        fallback.display()
-                    ));
-                    fallback
-                } else {
-                    return Err(
-                        "Packaged WebUI directory is missing and fallback data/dist is unavailable. Please reinstall AstrBot or download the matching dist.zip to data/dist."
-                            .to_string(),
-                    );
-                }
-            }
-        };
+        let webui_dir = resolve_packaged_webui_dir(embedded_webui_dir, root_dir.as_deref())?;
 
-        let mut args = vec![launch_script_path.to_string_lossy().to_string()];
-        args.push("--webui-dir".to_string());
-        args.push(webui_dir.to_string_lossy().to_string());
+        let args = vec![
+            launch_script_path.to_string_lossy().to_string(),
+            "--webui-dir".to_string(),
+            webui_dir.to_string_lossy().to_string(),
+        ];
 
         let plan = LaunchPlan {
             cmd: python_path.to_string_lossy().to_string(),
@@ -2211,15 +2178,83 @@ fn default_packaged_root_dir() -> Option<PathBuf> {
     dirs::home_dir().map(|home| home.join(".astrbot"))
 }
 
-fn packaged_fallback_webui_dir(root_dir: Option<&Path>) -> Option<PathBuf> {
-    let root = root_dir
-        .map(Path::to_path_buf)
-        .or_else(default_packaged_root_dir)?;
-    let candidate = root.join("data").join("dist");
-    if candidate.join("index.html").is_file() {
-        return Some(candidate);
+fn packaged_fallback_webui_probe_dir(root_dir: Option<&Path>) -> Option<PathBuf> {
+    match root_dir {
+        Some(root) => Some(root.join("data").join("dist")),
+        None => default_packaged_root_dir().map(|root| root.join("data").join("dist")),
     }
-    None
+}
+
+fn packaged_fallback_webui_dir(root_dir: Option<&Path>) -> Option<PathBuf> {
+    let candidate = packaged_fallback_webui_probe_dir(root_dir)?;
+    if candidate.join("index.html").is_file() {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+fn resolve_packaged_webui_dir(
+    embedded_webui_dir: Option<PathBuf>,
+    root_dir: Option<&Path>,
+) -> Result<PathBuf, String> {
+    let fallback_webui_dir = packaged_fallback_webui_dir(root_dir);
+    let fallback_index_path = packaged_fallback_webui_probe_dir(root_dir)
+        .map(|path| path.join("index.html").display().to_string());
+
+    match embedded_webui_dir {
+        Some(candidate) => {
+            let embedded_index = candidate.join("index.html");
+            if embedded_index.is_file() {
+                return Ok(candidate);
+            }
+
+            append_desktop_log(&format!(
+                "packaged webui index is missing at {}, trying fallback data/dist",
+                embedded_index.display()
+            ));
+
+            if let Some(fallback) = fallback_webui_dir {
+                append_desktop_log(&format!(
+                    "using fallback webui directory: {}",
+                    fallback.display()
+                ));
+                return Ok(fallback);
+            }
+
+            let fallback_index = fallback_index_path.unwrap_or_else(|| "<unresolved>".to_string());
+            append_desktop_log(&format!(
+                "packaged webui resolution failed: embedded index missing at {}, fallback index missing at {}",
+                embedded_index.display(),
+                fallback_index
+            ));
+
+            Err(format!(
+                "Packaged WebUI is unavailable. Missing embedded index at {} and fallback data/dist. Please reinstall AstrBot or download the matching dist.zip to data/dist.",
+                embedded_index.display()
+            ))
+        }
+        None => {
+            if let Some(fallback) = fallback_webui_dir {
+                append_desktop_log(&format!(
+                    "embedded webui directory not found, using fallback webui directory: {}",
+                    fallback.display()
+                ));
+                return Ok(fallback);
+            }
+
+            let fallback_index = fallback_index_path.unwrap_or_else(|| "<unresolved>".to_string());
+            append_desktop_log(&format!(
+                "packaged webui resolution failed: embedded webui directory is missing, fallback index missing at {}",
+                fallback_index
+            ));
+
+            Err(
+                "Packaged WebUI directory is missing and fallback data/dist is unavailable. Please reinstall AstrBot or download the matching dist.zip to data/dist."
+                    .to_string(),
+            )
+        }
+    }
 }
 
 fn resolve_backend_timeout_ms(packaged_mode: bool) -> Option<Duration> {
