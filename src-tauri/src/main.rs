@@ -2417,42 +2417,6 @@ fn log_status(label: &str, pid: u32, status: &io::Result<ExitStatus>) {
     }
 }
 
-struct StopCommandConfig<'a> {
-    max_followup: Duration,
-    label_graceful: &'a str,
-    label_force: &'a str,
-    subject: &'a str,
-}
-
-fn stop_child_process_impl(
-    child: &mut Child,
-    timeout: Duration,
-    graceful_cmd: impl FnOnce(&str) -> Command,
-    force_cmd: impl FnOnce(&str) -> Command,
-    config: StopCommandConfig<'_>,
-) -> bool {
-    let pid = child.id();
-    let pid_arg = pid.to_string();
-
-    let graceful_status = graceful_cmd(pid_arg.as_str()).status();
-    log_status(config.label_graceful, pid, &graceful_status);
-
-    if wait_for_child_exit(child, timeout) {
-        return true;
-    }
-
-    let force_status = force_cmd(pid_arg.as_str()).status();
-    log_status(config.label_force, pid, &force_status);
-
-    let followup_wait = derive_force_stop_wait(timeout, config.max_followup);
-    append_desktop_log(&format!(
-        "{} graceful stop timed out, force-kill issued: pid={pid}, graceful={graceful_status:?}, force={force_status:?}, followup_wait_ms={}",
-        config.subject,
-        followup_wait.as_millis(),
-    ));
-    wait_for_child_exit(child, followup_wait)
-}
-
 /// Attempt to stop a child process gracefully within `timeout`.
 ///
 /// On the force-kill path, a follow-up wait is derived from `timeout` (`timeout / 4`)
@@ -2461,34 +2425,54 @@ fn stop_child_process_impl(
 /// - Non-Windows: up to 1500ms.
 #[cfg(target_os = "windows")]
 fn stop_child_process_gracefully(child: &mut Child, timeout: Duration) -> bool {
-    stop_child_process_impl(
-        child,
+    let pid = child.id();
+    let pid_arg = pid.to_string();
+
+    let graceful_status = build_stop_command("taskkill", &["/pid", &pid_arg, "/t"]).status();
+    log_status("taskkill graceful stop", pid, &graceful_status);
+
+    if wait_for_child_exit(child, timeout) {
+        return true;
+    }
+
+    let force_status = build_stop_command("taskkill", &["/pid", &pid_arg, "/t", "/f"]).status();
+    log_status("taskkill force stop", pid, &force_status);
+
+    let followup_wait = derive_force_stop_wait(
         timeout,
-        |pid_arg| build_stop_command("taskkill", &["/pid", pid_arg, "/t"]),
-        |pid_arg| build_stop_command("taskkill", &["/pid", pid_arg, "/t", "/f"]),
-        StopCommandConfig {
-            max_followup: Duration::from_millis(FORCE_STOP_WAIT_MAX_WINDOWS_MS),
-            label_graceful: "taskkill graceful stop",
-            label_force: "taskkill force stop",
-            subject: "child",
-        },
-    )
+        Duration::from_millis(FORCE_STOP_WAIT_MAX_WINDOWS_MS),
+    );
+    append_desktop_log(&format!(
+        "child graceful stop timed out, force-kill issued: pid={pid}, graceful={graceful_status:?}, force={force_status:?}, followup_wait_ms={}",
+        followup_wait.as_millis(),
+    ));
+    wait_for_child_exit(child, followup_wait)
 }
 
 #[cfg(not(target_os = "windows"))]
 fn stop_child_process_gracefully(child: &mut Child, timeout: Duration) -> bool {
-    stop_child_process_impl(
-        child,
+    let pid = child.id();
+    let pid_arg = pid.to_string();
+
+    let graceful_status = build_stop_command("kill", &["-TERM", &pid_arg]).status();
+    log_status("kill -TERM", pid, &graceful_status);
+
+    if wait_for_child_exit(child, timeout) {
+        return true;
+    }
+
+    let force_status = build_stop_command("kill", &["-KILL", &pid_arg]).status();
+    log_status("kill -KILL", pid, &force_status);
+
+    let followup_wait = derive_force_stop_wait(
         timeout,
-        |pid_arg| build_stop_command("kill", &["-TERM", pid_arg]),
-        |pid_arg| build_stop_command("kill", &["-KILL", pid_arg]),
-        StopCommandConfig {
-            max_followup: Duration::from_millis(FORCE_STOP_WAIT_MAX_NON_WINDOWS_MS),
-            label_graceful: "kill -TERM",
-            label_force: "kill -KILL",
-            subject: "child",
-        },
-    )
+        Duration::from_millis(FORCE_STOP_WAIT_MAX_NON_WINDOWS_MS),
+    );
+    append_desktop_log(&format!(
+        "child graceful stop timed out, force-kill issued: pid={pid}, graceful={graceful_status:?}, force={force_status:?}, followup_wait_ms={}",
+        followup_wait.as_millis(),
+    ));
+    wait_for_child_exit(child, followup_wait)
 }
 
 fn build_debug_command(plan: &LaunchPlan) -> Vec<String> {

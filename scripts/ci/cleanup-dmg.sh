@@ -27,17 +27,47 @@ rw_dmg_image_prefix="${ASTRBOT_DESKTOP_MACOS_RW_DMG_IMAGE_PREFIX:-/src-tauri/tar
 rw_dmg_image_suffix_regex="${ASTRBOT_DESKTOP_MACOS_RW_DMG_IMAGE_SUFFIX_REGEX:-/bundle/macos/rw\\..*\\.dmg$}"
 rw_dmg_mountpoint_regex="${ASTRBOT_DESKTOP_MACOS_RW_DMG_MOUNT_REGEX:-^/Volumes/(dmg\\.|rw\\.|dmg-|rw-).*}"
 allow_global_helper_cleanup="${ASTRBOT_DESKTOP_MACOS_ALLOW_GLOBAL_HELPER_KILL:-0}"
+strict_workspace_root="${ASTRBOT_DESKTOP_MACOS_STRICT_WORKSPACE_ROOT:-}"
+
+if [ -z "${strict_workspace_root}" ]; then
+  if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    strict_workspace_root="0"
+  else
+    strict_workspace_root="1"
+  fi
+else
+  case "${strict_workspace_root}" in
+    1|true|TRUE|yes|YES) strict_workspace_root="1" ;;
+    0|false|FALSE|no|NO) strict_workspace_root="0" ;;
+    *)
+      echo "WARN: invalid ASTRBOT_DESKTOP_MACOS_STRICT_WORKSPACE_ROOT=${strict_workspace_root}; fallback to strict mode." >&2
+      strict_workspace_root="1"
+      ;;
+  esac
+fi
+
+fail_or_skip_workspace_root() {
+  local message="$1"
+  if [ "${strict_workspace_root}" = "1" ]; then
+    echo "ERROR: ${message}" >&2
+    return 1
+  fi
+  echo "WARN: ${message}; skip DMG cleanup." >&2
+  return 0
+}
+
 if [ -n "${ASTRBOT_DESKTOP_MACOS_WORKSPACE_ROOT:-}" ]; then
   workspace_root="${ASTRBOT_DESKTOP_MACOS_WORKSPACE_ROOT}"
 elif [ -n "${GITHUB_WORKSPACE:-}" ]; then
   workspace_root="${GITHUB_WORKSPACE}"
 else
-  echo "WARN: ASTRBOT_DESKTOP_MACOS_WORKSPACE_ROOT is required outside GitHub Actions; skip DMG cleanup." >&2
+  fail_or_skip_workspace_root \
+    "ASTRBOT_DESKTOP_MACOS_WORKSPACE_ROOT is required outside GitHub Actions" || exit 1
   exit 0
 fi
 workspace_root="${workspace_root%/}"
 if [ -z "${workspace_root}" ] || [ ! -d "${workspace_root}" ]; then
-  echo "WARN: workspace root is invalid (${workspace_root}); skip DMG cleanup." >&2
+  fail_or_skip_workspace_root "workspace root is invalid (${workspace_root})" || exit 1
   exit 0
 fi
 
