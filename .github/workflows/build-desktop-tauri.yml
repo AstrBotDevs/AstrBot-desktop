@@ -194,15 +194,61 @@ jobs:
         uses: ./.github/actions/setup-desktop-build
 
       - name: Build desktop installers (macOS)
+        id: build_macos
+        continue-on-error: true
         env:
           ASTRBOT_SOURCE_GIT_URL: ${{ needs.resolve_build_context.outputs.source_git_url }}
           ASTRBOT_SOURCE_GIT_REF: ${{ needs.resolve_build_context.outputs.source_git_ref }}
           ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS: ${{ vars.ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS || '' }}
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
-        run: cargo tauri build --target ${{ matrix.target }}
+        run: cargo tauri build --verbose --target ${{ matrix.target }}
+
+      - name: Dump macOS bundling diagnostics
+        if: steps.build_macos.outcome == 'failure'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          dmg_dir="src-tauri/target/${{ matrix.target }}/release/bundle/dmg"
+          script_path="${dmg_dir}/bundle_dmg.sh"
+
+          echo "::group::DMG output directory listing"
+          ls -la "${dmg_dir}" || true
+          echo "::endgroup::"
+
+          if [ -f "${script_path}" ]; then
+            echo "::group::bundle_dmg.sh"
+            nl -ba "${script_path}" || cat "${script_path}"
+            echo "::endgroup::"
+
+            echo "::group::bundle_dmg.sh trace (bash -x)"
+            (
+              cd "${dmg_dir}"
+              bash -x ./bundle_dmg.sh
+            ) || true
+            echo "::endgroup::"
+          else
+            echo "bundle_dmg.sh not found at ${script_path}"
+          fi
+
+          echo "::group::System diagnostics"
+          uname -a || true
+          sw_vers || true
+          xcodebuild -version || true
+          df -h || true
+          hdiutil info || true
+          echo "::endgroup::"
+
+      - name: Fail macOS build when bundling fails
+        if: steps.build_macos.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "macOS build failed, diagnostics are printed above."
+          exit 1
 
       - name: Verify macOS DMG integrity
+        if: steps.build_macos.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
@@ -219,6 +265,7 @@ jobs:
           done
 
       - name: Upload artifacts
+        if: steps.build_macos.outcome == 'success'
         uses: actions/upload-artifact@v6.0.0
         with:
           name: astrbot-desktop-tauri-${{ needs.resolve_build_context.outputs.astrbot_version }}-macos-${{ matrix.arch }}
