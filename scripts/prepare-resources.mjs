@@ -8,7 +8,7 @@ const DEFAULT_ASTRBOT_SOURCE_GIT_URL = 'https://github.com/AstrBotDevs/AstrBot.g
 const sourceRepoUrlRaw =
   process.env.ASTRBOT_SOURCE_GIT_URL?.trim() || DEFAULT_ASTRBOT_SOURCE_GIT_URL;
 const sourceRepoRefRaw = process.env.ASTRBOT_SOURCE_GIT_REF?.trim() || '';
-const desktopVersionOverride = process.env.ASTRBOT_DESKTOP_VERSION?.trim() || '';
+const desktopVersionOverrideRaw = process.env.ASTRBOT_DESKTOP_VERSION?.trim() || '';
 const PYTHON_BUILD_STANDALONE_RELEASE =
   process.env.ASTRBOT_PBS_RELEASE?.trim() || '20260211';
 const PYTHON_BUILD_STANDALONE_VERSION =
@@ -17,6 +17,19 @@ const mode = process.argv[2] || 'all';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
+
+const normalizeDesktopVersionOverride = (version) => {
+  const trimmed = typeof version === 'string' ? version.trim() : '';
+  if (!trimmed) {
+    return '';
+  }
+  if (/^v\d/i.test(trimmed)) {
+    return trimmed.slice(1);
+  }
+  return trimmed;
+};
+
+const desktopVersionOverride = normalizeDesktopVersionOverride(desktopVersionOverrideRaw);
 
 const normalizeSourceRepoConfig = () => {
   if (!sourceRepoUrlRaw) {
@@ -576,6 +589,11 @@ const main = async () => {
   const sourceDir = resolveSourceDir();
   const needsSourceRepo = mode !== 'version' || !desktopVersionOverride;
   await mkdir(path.join(projectRoot, 'resources'), { recursive: true });
+  if (desktopVersionOverrideRaw && desktopVersionOverrideRaw !== desktopVersionOverride) {
+    console.log(
+      `[prepare-resources] Normalized ASTRBOT_DESKTOP_VERSION from ${desktopVersionOverrideRaw} to ${desktopVersionOverride}`,
+    );
+  }
   if (needsSourceRepo) {
     ensureSourceRepo(sourceDir);
   } else {
@@ -590,7 +608,7 @@ const main = async () => {
     const sourceVersion = await readAstrbotVersionFromPyproject(sourceDir);
     if (sourceVersion !== desktopVersionOverride) {
       console.warn(
-        `[prepare-resources] Version override drift detected: ASTRBOT_DESKTOP_VERSION=${desktopVersionOverride}, source pyproject version=${sourceVersion} (${sourceDir})`,
+        `[prepare-resources] Version override drift detected: ASTRBOT_DESKTOP_VERSION=${desktopVersionOverrideRaw} (normalized=${desktopVersionOverride}), source pyproject version=${sourceVersion} (${sourceDir})`,
       );
     }
   }

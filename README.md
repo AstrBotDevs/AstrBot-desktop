@@ -59,7 +59,7 @@ make prune
 
 - `make update`：从上游同步版本（推荐日常使用）。
 - `make sync-version`：从当前解析到的 AstrBot 源同步版本（会受本地环境变量影响）。
-- `make build`：默认使用当前 `package.json` 的版本，可用 `ASTRBOT_DESKTOP_VERSION=...` 覆盖。
+- `make build`：默认使用当前 `package.json` 的版本，可用 `ASTRBOT_DESKTOP_VERSION=...` 覆盖（支持 `v` 前缀，写入时会自动去掉）。
 
 桌面端版本会同步到：
 - `package.json`
@@ -71,13 +71,14 @@ make prune
 - `ASTRBOT_SOURCE_GIT_URL` / `ASTRBOT_SOURCE_GIT_REF`：指定上游仓库与分支/标签（默认 `https://github.com/AstrBotDevs/AstrBot.git` + `master`）。
 - `ASTRBOT_SOURCE_DIR`：指定本地 AstrBot 源码目录（用于 `sync-version`/资源准备，`build` 也会读取）。
 - `ASTRBOT_BUILD_SOURCE_DIR`：仅用于本次 `make build` 的源码目录，优先级高于 `ASTRBOT_SOURCE_DIR`。
-- `ASTRBOT_DESKTOP_VERSION`：覆盖写入桌面版本号。
+- `ASTRBOT_DESKTOP_VERSION`：覆盖写入桌面版本号（支持 `v` 前缀，内部会归一化为无 `v`）。
 
 示例：
 
 ```bash
 make update
 make update ASTRBOT_SOURCE_GIT_REF=v4.17.5
+make build ASTRBOT_DESKTOP_VERSION=v4.17.6
 make build ASTRBOT_BUILD_SOURCE_DIR=/path/to/AstrBot
 ```
 
