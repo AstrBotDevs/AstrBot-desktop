@@ -38,6 +38,9 @@ jobs:
       should_build: ${{ steps.resolve.outputs.should_build }}
       build_mode: ${{ steps.resolve.outputs.build_mode }}
       publish_release: ${{ steps.resolve.outputs.publish_release }}
+      release_tag: ${{ steps.resolve.outputs.release_tag }}
+      release_name: ${{ steps.resolve.outputs.release_name }}
+      release_prerelease: ${{ steps.resolve.outputs.release_prerelease }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
@@ -70,6 +73,9 @@ jobs:
           should_build="true"
           build_mode="manual"
           publish_release="false"
+          release_tag=""
+          release_name=""
+          release_prerelease="false"
 
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             if [ -n "${WORKFLOW_SOURCE_GIT_URL:-}" ]; then
@@ -86,8 +92,16 @@ jobs:
           if [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
             if [ "${GITHUB_EVENT_SCHEDULE:-}" = "${NIGHTLY_CRON}" ]; then
               build_mode="nightly"
-              publish_release="false"
-              echo "Scheduled nightly run: building from ${source_git_ref}"
+              publish_release="true"
+              source_git_ref="$(
+                git ls-remote "${source_git_url}" refs/heads/master \
+                  | awk 'NR==1{print $1}'
+              )"
+              if [ -z "${source_git_ref}" ]; then
+                echo "Unable to resolve latest commit from ${source_git_url} refs/heads/master" >&2
+                exit 1
+              fi
+              echo "Scheduled nightly run: building from master@${source_git_ref}"
             else
               build_mode="tag-poll"
               publish_release="true"
@@ -141,6 +155,19 @@ jobs:
             fi
           fi
 
+          if [ "${build_mode}" = "nightly" ] && [ "${should_build}" = "true" ]; then
+            nightly_date="$(date -u +%Y%m%d)"
+            short_sha="$(printf '%s' "${source_git_ref}" | cut -c1-8)"
+            version="${version}-nightly.${nightly_date}.${short_sha}"
+            release_tag="v${version}"
+            release_name="AstrBot Desktop ${version}"
+            release_prerelease="true"
+          elif [ "${publish_release}" = "true" ] && [ "${should_build}" = "true" ]; then
+            release_tag="v${version}"
+            release_name="AstrBot Desktop v${version}"
+            release_prerelease="false"
+          fi
+
           {
             echo "source_git_url=${source_git_url}"
             echo "source_git_ref=${source_git_ref}"
@@ -148,12 +175,17 @@ jobs:
             echo "should_build=${should_build}"
             echo "build_mode=${build_mode}"
             echo "publish_release=${publish_release}"
+            echo "release_tag=${release_tag}"
+            echo "release_name=${release_name}"
+            echo "release_prerelease=${release_prerelease}"
           } >> "${GITHUB_OUTPUT}"
           echo "Resolved source: ${source_git_url}@${source_git_ref}"
           echo "Resolved AstrBot version: ${version}"
           echo "Build enabled: ${should_build}"
           echo "Build mode: ${build_mode}"
           echo "Publish release: ${publish_release}"
+          echo "Release tag: ${release_tag:-<none>}"
+          echo "Release prerelease: ${release_prerelease}"
 
   sync_repo_version:
     name: Sync Repository Version
@@ -516,13 +548,16 @@ jobs:
       - name: Create or update release
         uses: softprops/action-gh-release@v2.5.0
         with:
-          tag_name: v${{ needs.resolve_build_context.outputs.astrbot_version }}
-          name: AstrBot Desktop v${{ needs.resolve_build_context.outputs.astrbot_version }}
+          tag_name: ${{ needs.resolve_build_context.outputs.release_tag }}
+          name: ${{ needs.resolve_build_context.outputs.release_name }}
           body: |
             Automated desktop package release.
             - Source: `${{ needs.resolve_build_context.outputs.source_git_url }}`
             - Ref: `${{ needs.resolve_build_context.outputs.source_git_ref }}`
+            - Mode: `${{ needs.resolve_build_context.outputs.build_mode }}`
             - Windows tip: prefer `nsis-web` installer for smaller downloads and faster install startup.
           generate_release_notes: true
+          prerelease: ${{ needs.resolve_build_context.outputs.release_prerelease == 'true' }}
+          make_latest: ${{ needs.resolve_build_context.outputs.release_prerelease != 'true' }}
           files: release-artifacts/**/*
           fail_on_unmatched_files: true
