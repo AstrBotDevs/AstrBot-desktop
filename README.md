@@ -102,3 +102,57 @@ source .astrbot-reset-env.sh
 2. 构建并同步 `resources/webui`
 3. 准备 `resources/backend`（含运行时与启动脚本）
 4. 执行 Tauri 打包
+
+## 常见问题
+
+### macOS 提示“应用已损坏”或无法打开
+
+如果你是从网络下载的安装包，macOS 可能给 `AstrBot.app` 打上 quarantine 标记。可执行：
+
+```bash
+xattr -dr com.apple.quarantine /Applications/AstrBot.app
+```
+
+然后重新启动应用。如果应用不在 `/Applications`，请替换为实际路径。
+
+### 缺少 Node.js / npx / uvx
+
+部分 MCP 工具依赖 `node`/`npx` 或 `uvx`。可按下面方式安装并校验。
+
+1. 安装 Node.js（`npx` 随 npm 一起提供）
+
+- macOS（Homebrew）：
+
+```bash
+brew install node
+```
+
+- Windows：
+  使用 Node.js 官方安装器安装 LTS 版本：<https://nodejs.org/>
+- Linux（Debian/Ubuntu）：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y nodejs npm
+```
+
+2. 安装 uv（提供 `uvx`）
+
+- macOS（Homebrew）：
+
+```bash
+brew install uv
+```
+
+- 其他系统请参考官方安装文档：<https://docs.astral.sh/uv/getting-started/installation/>
+
+3. 校验命令可用
+
+```bash
+node -v
+npm -v
+npx -v
+uvx --version
+```
+
+说明：有时会把 `npx` 误写为 `nvx`，正确命令是 `npx`。
