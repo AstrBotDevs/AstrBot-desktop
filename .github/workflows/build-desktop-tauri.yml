@@ -215,27 +215,45 @@ jobs:
       - name: Setup desktop build environment
         uses: ./.github/actions/setup-desktop-build
 
-      - name: Preflight macOS app bundle name resolution
+      - name: Resolve macOS app bundle name
+        id: resolve_macos_app_bundle
         env:
           ASTRBOT_MACOS_APP_BUNDLE_NAME: ${{ vars.ASTRBOT_MACOS_APP_BUNDLE_NAME || '' }}
         shell: bash
         run: |
           set -euo pipefail
+          app_bundle_name="${ASTRBOT_MACOS_APP_BUNDLE_NAME}"
+          app_bundle_name_source="env:ASTRBOT_MACOS_APP_BUNDLE_NAME"
+
           if [ -n "${ASTRBOT_MACOS_APP_BUNDLE_NAME}" ]; then
             echo "Using app bundle name from ASTRBOT_MACOS_APP_BUNDLE_NAME=${ASTRBOT_MACOS_APP_BUNDLE_NAME}"
-            exit 0
+          else
+            if ! command -v python3 >/dev/null 2>&1; then
+              echo "python3 is required to resolve app bundle name from src-tauri/tauri.conf.json productName." >&2
+              exit 1
+            fi
+            python3 --version
+
+            tauri_conf_path="src-tauri/tauri.conf.json"
+            if [ ! -f "${tauri_conf_path}" ]; then
+              echo "Required file not found: ${tauri_conf_path} (or set ASTRBOT_MACOS_APP_BUNDLE_NAME)." >&2
+              exit 1
+            fi
+
+            app_bundle_name="$(python3 -c "import json,pathlib; d=json.loads(pathlib.Path('${tauri_conf_path}').read_text(encoding='utf-8')); print(str(d.get('productName','')).strip())")"
+            app_bundle_name_source="tauri.conf.json productName"
           fi
 
-          if ! command -v python3 >/dev/null 2>&1; then
-            echo "python3 is required to resolve app bundle name from src-tauri/tauri.conf.json productName." >&2
+          if [ -z "${app_bundle_name}" ]; then
+            echo "Unable to resolve app bundle name from ASTRBOT_MACOS_APP_BUNDLE_NAME or src-tauri/tauri.conf.json productName." >&2
             exit 1
           fi
-          python3 --version
 
-          if [ ! -f "src-tauri/tauri.conf.json" ]; then
-            echo "Required file not found: src-tauri/tauri.conf.json (or set ASTRBOT_MACOS_APP_BUNDLE_NAME)." >&2
-            exit 1
-          fi
+          echo "Resolved app bundle name: ${app_bundle_name} (source=${app_bundle_name_source})"
+          {
+            printf 'app_bundle_name=%s\n' "${app_bundle_name}"
+            printf 'app_bundle_name_source=%s\n' "${app_bundle_name_source}"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Build desktop app bundle (macOS)
         env:
@@ -243,50 +261,60 @@ jobs:
           ASTRBOT_SOURCE_GIT_REF: ${{ needs.resolve_build_context.outputs.source_git_ref }}
           ASTRBOT_DESKTOP_VERSION: ${{ needs.resolve_build_context.outputs.astrbot_version }}
           ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS: ${{ vars.ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS || '' }}
+          ASTRBOT_MACOS_BUILD_MAX_ATTEMPTS: ${{ vars.ASTRBOT_MACOS_BUILD_MAX_ATTEMPTS || '3' }}
+          ASTRBOT_MACOS_BUILD_RETRY_SLEEP_SECONDS: ${{ vars.ASTRBOT_MACOS_BUILD_RETRY_SLEEP_SECONDS || '8' }}
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in 1 2 3; do
-            if cargo tauri build --verbose --target ${{ matrix.target }} --bundles app; then
+          max_attempts="${ASTRBOT_MACOS_BUILD_MAX_ATTEMPTS}"
+          retry_sleep_seconds="${ASTRBOT_MACOS_BUILD_RETRY_SLEEP_SECONDS}"
+          retry_pattern='spurious network error|timed out|timeout|connection reset|connection refused|temporarily unavailable|tls|temporary failure|failed to download|operation too slow|broken pipe'
+
+          case "${max_attempts}" in
+            ''|*[!0-9]*|0) max_attempts=3 ;;
+          esac
+          case "${retry_sleep_seconds}" in
+            ''|*[!0-9]*) retry_sleep_seconds=8 ;;
+          esac
+
+          for attempt in $(seq 1 "${max_attempts}"); do
+            build_log="$(mktemp -t tauri-macos-build.XXXXXX.log)"
+            if cargo tauri build --verbose --target ${{ matrix.target }} --bundles app 2>&1 | tee "${build_log}"; then
+              rm -f "${build_log}" || true
               break
             fi
 
-            if [ "${attempt}" -eq 3 ]; then
-              echo "macOS build failed after 3 attempts." >&2
+            if [ "${attempt}" -ge "${max_attempts}" ]; then
+              echo "macOS build failed after ${max_attempts} attempts." >&2
+              rm -f "${build_log}" || true
               exit 1
             fi
 
-            echo "macOS build failed on attempt ${attempt}/3, retrying in 8s..."
-            sleep 8
+            if ! grep -Eiq "${retry_pattern}" "${build_log}"; then
+              echo "macOS build failed with non-transient error on attempt ${attempt}/${max_attempts}; skip retries." >&2
+              rm -f "${build_log}" || true
+              exit 1
+            fi
+
+            rm -f "${build_log}" || true
+            echo "macOS build hit transient failure on attempt ${attempt}/${max_attempts}; retrying in ${retry_sleep_seconds}s..."
+            sleep "${retry_sleep_seconds}"
           done
 
       - name: Package macOS app as zip
         env:
-          ASTRBOT_MACOS_APP_BUNDLE_NAME: ${{ vars.ASTRBOT_MACOS_APP_BUNDLE_NAME || '' }}
+          RESOLVED_APP_BUNDLE_NAME: ${{ steps.resolve_macos_app_bundle.outputs.app_bundle_name }}
+          RESOLVED_APP_BUNDLE_NAME_SOURCE: ${{ steps.resolve_macos_app_bundle.outputs.app_bundle_name_source }}
         shell: bash
         run: |
           set -euo pipefail
           bundle_dir="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
-          app_bundle_name="${ASTRBOT_MACOS_APP_BUNDLE_NAME}"
-          app_bundle_name_source="env:ASTRBOT_MACOS_APP_BUNDLE_NAME"
+          app_bundle_name="${RESOLVED_APP_BUNDLE_NAME}"
+          app_bundle_name_source="${RESOLVED_APP_BUNDLE_NAME_SOURCE}"
           if [ -z "${app_bundle_name}" ]; then
-            if ! command -v python3 >/dev/null 2>&1; then
-              echo "python3 is required to resolve app bundle name from tauri config." >&2
-              exit 1
-            fi
-            tauri_conf_path="src-tauri/tauri.conf.json"
-            if [ ! -f "${tauri_conf_path}" ]; then
-              echo "Tauri config not found: ${tauri_conf_path}. Set ASTRBOT_MACOS_APP_BUNDLE_NAME to continue." >&2
-              exit 1
-            fi
-            app_bundle_name="$(python3 -c "import json,pathlib; d=json.loads(pathlib.Path('${tauri_conf_path}').read_text(encoding='utf-8')); print(str(d.get('productName','')).strip())")"
-            app_bundle_name_source="tauri.conf.json productName"
-          fi
-
-          if [ -z "${app_bundle_name}" ]; then
-            echo "Unable to resolve app bundle name from ASTRBOT_MACOS_APP_BUNDLE_NAME or src-tauri/tauri.conf.json productName." >&2
+            echo "Resolved app bundle name is empty (source=${app_bundle_name_source})." >&2
             exit 1
           fi
           echo "Resolved app bundle name: ${app_bundle_name} (source=${app_bundle_name_source})"
