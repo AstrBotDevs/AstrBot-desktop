@@ -49,7 +49,7 @@ checksum = "5f0e0fee31ef5ed1ba1316088939cea399010ed7731dba877ed44aeb407a75ea"
 
 [[package]]
 name = "astrbot-desktop-tauri"
-version = "4.17.6"
+version = "4.18.0"
 dependencies = [
  "chrono",
  "home",
