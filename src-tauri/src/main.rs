@@ -69,6 +69,7 @@ static BACKEND_PING_TIMEOUT_MS: OnceLock<u64> = OnceLock::new();
 static BRIDGE_BACKEND_PING_TIMEOUT_MS: OnceLock<u64> = OnceLock::new();
 static DESKTOP_LOG_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static TRAY_RESTART_SIGNAL_TOKEN: AtomicU64 = AtomicU64::new(0);
+static BACKEND_PATH_OVERRIDE: OnceLock<Option<OsString>> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy)]
 struct ShellTexts {
@@ -426,7 +427,7 @@ impl BackendState {
                 "PYTHONIOENCODING",
                 env::var("PYTHONIOENCODING").unwrap_or_else(|_| "utf-8".to_string()),
             );
-        if let Some(path_override) = build_backend_path_override() {
+        if let Some(path_override) = backend_path_override() {
             command.env("PATH", path_override);
         }
         #[cfg(target_os = "windows")]
@@ -2317,10 +2318,10 @@ fn add_path_candidate(
     }
 }
 
-fn platform_extra_paths(home: Option<PathBuf>) -> Vec<PathBuf> {
+fn platform_extra_paths() -> Vec<PathBuf> {
     let mut result = Vec::new();
 
-    if let Some(home_dir) = home {
+    if let Some(home_dir) = home::home_dir() {
         result.push(home_dir.join(".local").join("bin"));
         #[cfg(target_os = "macos")]
         {
@@ -2377,6 +2378,12 @@ fn log_backend_path_augmentation(prepend_entries: &[PathBuf]) {
     ));
 }
 
+fn backend_path_override() -> Option<OsString> {
+    BACKEND_PATH_OVERRIDE
+        .get_or_init(build_backend_path_override)
+        .clone()
+}
+
 fn build_backend_path_override() -> Option<OsString> {
     let existing_path = env::var_os("PATH").unwrap_or_default();
     let existing_entries: Vec<PathBuf> = env::split_paths(&existing_path).collect();
@@ -2393,7 +2400,7 @@ fn build_backend_path_override() -> Option<OsString> {
         }
     }
 
-    for path in platform_extra_paths(home::home_dir()) {
+    for path in platform_extra_paths() {
         add_path_candidate(path, &mut seen_keys, &mut prepend_entries);
     }
 
