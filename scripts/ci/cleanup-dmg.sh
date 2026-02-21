@@ -14,6 +14,7 @@ set -uo pipefail
 detach_attempts="${ASTRBOT_DESKTOP_MACOS_DETACH_ATTEMPTS:-3}"
 detach_sleep_seconds="${ASTRBOT_DESKTOP_MACOS_DETACH_SLEEP_SECONDS:-2}"
 detach_pre_sleep_seconds="${ASTRBOT_DESKTOP_MACOS_DETACH_PRE_SLEEP_SECONDS:-8}"
+lsof_timeout_seconds="${ASTRBOT_DESKTOP_MACOS_LSOF_TIMEOUT_SECONDS:-10}"
 
 case "${detach_attempts}" in
   ''|*[!0-9]*) detach_attempts=3 ;;
@@ -40,6 +41,15 @@ if [ "${detach_pre_sleep_seconds}" -lt 0 ] 2>/dev/null; then
   detach_pre_sleep_seconds=0
 elif [ "${detach_pre_sleep_seconds}" -gt 120 ] 2>/dev/null; then
   detach_pre_sleep_seconds=120
+fi
+
+case "${lsof_timeout_seconds}" in
+  ''|*[!0-9]*) lsof_timeout_seconds=10 ;;
+esac
+if [ "${lsof_timeout_seconds}" -lt 1 ] 2>/dev/null; then
+  lsof_timeout_seconds=1
+elif [ "${lsof_timeout_seconds}" -gt 120 ] 2>/dev/null; then
+  lsof_timeout_seconds=120
 fi
 
 rw_dmg_image_prefix="${ASTRBOT_DESKTOP_MACOS_RW_DMG_IMAGE_PREFIX:-/src-tauri/target/}"
@@ -109,6 +119,7 @@ declare -a canonical_path_cache_keys=()
 declare -a canonical_path_cache_values=()
 canonicalize_tool="none"
 canonicalize_warned_failure=0
+lsof_timeout_tool=""
 
 select_canonicalize_tool() {
   if command -v realpath >/dev/null 2>&1; then
@@ -128,6 +139,24 @@ select_canonicalize_tool() {
 }
 
 select_canonicalize_tool
+
+select_lsof_timeout_tool() {
+  if command -v gtimeout >/dev/null 2>&1; then
+    lsof_timeout_tool="gtimeout"
+    return
+  fi
+  if command -v timeout >/dev/null 2>&1; then
+    lsof_timeout_tool="timeout"
+    return
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    lsof_timeout_tool="python3"
+    return
+  fi
+  lsof_timeout_tool=""
+}
+
+select_lsof_timeout_tool
 
 detach_target() {
   local target="$1"
@@ -203,6 +232,8 @@ log_cleanup_configuration() {
   echo "  detach_attempts=${detach_attempts}" >&2
   echo "  detach_sleep_seconds=${detach_sleep_seconds}" >&2
   echo "  detach_pre_sleep_seconds=${detach_pre_sleep_seconds}" >&2
+  echo "  lsof_timeout_seconds=${lsof_timeout_seconds}" >&2
+  echo "  lsof_timeout_tool=${lsof_timeout_tool:-none}" >&2
   echo "  rw_dmg_image_prefix=${rw_dmg_image_prefix}" >&2
   echo "  rw_dmg_image_suffix_regex=${rw_dmg_image_suffix_regex}" >&2
   echo "  rw_dmg_mountpoint_regex=${rw_dmg_mountpoint_regex}" >&2
@@ -282,11 +313,59 @@ terminate_pid_soft_then_hard() {
 
 kill_mount_holders() {
   local mount_point="$1"
+  if [ "${allow_global_helper_cleanup}" != "1" ]; then
+    echo "Skip mount-holder cleanup for ${mount_point} (set ASTRBOT_DESKTOP_MACOS_ALLOW_GLOBAL_HELPER_KILL=1 to enable)." >&2
+    return 0
+  fi
   if ! command -v lsof >/dev/null 2>&1; then
     return 0
   fi
   local holder_pids
-  holder_pids="$(lsof -t +D "${mount_point}" 2>/dev/null | awk 'NF' | sort -u || true)"
+  if [ "${lsof_timeout_tool}" = "gtimeout" ] || [ "${lsof_timeout_tool}" = "timeout" ]; then
+    local lsof_output=""
+    local lsof_status=0
+    lsof_output="$("${lsof_timeout_tool}" "${lsof_timeout_seconds}" lsof -t +D "${mount_point}" 2>/dev/null)" || lsof_status=$?
+    if [ "${lsof_status}" -eq 124 ] || [ "${lsof_status}" -eq 137 ]; then
+      echo "WARN: lsof timed out while scanning ${mount_point}; skip mount-holder cleanup." >&2
+      return 0
+    fi
+    holder_pids="$(printf '%s\n' "${lsof_output}" | awk 'NF' | sort -u)"
+  elif [ "${lsof_timeout_tool}" = "python3" ]; then
+    local lsof_output=""
+    local lsof_status=0
+    lsof_output="$(
+      python3 - "${mount_point}" "${lsof_timeout_seconds}" <<'PY'
+import subprocess
+import sys
+
+mount_point = sys.argv[1]
+timeout_seconds = float(sys.argv[2])
+
+try:
+    proc = subprocess.run(
+        ["lsof", "-t", "+D", mount_point],
+        capture_output=True,
+        text=True,
+        timeout=timeout_seconds,
+        check=False,
+    )
+except subprocess.TimeoutExpired:
+    sys.exit(124)
+
+if proc.stdout:
+    sys.stdout.write(proc.stdout)
+
+sys.exit(proc.returncode)
+PY
+    )" || lsof_status=$?
+    if [ "${lsof_status}" -eq 124 ] || [ "${lsof_status}" -eq 137 ]; then
+      echo "WARN: lsof timed out while scanning ${mount_point}; skip mount-holder cleanup." >&2
+      return 0
+    fi
+    holder_pids="$(printf '%s\n' "${lsof_output}" | awk 'NF' | sort -u)"
+  else
+    holder_pids="$(lsof -t +D "${mount_point}" 2>/dev/null | awk 'NF' | sort -u || true)"
+  fi
   if [ -z "${holder_pids}" ]; then
     return 0
   fi
