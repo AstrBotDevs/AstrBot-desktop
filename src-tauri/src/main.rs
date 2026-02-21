@@ -36,6 +36,7 @@ const GRACEFUL_RESTART_START_TIME_TIMEOUT_MS: u64 = 1_800;
 const GRACEFUL_RESTART_POLL_INTERVAL_MS: u64 = 350;
 const GRACEFUL_STOP_TIMEOUT_MS: u64 = 10_000;
 const BACKEND_READY_POLL_INTERVAL_MS: u64 = 300;
+const BACKEND_READY_HTTP_PATH: &str = "/";
 const FORCE_STOP_WAIT_MIN_MS: u64 = 200;
 #[cfg(target_os = "windows")]
 const WINDOWS_GRACEFUL_STOP_NONZERO_WAIT_MS: u64 = 350;
@@ -562,6 +563,12 @@ impl BackendState {
 
             if let Some(limit) = timeout_ms {
                 if start_time.elapsed() >= limit {
+                    append_desktop_log(&format!(
+                        "backend HTTP readiness check timed out after {}ms: path={}, tcp_reachable={}",
+                        limit.as_millis(),
+                        BACKEND_READY_HTTP_PATH,
+                        tcp_ready_logged
+                    ));
                     return Err(format!(
                         "Timed out after {}ms waiting for backend startup.",
                         limit.as_millis()
@@ -575,7 +582,7 @@ impl BackendState {
 
     fn is_backend_http_ready(&self, timeout_ms: u64) -> bool {
         matches!(
-            self.request_backend_status_code("GET", "/", timeout_ms, None, None),
+            self.request_backend_status_code("GET", BACKEND_READY_HTTP_PATH, timeout_ms, None, None),
             Some(status_code) if (200..400).contains(&status_code)
         )
     }
@@ -2423,10 +2430,11 @@ fn build_backend_path_override() -> Option<OsString> {
         return None;
     }
 
-    log_backend_path_augmentation(&prepend_entries);
-
     match env::join_paths(prepend_entries.iter().chain(existing_entries.iter())) {
-        Ok(path_override) => Some(path_override),
+        Ok(path_override) => {
+            log_backend_path_augmentation(&prepend_entries);
+            Some(path_override)
+        }
         Err(error) => {
             append_desktop_log(&format!("failed to build backend PATH override: {error}"));
             None
