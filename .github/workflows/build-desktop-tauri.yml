@@ -8,7 +8,7 @@ on:
         required: false
         default: https://github.com/AstrBotDevs/AstrBot.git
       source_git_ref:
-        description: AstrBot source git ref (branch/tag/sha), empty means default ref
+        description: Optional source ref override for `tag-poll` (tag/commit SHA). Ignored in `nightly`.
         required: false
         default: ""
       publish_release:
@@ -17,12 +17,11 @@ on:
         type: boolean
         default: true
       build_mode:
-        description: Build mode (`auto` | `tag-poll` | `nightly`); for workflow_dispatch, `auto` behaves as `manual` and disables publish_release, while `nightly` resolves latest upstream commit and can publish release
+        description: Build mode (`tag-poll` | `nightly`): `tag-poll` builds latest upstream tag by default (or `source_git_ref` override), `nightly` always builds latest upstream commit
         required: false
         type: choice
-        default: auto
+        default: tag-poll
         options:
-          - auto
           - tag-poll
           - nightly
   schedule:

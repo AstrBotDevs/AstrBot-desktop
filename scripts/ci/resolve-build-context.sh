@@ -85,18 +85,23 @@ source_git_url="${ASTRBOT_SOURCE_GIT_URL}"
 source_git_ref="${ASTRBOT_SOURCE_GIT_REF}"
 nightly_source_git_ref="${ASTRBOT_NIGHTLY_SOURCE_GIT_REF:-master}"
 nightly_utc_hour="${ASTRBOT_NIGHTLY_UTC_HOUR:-${DEFAULT_NIGHTLY_UTC_HOUR}}"
-requested_build_mode="$(printf '%s' "${WORKFLOW_BUILD_MODE:-auto}" | tr '[:upper:]' '[:lower:]')"
+if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+  requested_build_mode="$(printf '%s' "${WORKFLOW_BUILD_MODE:-tag-poll}" | tr '[:upper:]' '[:lower:]')"
+else
+  requested_build_mode="auto"
+fi
 should_build="true"
-build_mode="manual"
+build_mode="tag-poll"
 publish_release="false"
 release_tag=""
 release_name=""
 release_prerelease="false"
+workflow_source_git_ref_provided="false"
 
 case "${requested_build_mode}" in
   auto|tag-poll|nightly) ;;
   *)
-    echo "::error::invalid build_mode input '${requested_build_mode}'; expected one of: auto, tag-poll, nightly."
+    echo "::error::invalid build_mode input '${requested_build_mode}'; expected tag-poll/nightly for workflow_dispatch (auto is reserved for schedule routing)."
     exit 1
     ;;
 esac
@@ -123,20 +128,18 @@ if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
   fi
   if [ -n "${WORKFLOW_SOURCE_GIT_REF:-}" ]; then
     source_git_ref="${WORKFLOW_SOURCE_GIT_REF}"
+    workflow_source_git_ref_provided="true"
   fi
   if [ "${WORKFLOW_PUBLISH_RELEASE:-true}" = "true" ]; then
     publish_release="true"
-  fi
-  if [ "${requested_build_mode}" = "tag-poll" ]; then
-    build_mode="tag-poll"
-  elif [ "${requested_build_mode}" = "nightly" ]; then
-    build_mode="nightly"
   else
-    echo "workflow_dispatch build_mode=auto: using manual mode."
-    if [ "${publish_release}" = "true" ]; then
-      echo "::warning::workflow_dispatch with build_mode=auto resolves to manual mode; publish_release=true is normalized to false to avoid unintended release publishing."
-      publish_release="false"
-    fi
+    publish_release="false"
+  fi
+  if [ "${requested_build_mode}" = "auto" ]; then
+    echo "::warning::workflow_dispatch build_mode=auto is deprecated; normalized to tag-poll."
+    build_mode="tag-poll"
+  else
+    build_mode="${requested_build_mode}"
   fi
 fi
 
@@ -167,6 +170,9 @@ retry_sleep_seconds="$(
 )"
 
 if [ "${build_mode}" = "nightly" ]; then
+  if [ "${workflow_source_git_ref_provided}" = "true" ]; then
+    echo "::warning::workflow_dispatch nightly mode ignores source_git_ref='${WORKFLOW_SOURCE_GIT_REF:-}'. Using latest commit from configured nightly branch."
+  fi
   nightly_branch="${nightly_source_git_ref}"
   if [ -z "${nightly_branch}" ]; then
     echo "ASTRBOT_NIGHTLY_SOURCE_GIT_REF must be set to a branch name or refs/heads/<branch> for nightly builds." >&2
@@ -198,25 +204,29 @@ if [ "${build_mode}" = "nightly" ]; then
   fi
   echo "Nightly source resolved from ${nightly_branch}@${source_git_ref} (configured ASTRBOT_NIGHTLY_SOURCE_GIT_REF='${nightly_source_git_ref}')."
 elif [ "${build_mode}" = "tag-poll" ]; then
-  tag_remote_output="$(
-    git_ls_remote_with_retry \
-      "${source_git_url}" \
-      "refs/tags/*" \
-      "upstream tags refs/tags/*" \
-      "${retry_attempts}" \
-      "${retry_sleep_seconds}"
-  )"
-  latest_tag="$(printf '%s\n' "${tag_remote_output}" \
-    | awk '{print $2}' \
-    | sed 's#refs/tags/##' \
-    | sort -V \
-    | tail -n 1)"
-  if [ -z "${latest_tag}" ]; then
-    echo "Unable to resolve latest tag from ${source_git_url}" >&2
-    exit 1
+  if [ "${workflow_source_git_ref_provided}" = "true" ]; then
+    echo "workflow_dispatch tag-poll mode: using explicit source ref override ${source_git_ref}"
+  else
+    tag_remote_output="$(
+      git_ls_remote_with_retry \
+        "${source_git_url}" \
+        "refs/tags/*" \
+        "upstream tags refs/tags/*" \
+        "${retry_attempts}" \
+        "${retry_sleep_seconds}"
+    )"
+    latest_tag="$(printf '%s\n' "${tag_remote_output}" \
+      | awk '{print $2}' \
+      | sed 's#refs/tags/##' \
+      | sort -V \
+      | tail -n 1)"
+    if [ -z "${latest_tag}" ]; then
+      echo "Unable to resolve latest tag from ${source_git_url}" >&2
+      exit 1
+    fi
+    source_git_ref="${latest_tag}"
+    echo "Tag polling run detected latest upstream tag: ${source_git_ref}"
   fi
-  source_git_ref="${latest_tag}"
-  echo "Tag polling run detected latest upstream tag: ${source_git_ref}"
 
   http_status="$(curl -sS -o /dev/null -w '%{http_code}' \
     -H "Authorization: Bearer ${GITHUB_TOKEN}" \
