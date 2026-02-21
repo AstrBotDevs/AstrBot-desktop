@@ -151,6 +151,10 @@ case "${GITHUB_EVENT_NAME}" in
     if [ "${requested_build_mode}" = "auto" ]; then
       echo "::warning::workflow_dispatch build_mode=auto is deprecated; normalized to tag-poll."
       build_mode="tag-poll"
+      if [ "${publish_release}" = "true" ]; then
+        echo "::warning::workflow_dispatch build_mode=auto keeps legacy behavior: publish_release=true is normalized to false."
+        publish_release="false"
+      fi
     else
       build_mode="${requested_build_mode}"
     fi
