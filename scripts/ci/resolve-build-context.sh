@@ -101,7 +101,11 @@ workflow_source_git_ref_provided="false"
 case "${requested_build_mode}" in
   auto|tag-poll|nightly) ;;
   *)
-    echo "::error::invalid build_mode input '${requested_build_mode}'; expected tag-poll/nightly for workflow_dispatch (auto is reserved for schedule routing)."
+    if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+      echo "::error::invalid build_mode input '${requested_build_mode}'; expected tag-poll/nightly (auto is deprecated but still accepted and normalized to tag-poll for backward compatibility)."
+    else
+      echo "::error::invalid build_mode input '${requested_build_mode}'; expected auto/tag-poll/nightly."
+    fi
     exit 1
     ;;
 esac
