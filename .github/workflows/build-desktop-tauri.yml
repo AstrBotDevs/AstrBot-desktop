@@ -421,6 +421,27 @@ jobs:
       - name: Show artifacts
         run: find release-artifacts -type f | sort
 
+      - name: Normalize release artifact filenames
+        env:
+          BUILD_MODE: ${{ needs.resolve_build_context.outputs.build_mode }}
+          SOURCE_GIT_REF: ${{ needs.resolve_build_context.outputs.source_git_ref }}
+          ASTRBOT_STRICT_ARTIFACT_FILENAME_NORMALIZATION: ${{ vars.ASTRBOT_STRICT_ARTIFACT_FILENAME_NORMALIZATION || '0' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          normalize_args=(
+            --root release-artifacts
+            --build-mode "${BUILD_MODE}"
+            --source-git-ref "${SOURCE_GIT_REF}"
+          )
+          strict_flag="$(printf '%s' "${ASTRBOT_STRICT_ARTIFACT_FILENAME_NORMALIZATION}" | tr '[:upper:]' '[:lower:]')"
+          case "${strict_flag}" in
+            1|true|yes|on)
+              normalize_args+=(--strict-unmatched)
+              ;;
+          esac
+          python3 scripts/ci/normalize-release-artifact-filenames.py "${normalize_args[@]}"
+
       - name: Validate artifact filename uniqueness
         shell: bash
         run: |
