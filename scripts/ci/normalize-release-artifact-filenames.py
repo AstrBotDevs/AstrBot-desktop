@@ -18,6 +18,55 @@ ARTIFACT_EXTENSIONS: set[str] = {
     ".zip",
 }
 
+VERSION_PATTERN = r"[0-9A-Za-z.+-]+"
+ARCH_PATTERN = r"[A-Za-z0-9_]+"
+LOCALE_PATTERN = r"[A-Za-z0-9-]+"
+
+CANONICALIZE_RULES: dict[str, tuple[tuple[re.Pattern[str], str], ...]] = {
+    ".rpm": (
+        (
+            re.compile(
+                rf"^AstrBot-(?P<version>{VERSION_PATTERN})-\d+\.(?P<arch>{ARCH_PATTERN})$"
+            ),
+            "AstrBot_{version}_{arch}",
+        ),
+        (
+            re.compile(rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?P<arch>{ARCH_PATTERN})$"),
+            "AstrBot_{version}_{arch}",
+        ),
+    ),
+    ".deb": (
+        (
+            re.compile(rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?P<arch>{ARCH_PATTERN})$"),
+            "AstrBot_{version}_{arch}",
+        ),
+    ),
+    ".exe": (
+        (
+            re.compile(
+                rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?P<arch>{ARCH_PATTERN})(?:-setup|_setup)$"
+            ),
+            "AstrBot_{version}_{arch}_setup",
+        ),
+    ),
+    ".msi": (
+        (
+            re.compile(
+                rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?P<arch>{ARCH_PATTERN})_(?P<locale>{LOCALE_PATTERN})$"
+            ),
+            "AstrBot_{version}_{arch}_{locale}",
+        ),
+    ),
+    ".zip": (
+        (
+            re.compile(
+                rf"^AstrBot_(?P<version>{VERSION_PATTERN})_macos_(?P<arch>{ARCH_PATTERN})$"
+            ),
+            "AstrBot_{version}_macos_{arch}",
+        ),
+    ),
+}
+
 ARCH_ALIAS = {
     "x86_64": "amd64",
     "x64": "amd64",
@@ -67,62 +116,14 @@ def should_normalize_file(path: pathlib.Path) -> bool:
 
 
 def canonicalize_stem(stem: str, ext: str) -> tuple[str, bool]:
-    # RPM: AstrBot-<ver>-<rel>.<arch> or AstrBot_<ver>_<arch>
-    if ext == ".rpm":
-        match = re.fullmatch(
-            r"AstrBot-([0-9A-Za-z.+-]+)-\d+\.([A-Za-z0-9_]+)",
-            stem,
-        )
-        if match:
-            version, arch = match.groups()
-            return f"AstrBot_{version}_{normalize_arch(arch)}", True
-        match = re.fullmatch(
-            r"AstrBot_([0-9A-Za-z.+-]+)_([A-Za-z0-9_]+)",
-            stem,
-        )
-        if match:
-            version, arch = match.groups()
-            return f"AstrBot_{version}_{normalize_arch(arch)}", True
-
-    # DEB: AstrBot_<ver>_<arch>
-    if ext == ".deb":
-        match = re.fullmatch(
-            r"AstrBot_([0-9A-Za-z.+-]+)_([A-Za-z0-9_]+)",
-            stem,
-        )
-        if match:
-            version, arch = match.groups()
-            return f"AstrBot_{version}_{normalize_arch(arch)}", True
-
-    # EXE: AstrBot_<ver>_<arch>-setup or _setup
-    if ext == ".exe":
-        match = re.fullmatch(
-            r"AstrBot_([0-9A-Za-z.+-]+)_([A-Za-z0-9_]+)(?:-setup|_setup)",
-            stem,
-        )
-        if match:
-            version, arch = match.groups()
-            return f"AstrBot_{version}_{normalize_arch(arch)}_setup", True
-
-    # MSI: AstrBot_<ver>_<arch>_<locale>
-    if ext == ".msi":
-        match = re.fullmatch(
-            r"AstrBot_([0-9A-Za-z.+-]+)_([A-Za-z0-9_]+)_([A-Za-z0-9-]+)",
-            stem,
-        )
-        if match:
-            version, arch, locale = match.groups()
-            return f"AstrBot_{version}_{normalize_arch(arch)}_{locale}", True
-
-    # macOS zip: AstrBot_<ver>_macos_<arch>
-    if ext == ".zip":
-        match = re.fullmatch(
-            r"AstrBot_([0-9A-Za-z.+-]+)_macos_([A-Za-z0-9_]+)",
-            stem,
-        )
-        if match:
-            version, arch = match.groups()
-            return f"AstrBot_{version}_macos_{normalize_arch(arch)}", True
+    for pattern, normalized_template in CANONICALIZE_RULES.get(ext, ()):
+        match = pattern.fullmatch(stem)
+        if not match:
+            continue
+        groups = match.groupdict()
+        if "arch" in groups:
+            groups["arch"] = normalize_arch(groups["arch"])
+        return normalized_template.format(**groups), True
 
     return stem, False
 
@@ -154,7 +155,10 @@ def main() -> int:
     args = parse_args()
     root = pathlib.Path(args.root)
     if not root.exists():
-        raise RuntimeError(f"artifact directory does not exist: {root}")
+        print(f"[normalize-artifacts] artifact directory does not exist, skipping: {root}")
+        return 0
+    if not root.is_dir():
+        raise RuntimeError(f"artifact path is not a directory: {root}")
 
     build_mode = args.build_mode.strip().lower()
     source_git_ref = args.source_git_ref.strip()
