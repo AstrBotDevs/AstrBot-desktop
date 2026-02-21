@@ -215,147 +215,134 @@ jobs:
       - name: Setup desktop build environment
         uses: ./.github/actions/setup-desktop-build
 
-      - name: Build desktop installers (macOS)
-        id: build_macos
-        continue-on-error: true
+      - name: Resolve macOS app bundle name
+        id: resolve_macos_app_bundle
+        env:
+          ASTRBOT_MACOS_APP_BUNDLE_NAME: ${{ vars.ASTRBOT_MACOS_APP_BUNDLE_NAME || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v python3 >/dev/null 2>&1; then
+            echo "python3 is required to resolve macOS app bundle name." >&2
+            exit 1
+          fi
+          python3 --version
+          python3 scripts/ci/resolve-macos-app-name.py \
+            --config src-tauri/tauri.conf.json \
+            --override-name "${ASTRBOT_MACOS_APP_BUNDLE_NAME}" \
+            --override-source "env:ASTRBOT_MACOS_APP_BUNDLE_NAME" \
+            --github-output "${GITHUB_OUTPUT}"
+
+      - name: Build desktop app bundle (macOS)
         env:
           ASTRBOT_SOURCE_GIT_URL: ${{ needs.resolve_build_context.outputs.source_git_url }}
           ASTRBOT_SOURCE_GIT_REF: ${{ needs.resolve_build_context.outputs.source_git_ref }}
           ASTRBOT_DESKTOP_VERSION: ${{ needs.resolve_build_context.outputs.astrbot_version }}
           ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS: ${{ vars.ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS || '' }}
-          ASTRBOT_DESKTOP_MACOS_DETACH_PRE_SLEEP_SECONDS: '8'
-          ASTRBOT_DESKTOP_MACOS_DETACH_ATTEMPTS: '6'
-          ASTRBOT_DESKTOP_MACOS_DETACH_SLEEP_SECONDS: '3'
-          ASTRBOT_DESKTOP_MACOS_LSOF_TIMEOUT_SECONDS: '10'
-          ASTRBOT_DESKTOP_MACOS_ALLOW_GLOBAL_HELPER_KILL: '1'
+          ASTRBOT_MACOS_BUILD_MAX_ATTEMPTS: ${{ vars.ASTRBOT_MACOS_BUILD_MAX_ATTEMPTS || '3' }}
+          ASTRBOT_MACOS_BUILD_RETRY_SLEEP_SECONDS: ${{ vars.ASTRBOT_MACOS_BUILD_RETRY_SLEEP_SECONDS || '8' }}
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
+          max_attempts_default=3
+          max_attempts_upper_bound=6
+          retry_sleep_seconds_default=8
 
-          max_attempts=3
-          attempt=1
-          # Only retry on known transient DMG detach failures.
-          retry_pattern='hdiutil: detach:.*(timeout|not detached)|DiskArbitration expired'
-          cleanup_script="scripts/ci/cleanup-dmg.sh"
-          log_file=""
-          if [ ! -f "${cleanup_script}" ]; then
-            echo "Missing DMG cleanup script: ${cleanup_script}" >&2
-            exit 1
+          max_attempts="${ASTRBOT_MACOS_BUILD_MAX_ATTEMPTS}"
+          retry_sleep_seconds="${ASTRBOT_MACOS_BUILD_RETRY_SLEEP_SECONDS}"
+          # Retry only for known transient cargo/crates network failures.
+          # Spurious retry hints emitted by cargo.
+          transient_retry_spurious='spurious network error|network failure seems to have happened'
+          # HTTP-layer transient fetch failures (rate limits and 5xx responses).
+          transient_retry_http='failed to download from|failed to get successful HTTP response|received HTTP code (429|5[0-9][0-9])'
+          # Transport-layer transient failures.
+          transient_retry_transport='Operation timed out|Connection reset by peer|Connection refused|Temporary failure in name resolution'
+          retry_pattern="${transient_retry_spurious}|${transient_retry_http}|${transient_retry_transport}"
+
+          case "${max_attempts}" in
+            ''|*[!0-9]*|0) max_attempts="${max_attempts_default}" ;;
+          esac
+          if [ "${max_attempts}" -gt "${max_attempts_upper_bound}" ]; then
+            echo "::warning::ASTRBOT_MACOS_BUILD_MAX_ATTEMPTS=${max_attempts} exceeds upper bound ${max_attempts_upper_bound}; clamping."
+            max_attempts="${max_attempts_upper_bound}"
           fi
 
-          cleanup_log_file() {
-            if [ -n "${log_file:-}" ]; then
-              rm -f "${log_file}" || true
-              log_file=""
-            fi
-          }
-          trap cleanup_log_file EXIT
+          case "${retry_sleep_seconds}" in
+            ''|*[!0-9]*|0) retry_sleep_seconds="${retry_sleep_seconds_default}" ;;
+          esac
+          echo "macOS build retry config: max_attempts=${max_attempts}, retry_sleep_seconds=${retry_sleep_seconds}, max_attempts_upper_bound=${max_attempts_upper_bound}"
 
-          cleanup_stale_dmg_state() {
-            bash "${cleanup_script}"
-          }
-
-          while [ "${attempt}" -le "${max_attempts}" ]; do
-            echo "Cleaning stale DMG state before attempt ${attempt}/${max_attempts}..."
-            cleanup_stale_dmg_state
-
-            log_file="$(mktemp -t tauri-macos-build.XXXXXX.log)"
-            echo "macOS build attempt ${attempt}/${max_attempts} (arch=${{ matrix.arch }}, target=${{ matrix.target }})"
-
-            if cargo tauri build --verbose --target ${{ matrix.target }} 2>&1 | tee "${log_file}"; then
-              exit 0
+          for attempt in $(seq 1 "${max_attempts}"); do
+            build_log="$(mktemp -t tauri-macos-build.XXXXXX.log)"
+            if cargo tauri build --verbose --target ${{ matrix.target }} --bundles app 2>&1 | tee "${build_log}"; then
+              rm -f "${build_log}" || true
+              break
             fi
 
             if [ "${attempt}" -ge "${max_attempts}" ]; then
-              echo "macOS build failed after ${max_attempts} attempts."
+              echo "macOS build failed after ${max_attempts} attempts." >&2
+              rm -f "${build_log}" || true
               exit 1
             fi
 
-            if ! grep -Eq "${retry_pattern}" "${log_file}"; then
-              echo "macOS build failed with a non-retryable error. Skip retry."
+            if ! grep -Eiq "${retry_pattern}" "${build_log}"; then
+              echo "macOS build failed with non-transient error on attempt ${attempt}/${max_attempts}; skip retries." >&2
+              rm -f "${build_log}" || true
               exit 1
             fi
 
-            echo "Detected transient DMG detach/bundling error. Cleaning up stale dmg mounts before retry..."
-            cleanup_stale_dmg_state
-            rm -f src-tauri/target/${{ matrix.target }}/release/bundle/macos/rw.*.dmg || true
-            cleanup_log_file
-
-            attempt=$((attempt + 1))
-            sleep 5
+            rm -f "${build_log}" || true
+            echo "macOS build hit transient failure on attempt ${attempt}/${max_attempts}; retrying in ${retry_sleep_seconds}s..."
+            sleep "${retry_sleep_seconds}"
           done
 
-      - name: Dump macOS bundling diagnostics
-        if: steps.build_macos.outcome == 'failure'
+      - name: Package macOS app as zip
+        env:
+          RESOLVED_APP_BUNDLE_NAME: ${{ steps.resolve_macos_app_bundle.outputs.app_bundle_name }}
+          RESOLVED_APP_BUNDLE_NAME_SOURCE: ${{ steps.resolve_macos_app_bundle.outputs.app_bundle_name_source }}
         shell: bash
         run: |
           set -euo pipefail
-
-          dmg_dir="src-tauri/target/${{ matrix.target }}/release/bundle/dmg"
-          script_path="${dmg_dir}/bundle_dmg.sh"
-
-          echo "::group::DMG output directory listing"
-          ls -la "${dmg_dir}" || true
-          echo "::endgroup::"
-
-          if [ -f "${script_path}" ]; then
-            echo "::group::bundle_dmg.sh"
-            nl -ba "${script_path}" || cat "${script_path}"
-            echo "::endgroup::"
-
-            echo "::group::bundle_dmg.sh trace (bash -x)"
-            (
-              cd "${dmg_dir}"
-              bash -x ./bundle_dmg.sh
-            ) || true
-            echo "::endgroup::"
-          else
-            echo "bundle_dmg.sh not found at ${script_path}"
-          fi
-
-          echo "::group::System diagnostics"
-          uname -a || true
-          sw_vers || true
-          xcodebuild -version || true
-          df -h || true
-          hdiutil info || true
-          echo "::endgroup::"
-
-      - name: Fail macOS build when bundling fails
-        if: steps.build_macos.outcome == 'failure'
-        shell: bash
-        run: |
-          echo "macOS build failed, diagnostics are printed above."
-          exit 1
-
-      - name: Verify macOS DMG integrity
-        if: steps.build_macos.outcome == 'success'
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          dmg_files=(src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg)
-          if [ "${#dmg_files[@]}" -eq 0 ]; then
-            echo "No DMG files found under src-tauri/target/${{ matrix.target }}/release/bundle/dmg"
+          bundle_dir="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
+          app_bundle_name="${RESOLVED_APP_BUNDLE_NAME}"
+          app_bundle_name_source="${RESOLVED_APP_BUNDLE_NAME_SOURCE}"
+          if [ -z "${app_bundle_name}" ]; then
+            echo "Resolved app bundle name is empty (source=${app_bundle_name_source})." >&2
             exit 1
           fi
+          echo "Resolved app bundle name: ${app_bundle_name} (source=${app_bundle_name_source})"
 
-          for dmg in "${dmg_files[@]}"; do
-            echo "Verifying ${dmg}"
-            hdiutil verify "${dmg}"
-          done
+          app_path="${bundle_dir}/${app_bundle_name}.app"
+          if [ ! -d "${app_path}" ]; then
+            shopt -s nullglob
+            app_candidates=("${bundle_dir}"/*.app)
+            if [ "${#app_candidates[@]}" -eq 1 ]; then
+              app_path="${app_candidates[0]}"
+              echo "::warning::Expected ${bundle_dir}/${app_bundle_name}.app not found; fallback to discovered app bundle ${app_path}"
+            else
+              echo "Expected app bundle not found: ${app_path}" >&2
+              ls -la "${bundle_dir}" || true
+              exit 1
+            fi
+          fi
+
+          app_bundle_name="$(basename "${app_path}" .app)"
+          zip_bundle_name="$(printf '%s' "${app_bundle_name}" | tr -cs 'A-Za-z0-9._-' '_')"
+          zip_dir="src-tauri/target/${{ matrix.target }}/release/bundle/zip"
+          zip_path="${zip_dir}/${zip_bundle_name}_${{ needs.resolve_build_context.outputs.astrbot_version }}_macos_${{ matrix.arch }}.zip"
+          mkdir -p "${zip_dir}"
+          ditto -c -k --sequesterRsrc --keepParent "${app_path}" "${zip_path}"
+          echo "Created ${zip_path}"
 
       - name: Upload artifacts
-        if: steps.build_macos.outcome == 'success'
         uses: actions/upload-artifact@v6.0.0
         with:
           name: astrbot-desktop-tauri-${{ needs.resolve_build_context.outputs.astrbot_version }}-macos-${{ matrix.arch }}
           if-no-files-found: error
           path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.app.tar.gz
+            src-tauri/target/${{ matrix.target }}/release/bundle/zip/*.zip
 
   build-windows:
     needs:
