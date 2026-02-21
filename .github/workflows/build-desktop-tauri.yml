@@ -66,6 +66,7 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Keep these in sync with `on.schedule` above.
           TAG_POLL_CRON='0 * * * *'
           NIGHTLY_CRON='0 3 * * *'
           source_git_url="${ASTRBOT_SOURCE_GIT_URL}"
@@ -160,7 +161,7 @@ jobs:
             short_sha="$(printf '%s' "${source_git_ref}" | cut -c1-8)"
             version="${version}-nightly.${nightly_date}.${short_sha}"
             release_tag="v${version}"
-            release_name="AstrBot Desktop ${version}"
+            release_name="AstrBot Desktop v${version}"
             release_prerelease="true"
           elif [ "${publish_release}" = "true" ] && [ "${should_build}" = "true" ]; then
             release_tag="v${version}"
