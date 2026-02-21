@@ -17,7 +17,7 @@ on:
         type: boolean
         default: true
       build_mode:
-        description: Build mode (`auto` | `tag-poll` | `nightly`); for workflow_dispatch, `auto` behaves as `manual` and disables publish_release
+        description: Build mode (`auto` | `tag-poll` | `nightly`); for workflow_dispatch, `auto` behaves as `manual` and disables publish_release, while `nightly` resolves latest upstream commit and can publish release
         required: false
         type: choice
         default: auto
@@ -394,9 +394,10 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    # Gate on release_tag instead of raw publish_release output so downstream
-    # release decision does not depend on strict string equality edge-cases.
-    if: ${{ needs.resolve_build_context.outputs.should_build == 'true' && needs.resolve_build_context.outputs.release_tag != '' }}
+    # Use always() here to avoid skipped upstream guard jobs (for example
+    # sync_repo_version on workflow_dispatch) from implicitly short-circuiting
+    # manual nightly release publishing.
+    if: ${{ always() && needs.resolve_build_context.outputs.should_build == 'true' && needs.resolve_build_context.outputs.release_tag != '' && needs.build-linux.result == 'success' && needs.build-macos.result == 'success' && needs.build-windows.result == 'success' }}
     needs:
       - resolve_build_context
       - build-linux
