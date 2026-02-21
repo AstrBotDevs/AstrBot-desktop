@@ -246,20 +246,33 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          max_attempts_default=3
+          max_attempts_upper_bound=6
+          retry_sleep_seconds_default=8
+
           max_attempts="${ASTRBOT_MACOS_BUILD_MAX_ATTEMPTS}"
           retry_sleep_seconds="${ASTRBOT_MACOS_BUILD_RETRY_SLEEP_SECONDS}"
           # Retry only for known transient cargo/crates network failures.
+          # Spurious retry hints emitted by cargo.
           transient_retry_spurious='spurious network error|network failure seems to have happened'
+          # HTTP-layer transient fetch failures (rate limits and 5xx responses).
           transient_retry_http='failed to download from|failed to get successful HTTP response|received HTTP code (429|5[0-9][0-9])'
+          # Transport-layer transient failures.
           transient_retry_transport='Operation timed out|Connection reset by peer|Connection refused|Temporary failure in name resolution'
           retry_pattern="${transient_retry_spurious}|${transient_retry_http}|${transient_retry_transport}"
 
           case "${max_attempts}" in
-            ''|*[!0-9]*|0) max_attempts=3 ;;
+            ''|*[!0-9]*|0) max_attempts="${max_attempts_default}" ;;
           esac
+          if [ "${max_attempts}" -gt "${max_attempts_upper_bound}" ]; then
+            echo "::warning::ASTRBOT_MACOS_BUILD_MAX_ATTEMPTS=${max_attempts} exceeds upper bound ${max_attempts_upper_bound}; clamping."
+            max_attempts="${max_attempts_upper_bound}"
+          fi
+
           case "${retry_sleep_seconds}" in
-            ''|*[!0-9]*) retry_sleep_seconds=8 ;;
+            ''|*[!0-9]*|0) retry_sleep_seconds="${retry_sleep_seconds_default}" ;;
           esac
+          echo "macOS build retry config: max_attempts=${max_attempts}, retry_sleep_seconds=${retry_sleep_seconds}, max_attempts_upper_bound=${max_attempts_upper_bound}"
 
           for attempt in $(seq 1 "${max_attempts}"); do
             build_log="$(mktemp -t tauri-macos-build.XXXXXX.log)"

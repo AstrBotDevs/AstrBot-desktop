@@ -94,7 +94,8 @@ def main() -> int:
     if not app_bundle_name:
         raise RuntimeError(
             "Resolved app bundle name is empty after normalization "
-            "(possible value was only '.app')."
+            f"(original value: {raw_name!r} from {source}; "
+            "possible value was only '.app')."
         )
 
     print(f"Resolved app bundle name: {app_bundle_name} (source={source})")
