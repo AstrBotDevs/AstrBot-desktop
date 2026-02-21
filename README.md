@@ -78,7 +78,7 @@ make prune
 ```bash
 make update
 make update ASTRBOT_SOURCE_GIT_REF=v4.17.5
-make build ASTRBOT_DESKTOP_VERSION=v4.17.6
+make build ASTRBOT_DESKTOP_VERSION=v4.17.5
 make build ASTRBOT_BUILD_SOURCE_DIR=/path/to/AstrBot
 ```
 
