@@ -113,6 +113,9 @@ struct BackendState {
     is_spawning: AtomicBool,
     is_restarting: AtomicBool,
     exit_cleanup_started: AtomicBool,
+    // One-shot allowance consumed by the next ExitRequested event.
+    // This is set only after backend cleanup finishes so our internal
+    // app_handle.exit(0) can pass through instead of being prevented again.
     allow_next_exit_request: AtomicBool,
 }
 
@@ -2555,32 +2558,24 @@ fn compute_followup_wait(timeout: Duration, max_extra_wait: Duration) -> Duratio
     }
 }
 
-#[cfg(target_os = "windows")]
-fn resolve_windows_graceful_wait_timeout(
+fn resolve_graceful_wait_timeout(
     pid: u32,
     timeout: Duration,
+    non_success_wait_cap: Duration,
     graceful_status: &io::Result<ExitStatus>,
+    command_label: &str,
 ) -> Duration {
     match graceful_status {
         Ok(status) if status.success() => timeout,
-        Ok(status) => {
-            let shortened_wait =
-                timeout.min(Duration::from_millis(WINDOWS_GRACEFUL_STOP_NONZERO_WAIT_MS));
+        _ => {
+            let shortened_wait = timeout.min(non_success_wait_cap);
             if shortened_wait < timeout {
+                let outcome = match graceful_status {
+                    Ok(status) => format!("status={status:?}"),
+                    Err(error) => format!("error={error}"),
+                };
                 append_desktop_log(&format!(
-                    "taskkill graceful stop returned non-zero; shorten graceful wait: pid={pid}, status={status:?}, requested_wait_ms={}, effective_wait_ms={}",
-                    timeout.as_millis(),
-                    shortened_wait.as_millis()
-                ));
-            }
-            shortened_wait
-        }
-        Err(error) => {
-            let shortened_wait =
-                timeout.min(Duration::from_millis(WINDOWS_GRACEFUL_STOP_NONZERO_WAIT_MS));
-            if shortened_wait < timeout {
-                append_desktop_log(&format!(
-                    "taskkill graceful stop failed to start; shorten graceful wait: pid={pid}, error={error}, requested_wait_ms={}, effective_wait_ms={}",
+                    "{command_label} not successful; shorten graceful wait: pid={pid}, {outcome}, requested_wait_ms={}, effective_wait_ms={}",
                     timeout.as_millis(),
                     shortened_wait.as_millis()
                 ));
@@ -2608,8 +2603,13 @@ fn stop_child_process_gracefully(child: &mut Child, timeout: Duration) -> bool {
         &["/pid", &pid_arg, "/t"],
     );
 
-    let graceful_wait_timeout =
-        resolve_windows_graceful_wait_timeout(pid, timeout, &graceful_status);
+    let graceful_wait_timeout = resolve_graceful_wait_timeout(
+        pid,
+        timeout,
+        Duration::from_millis(WINDOWS_GRACEFUL_STOP_NONZERO_WAIT_MS),
+        &graceful_status,
+        "taskkill graceful stop",
+    );
 
     if wait_for_child_exit(child, graceful_wait_timeout) {
         return true;
@@ -2640,7 +2640,9 @@ fn stop_child_process_gracefully(child: &mut Child, timeout: Duration) -> bool {
 
     let graceful_status = run_stop_command(pid, "kill -TERM", "kill", &["-TERM", &pid_arg]);
 
-    if wait_for_child_exit(child, timeout) {
+    let graceful_wait_timeout =
+        resolve_graceful_wait_timeout(pid, timeout, timeout, &graceful_status, "kill -TERM");
+    if wait_for_child_exit(child, graceful_wait_timeout) {
         return true;
     }
 
