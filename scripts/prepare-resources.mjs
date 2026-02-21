@@ -8,6 +8,11 @@ const DEFAULT_ASTRBOT_SOURCE_GIT_URL = 'https://github.com/AstrBotDevs/AstrBot.g
 const sourceRepoUrlRaw =
   process.env.ASTRBOT_SOURCE_GIT_URL?.trim() || DEFAULT_ASTRBOT_SOURCE_GIT_URL;
 const sourceRepoRefRaw = process.env.ASTRBOT_SOURCE_GIT_REF?.trim() || '';
+const sourceRepoRefIsCommitHintRaw =
+  String(process.env.ASTRBOT_SOURCE_GIT_REF_IS_COMMIT || '')
+    .trim()
+    .toLowerCase();
+const SOURCE_REPO_REF_COMMIT_HINT_TRUTHY = new Set(['1', 'true', 'yes', 'on']);
 const desktopVersionOverride = process.env.ASTRBOT_DESKTOP_VERSION?.trim() || '';
 const PYTHON_BUILD_STANDALONE_RELEASE =
   process.env.ASTRBOT_PBS_RELEASE?.trim() || '20260211';
@@ -41,10 +46,14 @@ const normalizeSourceRepoConfig = () => {
   };
 };
 
-const { repoUrl: sourceRepoUrl, repoRef: sourceRepoRef } = normalizeSourceRepoConfig();
-const GIT_COMMIT_SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
+const { repoUrl: sourceRepoUrl, repoRef: sourceRepoRefResolved } = normalizeSourceRepoConfig();
+const sourceRepoRef = typeof sourceRepoRefResolved === 'string' ? sourceRepoRefResolved.trim() : '';
+const GIT_COMMIT_SHA_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 const VERSION_TAG_REF_PATTERN = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
-const isSourceRepoRefCommitSha = GIT_COMMIT_SHA_PATTERN.test(sourceRepoRef);
+const isSourceRepoRefCommitSha =
+  (!!sourceRepoRef &&
+    GIT_COMMIT_SHA_PATTERN.test(sourceRepoRef)) ||
+  SOURCE_REPO_REF_COMMIT_HINT_TRUTHY.has(sourceRepoRefIsCommitHintRaw);
 const isSourceRepoRefVersionTag = VERSION_TAG_REF_PATTERN.test(sourceRepoRef);
 
 const resolveSourceDir = () => {
