@@ -272,6 +272,11 @@ jobs:
           ASTRBOT_SOURCE_GIT_REF: ${{ needs.resolve_build_context.outputs.source_git_ref }}
           ASTRBOT_DESKTOP_VERSION: ${{ needs.resolve_build_context.outputs.astrbot_version }}
           ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS: ${{ vars.ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS || '' }}
+          ASTRBOT_DESKTOP_MACOS_DETACH_PRE_SLEEP_SECONDS: '8'
+          ASTRBOT_DESKTOP_MACOS_DETACH_ATTEMPTS: '6'
+          ASTRBOT_DESKTOP_MACOS_DETACH_SLEEP_SECONDS: '3'
+          ASTRBOT_DESKTOP_MACOS_LSOF_TIMEOUT_SECONDS: '10'
+          ASTRBOT_DESKTOP_MACOS_ALLOW_GLOBAL_HELPER_KILL: '1'
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
         shell: bash

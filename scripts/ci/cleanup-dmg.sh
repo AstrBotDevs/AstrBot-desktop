@@ -13,6 +13,8 @@ set -uo pipefail
 
 detach_attempts="${ASTRBOT_DESKTOP_MACOS_DETACH_ATTEMPTS:-3}"
 detach_sleep_seconds="${ASTRBOT_DESKTOP_MACOS_DETACH_SLEEP_SECONDS:-2}"
+detach_pre_sleep_seconds="${ASTRBOT_DESKTOP_MACOS_DETACH_PRE_SLEEP_SECONDS:-8}"
+lsof_timeout_seconds="${ASTRBOT_DESKTOP_MACOS_LSOF_TIMEOUT_SECONDS:-10}"
 
 case "${detach_attempts}" in
   ''|*[!0-9]*) detach_attempts=3 ;;
@@ -30,6 +32,22 @@ if [ "${detach_sleep_seconds}" -lt 1 ] 2>/dev/null; then
   detach_sleep_seconds=1
 elif [ "${detach_sleep_seconds}" -gt 60 ] 2>/dev/null; then
   detach_sleep_seconds=60
+fi
+
+case "${detach_pre_sleep_seconds}" in
+  ''|*[!0-9]*) detach_pre_sleep_seconds=8 ;;
+esac
+if [ "${detach_pre_sleep_seconds}" -gt 120 ] 2>/dev/null; then
+  detach_pre_sleep_seconds=120
+fi
+
+case "${lsof_timeout_seconds}" in
+  ''|*[!0-9]*) lsof_timeout_seconds=10 ;;
+esac
+if [ "${lsof_timeout_seconds}" -lt 1 ] 2>/dev/null; then
+  lsof_timeout_seconds=1
+elif [ "${lsof_timeout_seconds}" -gt 120 ] 2>/dev/null; then
+  lsof_timeout_seconds=120
 fi
 
 rw_dmg_image_prefix="${ASTRBOT_DESKTOP_MACOS_RW_DMG_IMAGE_PREFIX:-/src-tauri/target/}"
@@ -99,6 +117,7 @@ declare -a canonical_path_cache_keys=()
 declare -a canonical_path_cache_values=()
 canonicalize_tool="none"
 canonicalize_warned_failure=0
+lsof_timeout_tool=""
 
 select_canonicalize_tool() {
   if command -v realpath >/dev/null 2>&1; then
@@ -119,12 +138,60 @@ select_canonicalize_tool() {
 
 select_canonicalize_tool
 
+select_lsof_timeout_tool() {
+  if command -v gtimeout >/dev/null 2>&1; then
+    lsof_timeout_tool="gtimeout"
+    return
+  fi
+  if command -v timeout >/dev/null 2>&1; then
+    lsof_timeout_tool="timeout"
+    return
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    lsof_timeout_tool="python3"
+    return
+  fi
+  lsof_timeout_tool=""
+}
+
+select_lsof_timeout_tool
+
+resolve_disk_identifier() {
+  local target="$1"
+  if [[ "${target}" =~ ^/dev/disk[0-9]+$ ]]; then
+    printf '%s\n' "${target}"
+    return 0
+  fi
+  if ! command -v diskutil >/dev/null 2>&1; then
+    return 0
+  fi
+  local disk_name=""
+  disk_name="$(
+    diskutil info "${target}" 2>/dev/null | awk -F': *' '/Part of Whole/ {print $2; exit}'
+  )"
+  if [[ "${disk_name}" =~ ^disk[0-9]+$ ]]; then
+    printf '/dev/%s\n' "${disk_name}"
+  fi
+}
+
 detach_target() {
   local target="$1"
   local pass=1
+  if [ "${detach_pre_sleep_seconds}" -gt 0 ]; then
+    echo "Sleeping ${detach_pre_sleep_seconds}s before detaching ${target}" >&2
+    sleep "${detach_pre_sleep_seconds}"
+  fi
   while [ "${pass}" -le "${detach_attempts}" ]; do
     if hdiutil detach "${target}" >/dev/null 2>&1; then
       return 0
+    fi
+    if command -v diskutil >/dev/null 2>&1; then
+      local disk_target=""
+      disk_target="$(resolve_disk_identifier "${target}")"
+      if [[ "${disk_target}" =~ ^/dev/disk[0-9]+$ ]]; then
+        diskutil unmountDisk force "${disk_target}" >/dev/null 2>&1 || true
+      fi
+      diskutil unmount force "${target}" >/dev/null 2>&1 || true
     fi
     hdiutil detach -force "${target}" >/dev/null 2>&1 || true
     sleep "${detach_sleep_seconds}"
@@ -184,6 +251,9 @@ log_cleanup_configuration() {
   echo "  canonicalize_tool=${canonicalize_tool}" >&2
   echo "  detach_attempts=${detach_attempts}" >&2
   echo "  detach_sleep_seconds=${detach_sleep_seconds}" >&2
+  echo "  detach_pre_sleep_seconds=${detach_pre_sleep_seconds}" >&2
+  echo "  lsof_timeout_seconds=${lsof_timeout_seconds}" >&2
+  echo "  lsof_timeout_tool=${lsof_timeout_tool:-none}" >&2
   echo "  rw_dmg_image_prefix=${rw_dmg_image_prefix}" >&2
   echo "  rw_dmg_image_suffix_regex=${rw_dmg_image_suffix_regex}" >&2
   echo "  rw_dmg_mountpoint_regex=${rw_dmg_mountpoint_regex}" >&2
@@ -261,6 +331,87 @@ terminate_pid_soft_then_hard() {
   fi
 }
 
+kill_mount_holders() {
+  local mount_point="$1"
+  if [ "${allow_global_helper_cleanup}" != "1" ]; then
+    echo "Skip mount-holder cleanup for ${mount_point} (set ASTRBOT_DESKTOP_MACOS_ALLOW_GLOBAL_HELPER_KILL=1 to enable)." >&2
+    return 0
+  fi
+  if ! command -v lsof >/dev/null 2>&1; then
+    return 0
+  fi
+  local holder_pids
+  if [ "${lsof_timeout_tool}" = "gtimeout" ] || [ "${lsof_timeout_tool}" = "timeout" ]; then
+    local lsof_output=""
+    local lsof_status=0
+    lsof_output="$("${lsof_timeout_tool}" "${lsof_timeout_seconds}" lsof -t +D "${mount_point}" 2>/dev/null)" || lsof_status=$?
+    if [ "${lsof_status}" -eq 124 ]; then
+      echo "WARN: lsof timed out while scanning ${mount_point}; skip mount-holder cleanup." >&2
+      return 0
+    fi
+    if [ "${lsof_status}" -ne 0 ] && [ -z "${lsof_output}" ]; then
+      echo "WARN: lsof failed while scanning ${mount_point} (tool=${lsof_timeout_tool}, exit=${lsof_status}); skip mount-holder cleanup." >&2
+      return 0
+    fi
+    holder_pids="$(printf '%s\n' "${lsof_output}" | awk 'NF' | sort -u)"
+  elif [ "${lsof_timeout_tool}" = "python3" ]; then
+    local lsof_output=""
+    local lsof_status=0
+    lsof_output="$(
+      python3 - "${mount_point}" "${lsof_timeout_seconds}" <<'PY'
+import subprocess
+import sys
+
+mount_point = sys.argv[1]
+timeout_seconds = float(sys.argv[2])
+
+try:
+    proc = subprocess.run(
+        ["lsof", "-t", "+D", mount_point],
+        capture_output=True,
+        text=True,
+        timeout=timeout_seconds,
+        check=False,
+    )
+except subprocess.TimeoutExpired:
+    sys.exit(124)
+
+if proc.stdout:
+    sys.stdout.write(proc.stdout)
+
+sys.exit(proc.returncode)
+PY
+    )" || lsof_status=$?
+    if [ "${lsof_status}" -eq 124 ]; then
+      echo "WARN: lsof timed out while scanning ${mount_point}; skip mount-holder cleanup." >&2
+      return 0
+    fi
+    if [ "${lsof_status}" -ne 0 ] && [ -z "${lsof_output}" ]; then
+      echo "WARN: lsof failed while scanning ${mount_point} (tool=python3, exit=${lsof_status}); skip mount-holder cleanup." >&2
+      return 0
+    fi
+    holder_pids="$(printf '%s\n' "${lsof_output}" | awk 'NF' | sort -u)"
+  else
+    holder_pids="$(lsof -t +D "${mount_point}" 2>/dev/null | awk 'NF' | sort -u || true)"
+  fi
+  if [ -z "${holder_pids}" ]; then
+    return 0
+  fi
+
+  while IFS= read -r pid; do
+    [ -z "${pid}" ] && continue
+    [ "${pid}" = "$$" ] && continue
+    local proc_name=""
+    proc_name="$(ps -p "${pid}" -o comm= 2>/dev/null | awk 'NF{print; exit}' || true)"
+    if [ -n "${proc_name}" ]; then
+      echo "Killing mount-holder pid=${pid} (${proc_name}) for ${mount_point}" >&2
+    else
+      echo "Killing mount-holder pid=${pid} for ${mount_point}" >&2
+    fi
+    terminate_pid_soft_then_hard "${pid}"
+  done <<< "${holder_pids}"
+}
+
 cleanup_stale_dmg_state() {
   local dmg_mounts
   dmg_mounts="$(mount | awk -F ' on | \\(' -v mount_regex="${rw_dmg_mountpoint_regex}" '
@@ -270,6 +421,7 @@ cleanup_stale_dmg_state() {
     while IFS= read -r mount_point; do
       [ -z "${mount_point}" ] && continue
       echo "Detaching stale mount ${mount_point}"
+      kill_mount_holders "${mount_point}"
       detach_target "${mount_point}" || true
     done <<< "${dmg_mounts}"
   fi
