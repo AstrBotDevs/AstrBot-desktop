@@ -2,6 +2,8 @@
 
 use serde::Deserialize;
 #[cfg(target_os = "windows")]
+use std::os::windows::ffi::OsStrExt;
+#[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 use std::{
     borrow::Cow,
@@ -532,6 +534,8 @@ impl BackendState {
     }
 
     fn wait_for_backend(&self, plan: &LaunchPlan) -> Result<(), String> {
+        // This uses blocking polling intentionally and is called from spawn_blocking
+        // startup/restart workers, not directly on the UI thread.
         let timeout_ms = resolve_backend_timeout_ms(plan.packaged_mode);
         let start_time = Instant::now();
         let ready_http_path = backend_ready_http_path();
@@ -2350,17 +2354,41 @@ fn default_packaged_root_dir() -> Option<PathBuf> {
     home::home_dir().map(|home| home.join(".astrbot"))
 }
 
-fn path_key(path: &Path) -> Option<OsString> {
+#[cfg(target_os = "windows")]
+type PathKey = Vec<u16>;
+#[cfg(not(target_os = "windows"))]
+type PathKey = OsString;
+
+fn path_key(path: &Path) -> Option<PathKey> {
     if path.as_os_str().is_empty() {
         return None;
     }
     let normalized_path: PathBuf = path.components().collect();
-    Some(normalized_path.into_os_string())
+    #[cfg(target_os = "windows")]
+    {
+        Some(
+            normalized_path
+                .as_os_str()
+                .encode_wide()
+                .map(|unit| {
+                    if (b'A' as u16..=b'Z' as u16).contains(&unit) {
+                        unit + 32
+                    } else {
+                        unit
+                    }
+                })
+                .collect(),
+        )
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Some(normalized_path.into_os_string())
+    }
 }
 
 fn add_path_candidate(
     candidate: PathBuf,
-    seen_keys: &mut HashSet<OsString>,
+    seen_keys: &mut HashSet<PathKey>,
     prepend_entries: &mut Vec<PathBuf>,
 ) {
     if !candidate.is_dir() {
@@ -2442,7 +2470,7 @@ fn backend_path_override() -> Option<OsString> {
 fn build_backend_path_override() -> Option<OsString> {
     let existing_path = env::var_os("PATH").unwrap_or_default();
     let existing_entries: Vec<PathBuf> = env::split_paths(&existing_path).collect();
-    let mut seen_keys: HashSet<OsString> = existing_entries
+    let mut seen_keys: HashSet<PathKey> = existing_entries
         .iter()
         .filter_map(|path| path_key(path))
         .collect();
