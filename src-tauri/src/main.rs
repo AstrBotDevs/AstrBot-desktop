@@ -79,9 +79,7 @@ static BRIDGE_BACKEND_PING_TIMEOUT_MS: OnceLock<u64> = OnceLock::new();
 static DESKTOP_LOG_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static TRAY_RESTART_SIGNAL_TOKEN: AtomicU64 = AtomicU64::new(0);
 static BACKEND_PATH_OVERRIDE: OnceLock<Option<OsString>> = OnceLock::new();
-static BACKEND_READY_HTTP_PATH: OnceLock<String> = OnceLock::new();
-static BACKEND_READY_POLL_INTERVAL_MS: OnceLock<u64> = OnceLock::new();
-static BACKEND_READY_PROBE_TIMEOUT_MS: OnceLock<u64> = OnceLock::new();
+static BACKEND_READINESS_CONFIG: OnceLock<BackendReadinessConfig> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy)]
 struct ShellTexts {
@@ -167,10 +165,11 @@ struct TrayOriginDecision {
     uses_backend_origin: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct BackendProbeResult {
-    http_status: Option<u16>,
-    tcp_reachable: bool,
+#[derive(Debug, Clone)]
+struct BackendReadinessConfig {
+    path: String,
+    probe_timeout_ms: u64,
+    poll_interval_ms: u64,
 }
 
 struct AtomicFlagGuard<'a> {
@@ -542,20 +541,21 @@ impl BackendState {
         // This uses blocking polling intentionally and is called from spawn_blocking
         // startup/restart workers, not directly on the UI thread.
         let timeout_ms = resolve_backend_timeout_ms(plan.packaged_mode);
-        let probe_timeout_ms = backend_ready_probe_timeout_ms();
-        let poll_interval_ms = backend_ready_poll_interval_ms();
+        let readiness = backend_readiness_config();
         let start_time = Instant::now();
-        let ready_http_path = backend_ready_http_path();
         let mut tcp_ready_logged = false;
 
         loop {
-            let probe =
-                self.probe_backend_readiness(ready_http_path, probe_timeout_ms, !tcp_ready_logged);
-            if matches!(probe.http_status, Some(status_code) if (200..400).contains(&status_code)) {
+            let (http_status, tcp_reachable) = self.probe_backend_readiness(
+                &readiness.path,
+                readiness.probe_timeout_ms,
+                !tcp_ready_logged,
+            );
+            if matches!(http_status, Some(status_code) if (200..400).contains(&status_code)) {
                 return Ok(());
             }
 
-            if !tcp_ready_logged && probe.tcp_reachable {
+            if !tcp_ready_logged && tcp_reachable {
                 append_desktop_log(
                     "backend TCP port is reachable but HTTP dashboard is not ready yet; waiting",
                 );
@@ -589,10 +589,10 @@ impl BackendState {
                 if start_time.elapsed() >= limit {
                     self.log_backend_readiness_timeout(
                         limit,
-                        ready_http_path,
-                        probe_timeout_ms,
-                        probe.http_status,
-                        tcp_ready_logged || probe.tcp_reachable,
+                        &readiness.path,
+                        readiness.probe_timeout_ms,
+                        http_status,
+                        tcp_ready_logged || tcp_reachable,
                     );
                     return Err(format!(
                         "Timed out after {}ms waiting for backend startup.",
@@ -601,7 +601,7 @@ impl BackendState {
                 }
             }
 
-            thread::sleep(Duration::from_millis(poll_interval_ms));
+            thread::sleep(Duration::from_millis(readiness.poll_interval_ms));
         }
     }
 
@@ -610,14 +610,11 @@ impl BackendState {
         ready_http_path: &str,
         probe_timeout_ms: u64,
         check_tcp_reachable: bool,
-    ) -> BackendProbeResult {
+    ) -> (Option<u16>, bool) {
         let http_status =
             self.request_backend_status_code("GET", ready_http_path, probe_timeout_ms, None, None);
         let tcp_reachable = check_tcp_reachable && self.ping_backend(probe_timeout_ms);
-        BackendProbeResult {
-            http_status,
-            tcp_reachable,
-        }
+        (http_status, tcp_reachable)
     }
 
     fn log_backend_readiness_timeout(
@@ -2360,16 +2357,47 @@ fn default_backend_ready_http_path_for_non_utf8(raw: &OsStr) -> String {
     DEFAULT_BACKEND_READY_HTTP_PATH.to_string()
 }
 
-fn backend_ready_http_path() -> &'static str {
-    BACKEND_READY_HTTP_PATH
-        .get_or_init(|| match env::var_os(BACKEND_READY_HTTP_PATH_ENV) {
-            Some(raw) => match raw.to_str() {
-                Some(raw_utf8) => normalize_backend_ready_http_path(raw_utf8),
-                None => default_backend_ready_http_path_for_non_utf8(raw.as_os_str()),
-            },
-            None => DEFAULT_BACKEND_READY_HTTP_PATH.to_string(),
-        })
-        .as_str()
+fn resolve_backend_ready_http_path() -> String {
+    match env::var_os(BACKEND_READY_HTTP_PATH_ENV) {
+        Some(raw) => match raw.to_str() {
+            Some(raw_utf8) => normalize_backend_ready_http_path(raw_utf8),
+            None => default_backend_ready_http_path_for_non_utf8(raw.as_os_str()),
+        },
+        None => DEFAULT_BACKEND_READY_HTTP_PATH.to_string(),
+    }
+}
+
+fn backend_readiness_config() -> &'static BackendReadinessConfig {
+    BACKEND_READINESS_CONFIG.get_or_init(|| {
+        let probe_timeout_fallback = backend_ping_timeout_ms();
+        let probe_timeout_ms = match env::var(BACKEND_READY_PROBE_TIMEOUT_ENV) {
+            Ok(raw) => parse_clamped_timeout_env(
+                &raw,
+                BACKEND_READY_PROBE_TIMEOUT_ENV,
+                probe_timeout_fallback,
+                BACKEND_READY_PROBE_TIMEOUT_MIN_MS,
+                BACKEND_READY_PROBE_TIMEOUT_MAX_MS,
+            ),
+            Err(_) => probe_timeout_fallback,
+        };
+        let poll_interval_fallback = DEFAULT_BACKEND_READY_POLL_INTERVAL_MS;
+        let poll_interval_ms = match env::var(BACKEND_READY_POLL_INTERVAL_ENV) {
+            Ok(raw) => parse_clamped_timeout_env(
+                &raw,
+                BACKEND_READY_POLL_INTERVAL_ENV,
+                poll_interval_fallback,
+                BACKEND_READY_POLL_INTERVAL_MIN_MS,
+                BACKEND_READY_POLL_INTERVAL_MAX_MS,
+            ),
+            Err(_) => poll_interval_fallback,
+        };
+
+        BackendReadinessConfig {
+            path: resolve_backend_ready_http_path(),
+            probe_timeout_ms,
+            poll_interval_ms,
+        }
+    })
 }
 
 fn workspace_root_dir() -> PathBuf {
@@ -2963,39 +2991,29 @@ fn parse_ping_timeout_env(raw: &str, env_name: &str, fallback_ms: u64) -> u64 {
     }
 }
 
-fn parse_clamped_positive_timeout_env(
+fn parse_clamped_timeout_env(
     raw: &str,
     env_name: &str,
     fallback_ms: u64,
     min_ms: u64,
     max_ms: u64,
 ) -> u64 {
-    match raw.trim().parse::<i128>() {
+    match raw.trim().parse::<u128>() {
         Ok(parsed) if parsed > 0 => {
-            let timeout_ms = match u64::try_from(parsed) {
-                Ok(timeout_ms) => timeout_ms,
-                Err(_) => {
-                    append_desktop_log(&format!(
-                        "{}='{}' is above maximum {}ms, clamped to {}ms",
-                        env_name, raw, max_ms, max_ms
-                    ));
-                    return max_ms;
-                }
-            };
-            if timeout_ms < min_ms {
+            if parsed < min_ms as u128 {
                 append_desktop_log(&format!(
                     "{}='{}' is below minimum {}ms, clamped to {}ms",
                     env_name, raw, min_ms, min_ms
                 ));
                 min_ms
-            } else if timeout_ms > max_ms {
+            } else if parsed > max_ms as u128 {
                 append_desktop_log(&format!(
                     "{}='{}' is above maximum {}ms, clamped to {}ms",
                     env_name, raw, max_ms, max_ms
                 ));
                 max_ms
             } else {
-                timeout_ms
+                parsed as u64
             }
         }
         _ => {
@@ -3016,38 +3034,6 @@ fn backend_ping_timeout_ms() -> u64 {
             DEFAULT_BACKEND_PING_TIMEOUT_MS,
         ),
         Err(_) => DEFAULT_BACKEND_PING_TIMEOUT_MS,
-    })
-}
-
-fn backend_ready_probe_timeout_ms() -> u64 {
-    *BACKEND_READY_PROBE_TIMEOUT_MS.get_or_init(|| {
-        let fallback = backend_ping_timeout_ms();
-        match env::var(BACKEND_READY_PROBE_TIMEOUT_ENV) {
-            Ok(raw) => parse_clamped_positive_timeout_env(
-                &raw,
-                BACKEND_READY_PROBE_TIMEOUT_ENV,
-                fallback,
-                BACKEND_READY_PROBE_TIMEOUT_MIN_MS,
-                BACKEND_READY_PROBE_TIMEOUT_MAX_MS,
-            ),
-            Err(_) => fallback,
-        }
-    })
-}
-
-fn backend_ready_poll_interval_ms() -> u64 {
-    *BACKEND_READY_POLL_INTERVAL_MS.get_or_init(|| {
-        let fallback = DEFAULT_BACKEND_READY_POLL_INTERVAL_MS;
-        match env::var(BACKEND_READY_POLL_INTERVAL_ENV) {
-            Ok(raw) => parse_clamped_positive_timeout_env(
-                &raw,
-                BACKEND_READY_POLL_INTERVAL_ENV,
-                fallback,
-                BACKEND_READY_POLL_INTERVAL_MIN_MS,
-                BACKEND_READY_POLL_INTERVAL_MAX_MS,
-            ),
-            Err(_) => fallback,
-        }
     })
 }
 
