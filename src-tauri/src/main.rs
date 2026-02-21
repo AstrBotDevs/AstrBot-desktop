@@ -69,6 +69,7 @@ static BRIDGE_BACKEND_PING_TIMEOUT_MS: OnceLock<u64> = OnceLock::new();
 static DESKTOP_LOG_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static TRAY_RESTART_SIGNAL_TOKEN: AtomicU64 = AtomicU64::new(0);
 static BACKEND_PATH_AUGMENT_LOGGED: AtomicBool = AtomicBool::new(false);
+static BACKEND_PATH_AUGMENT_CACHE: OnceLock<Option<BackendPathAugment>> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy)]
 struct ShellTexts {
@@ -91,6 +92,11 @@ struct TrayMenuState {
 struct RuntimeManifest {
     python: Option<String>,
     entrypoint: Option<String>,
+}
+
+struct BackendPathAugment {
+    path: OsString,
+    prepend_entries: Vec<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -426,21 +432,22 @@ impl BackendState {
                 "PYTHONIOENCODING",
                 env::var("PYTHONIOENCODING").unwrap_or_else(|_| "utf-8".to_string()),
             );
-        if let Some((augmented_path, prepend_entries)) = build_backend_augmented_path() {
-            command.env("PATH", augmented_path);
-            if !prepend_entries.is_empty()
+        if let Some(path_augment) = backend_path_augment() {
+            command.env("PATH", &path_augment.path);
+            if !path_augment.prepend_entries.is_empty()
                 && BACKEND_PATH_AUGMENT_LOGGED
                     .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
                     .is_ok()
             {
-                let preview = prepend_entries
+                let preview = path_augment
+                    .prepend_entries
                     .iter()
                     .map(|path| path.display().to_string())
                     .collect::<Vec<_>>()
                     .join(", ");
                 append_desktop_log(&format!(
                     "backend PATH augmented with {} prepended directories: {preview}",
-                    prepend_entries.len()
+                    path_augment.prepend_entries.len()
                 ));
             }
         }
@@ -2315,7 +2322,13 @@ fn push_path_candidate(target: &mut Vec<PathBuf>, existing: &[PathBuf], candidat
     target.push(candidate);
 }
 
-fn build_backend_augmented_path() -> Option<(OsString, Vec<PathBuf>)> {
+fn backend_path_augment() -> Option<&'static BackendPathAugment> {
+    BACKEND_PATH_AUGMENT_CACHE
+        .get_or_init(build_backend_augmented_path)
+        .as_ref()
+}
+
+fn build_backend_augmented_path() -> Option<BackendPathAugment> {
     let existing_path = env::var_os("PATH").unwrap_or_default();
     let existing_entries: Vec<PathBuf> = env::split_paths(&existing_path).collect();
 
@@ -2399,7 +2412,10 @@ fn build_backend_augmented_path() -> Option<(OsString, Vec<PathBuf>)> {
     }
 
     match env::join_paths(prepend_entries.iter().chain(existing_entries.iter())) {
-        Ok(path) => Some((path, prepend_entries)),
+        Ok(path) => Some(BackendPathAugment {
+            path,
+            prepend_entries,
+        }),
         Err(error) => {
             append_desktop_log(&format!("failed to build augmented backend PATH: {error}"));
             None
