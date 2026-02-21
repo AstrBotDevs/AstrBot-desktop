@@ -18,6 +18,7 @@ on:
         default: true
   schedule:
     - cron: '0 * * * *'
+    - cron: '0 3 * * *'
 
 permissions:
   contents: read
@@ -35,6 +36,8 @@ jobs:
       source_git_ref: ${{ steps.resolve.outputs.source_git_ref }}
       astrbot_version: ${{ steps.resolve.outputs.astrbot_version }}
       should_build: ${{ steps.resolve.outputs.should_build }}
+      build_mode: ${{ steps.resolve.outputs.build_mode }}
+      publish_release: ${{ steps.resolve.outputs.publish_release }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
@@ -52,15 +55,21 @@ jobs:
           ASTRBOT_SOURCE_GIT_REF: ${{ env.ASTRBOT_SOURCE_GIT_REF }}
           WORKFLOW_SOURCE_GIT_URL: ${{ github.event.inputs.source_git_url }}
           WORKFLOW_SOURCE_GIT_REF: ${{ github.event.inputs.source_git_ref }}
+          WORKFLOW_PUBLISH_RELEASE: ${{ github.event.inputs.publish_release }}
           GITHUB_TOKEN: ${{ github.token }}
           GH_REPOSITORY: ${{ github.repository }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
         run: |
           set -euo pipefail
 
+          TAG_POLL_CRON='0 * * * *'
+          NIGHTLY_CRON='0 3 * * *'
           source_git_url="${ASTRBOT_SOURCE_GIT_URL}"
           source_git_ref="${ASTRBOT_SOURCE_GIT_REF}"
           should_build="true"
+          build_mode="manual"
+          publish_release="false"
 
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             if [ -n "${WORKFLOW_SOURCE_GIT_URL:-}" ]; then
@@ -69,30 +78,45 @@ jobs:
             if [ -n "${WORKFLOW_SOURCE_GIT_REF:-}" ]; then
               source_git_ref="${WORKFLOW_SOURCE_GIT_REF}"
             fi
+            if [ "${WORKFLOW_PUBLISH_RELEASE:-true}" = "true" ]; then
+              publish_release="true"
+            fi
           fi
 
           if [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
-            latest_tag="$(git ls-remote --tags --refs "${source_git_url}" \
-              | awk '{print $2}' \
-              | sed 's#refs/tags/##' \
-              | sort -V \
-              | tail -n 1)"
-            if [ -z "${latest_tag}" ]; then
-              echo "Unable to resolve latest tag from ${source_git_url}" >&2
-              exit 1
-            fi
-            source_git_ref="${latest_tag}"
-            echo "Scheduled run detected latest upstream tag: ${source_git_ref}"
-
-            http_status="$(curl -sS -o /dev/null -w '%{http_code}' \
-              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/${GH_REPOSITORY}/releases/tags/${source_git_ref}")"
-            if [ "${http_status}" = "200" ]; then
-              should_build="false"
-              echo "Release ${source_git_ref} already exists. Tag unchanged, skipping build."
+            if [ "${GITHUB_EVENT_SCHEDULE:-}" = "${NIGHTLY_CRON}" ]; then
+              build_mode="nightly"
+              publish_release="false"
+              echo "Scheduled nightly run: building from ${source_git_ref}"
             else
-              echo "Release ${source_git_ref} not found (HTTP ${http_status}). Build will run."
+              build_mode="tag-poll"
+              publish_release="true"
+              if [ "${GITHUB_EVENT_SCHEDULE:-}" != "${TAG_POLL_CRON}" ]; then
+                echo "WARN: unknown schedule '${GITHUB_EVENT_SCHEDULE:-}', fallback to tag polling mode."
+              fi
+
+              latest_tag="$(git ls-remote --tags --refs "${source_git_url}" \
+                | awk '{print $2}' \
+                | sed 's#refs/tags/##' \
+                | sort -V \
+                | tail -n 1)"
+              if [ -z "${latest_tag}" ]; then
+                echo "Unable to resolve latest tag from ${source_git_url}" >&2
+                exit 1
+              fi
+              source_git_ref="${latest_tag}"
+              echo "Scheduled tag polling run detected latest upstream tag: ${source_git_ref}"
+
+              http_status="$(curl -sS -o /dev/null -w '%{http_code}' \
+                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/${GH_REPOSITORY}/releases/tags/${source_git_ref}")"
+              if [ "${http_status}" = "200" ]; then
+                should_build="false"
+                echo "Release ${source_git_ref} already exists. Tag unchanged, skipping build."
+              else
+                echo "Release ${source_git_ref} not found (HTTP ${http_status}). Build will run."
+              fi
             fi
           fi
 
@@ -122,15 +146,19 @@ jobs:
             echo "source_git_ref=${source_git_ref}"
             echo "astrbot_version=${version}"
             echo "should_build=${should_build}"
+            echo "build_mode=${build_mode}"
+            echo "publish_release=${publish_release}"
           } >> "${GITHUB_OUTPUT}"
           echo "Resolved source: ${source_git_url}@${source_git_ref}"
           echo "Resolved AstrBot version: ${version}"
           echo "Build enabled: ${should_build}"
+          echo "Build mode: ${build_mode}"
+          echo "Publish release: ${publish_release}"
 
   sync_repo_version:
     name: Sync Repository Version
     needs: resolve_build_context
-    if: ${{ needs.resolve_build_context.outputs.should_build == 'true' && github.event_name == 'schedule' }}
+    if: ${{ needs.resolve_build_context.outputs.should_build == 'true' && needs.resolve_build_context.outputs.build_mode == 'tag-poll' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -456,7 +484,7 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    if: ${{ needs.resolve_build_context.outputs.should_build == 'true' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == 'true')) }}
+    if: ${{ needs.resolve_build_context.outputs.should_build == 'true' && needs.resolve_build_context.outputs.publish_release == 'true' }}
     needs:
       - resolve_build_context
       - build-linux
