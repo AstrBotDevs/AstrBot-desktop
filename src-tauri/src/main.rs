@@ -44,6 +44,7 @@ const BACKEND_READY_HTTP_PATH_ENV: &str = "ASTRBOT_BACKEND_READY_HTTP_PATH";
 const BACKEND_READY_PROBE_TIMEOUT_ENV: &str = "ASTRBOT_BACKEND_READY_PROBE_TIMEOUT_MS";
 const BACKEND_READY_PROBE_TIMEOUT_MIN_MS: u64 = 100;
 const BACKEND_READY_PROBE_TIMEOUT_MAX_MS: u64 = 30_000;
+const BACKEND_READY_TCP_PROBE_TIMEOUT_MAX_MS: u64 = 1_000;
 const FORCE_STOP_WAIT_MIN_MS: u64 = 200;
 #[cfg(target_os = "windows")]
 const WINDOWS_GRACEFUL_STOP_NONZERO_WAIT_MS: u64 = 350;
@@ -52,6 +53,8 @@ const FORCE_STOP_WAIT_MAX_WINDOWS_MS: u64 = 2_200;
 #[cfg(not(target_os = "windows"))]
 const FORCE_STOP_WAIT_MAX_NON_WINDOWS_MS: u64 = 1_500;
 const DEFAULT_BACKEND_PING_TIMEOUT_MS: u64 = 800;
+const BACKEND_PING_TIMEOUT_MIN_MS: u64 = 50;
+const BACKEND_PING_TIMEOUT_MAX_MS: u64 = 30_000;
 const BACKEND_PING_TIMEOUT_ENV: &str = "ASTRBOT_BACKEND_PING_TIMEOUT_MS";
 const BRIDGE_BACKEND_PING_TIMEOUT_ENV: &str = "ASTRBOT_BRIDGE_BACKEND_PING_TIMEOUT_MS";
 const DESKTOP_LOG_MAX_BYTES: u64 = 5 * 1024 * 1024;
@@ -79,7 +82,6 @@ static BRIDGE_BACKEND_PING_TIMEOUT_MS: OnceLock<u64> = OnceLock::new();
 static DESKTOP_LOG_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static TRAY_RESTART_SIGNAL_TOKEN: AtomicU64 = AtomicU64::new(0);
 static BACKEND_PATH_OVERRIDE: OnceLock<Option<OsString>> = OnceLock::new();
-static BACKEND_READINESS_CONFIG: OnceLock<BackendReadinessConfig> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy)]
 struct ShellTexts {
@@ -613,7 +615,8 @@ impl BackendState {
     ) -> (Option<u16>, bool) {
         let http_status =
             self.request_backend_status_code("GET", ready_http_path, probe_timeout_ms, None, None);
-        let tcp_reachable = check_tcp_reachable && self.ping_backend(probe_timeout_ms);
+        let tcp_timeout_ms = probe_timeout_ms.min(BACKEND_READY_TCP_PROBE_TIMEOUT_MAX_MS);
+        let tcp_reachable = check_tcp_reachable && self.ping_backend(tcp_timeout_ms);
         (http_status, tcp_reachable)
     }
 
@@ -2367,37 +2370,35 @@ fn resolve_backend_ready_http_path() -> String {
     }
 }
 
-fn backend_readiness_config() -> &'static BackendReadinessConfig {
-    BACKEND_READINESS_CONFIG.get_or_init(|| {
-        let probe_timeout_fallback = backend_ping_timeout_ms();
-        let probe_timeout_ms = match env::var(BACKEND_READY_PROBE_TIMEOUT_ENV) {
-            Ok(raw) => parse_clamped_timeout_env(
-                &raw,
-                BACKEND_READY_PROBE_TIMEOUT_ENV,
-                probe_timeout_fallback,
-                BACKEND_READY_PROBE_TIMEOUT_MIN_MS,
-                BACKEND_READY_PROBE_TIMEOUT_MAX_MS,
-            ),
-            Err(_) => probe_timeout_fallback,
-        };
-        let poll_interval_fallback = DEFAULT_BACKEND_READY_POLL_INTERVAL_MS;
-        let poll_interval_ms = match env::var(BACKEND_READY_POLL_INTERVAL_ENV) {
-            Ok(raw) => parse_clamped_timeout_env(
-                &raw,
-                BACKEND_READY_POLL_INTERVAL_ENV,
-                poll_interval_fallback,
-                BACKEND_READY_POLL_INTERVAL_MIN_MS,
-                BACKEND_READY_POLL_INTERVAL_MAX_MS,
-            ),
-            Err(_) => poll_interval_fallback,
-        };
+fn backend_readiness_config() -> BackendReadinessConfig {
+    let probe_timeout_fallback = backend_ping_timeout_ms();
+    let probe_timeout_ms = match env::var(BACKEND_READY_PROBE_TIMEOUT_ENV) {
+        Ok(raw) => parse_clamped_timeout_env(
+            &raw,
+            BACKEND_READY_PROBE_TIMEOUT_ENV,
+            probe_timeout_fallback,
+            BACKEND_READY_PROBE_TIMEOUT_MIN_MS,
+            BACKEND_READY_PROBE_TIMEOUT_MAX_MS,
+        ),
+        Err(_) => probe_timeout_fallback,
+    };
+    let poll_interval_fallback = DEFAULT_BACKEND_READY_POLL_INTERVAL_MS;
+    let poll_interval_ms = match env::var(BACKEND_READY_POLL_INTERVAL_ENV) {
+        Ok(raw) => parse_clamped_timeout_env(
+            &raw,
+            BACKEND_READY_POLL_INTERVAL_ENV,
+            poll_interval_fallback,
+            BACKEND_READY_POLL_INTERVAL_MIN_MS,
+            BACKEND_READY_POLL_INTERVAL_MAX_MS,
+        ),
+        Err(_) => poll_interval_fallback,
+    };
 
-        BackendReadinessConfig {
-            path: resolve_backend_ready_http_path(),
-            probe_timeout_ms,
-            poll_interval_ms,
-        }
-    })
+    BackendReadinessConfig {
+        path: resolve_backend_ready_http_path(),
+        probe_timeout_ms,
+        poll_interval_ms,
+    }
 }
 
 fn workspace_root_dir() -> PathBuf {
@@ -2978,19 +2979,6 @@ fn resolve_resource_path(app: &AppHandle, relative_path: &str) -> Option<PathBuf
     None
 }
 
-fn parse_ping_timeout_env(raw: &str, env_name: &str, fallback_ms: u64) -> u64 {
-    match raw.trim().parse::<u64>() {
-        Ok(timeout_ms) if timeout_ms > 0 => timeout_ms,
-        _ => {
-            append_desktop_log(&format!(
-                "invalid {}='{}', fallback to {}ms",
-                env_name, raw, fallback_ms
-            ));
-            fallback_ms
-        }
-    }
-}
-
 fn parse_clamped_timeout_env(
     raw: &str,
     env_name: &str,
@@ -3028,10 +3016,12 @@ fn parse_clamped_timeout_env(
 
 fn backend_ping_timeout_ms() -> u64 {
     *BACKEND_PING_TIMEOUT_MS.get_or_init(|| match env::var(BACKEND_PING_TIMEOUT_ENV) {
-        Ok(raw) => parse_ping_timeout_env(
+        Ok(raw) => parse_clamped_timeout_env(
             &raw,
             BACKEND_PING_TIMEOUT_ENV,
             DEFAULT_BACKEND_PING_TIMEOUT_MS,
+            BACKEND_PING_TIMEOUT_MIN_MS,
+            BACKEND_PING_TIMEOUT_MAX_MS,
         ),
         Err(_) => DEFAULT_BACKEND_PING_TIMEOUT_MS,
     })
@@ -3041,7 +3031,13 @@ fn bridge_backend_ping_timeout_ms() -> u64 {
     *BRIDGE_BACKEND_PING_TIMEOUT_MS.get_or_init(|| {
         let fallback = backend_ping_timeout_ms();
         match env::var(BRIDGE_BACKEND_PING_TIMEOUT_ENV) {
-            Ok(raw) => parse_ping_timeout_env(&raw, BRIDGE_BACKEND_PING_TIMEOUT_ENV, fallback),
+            Ok(raw) => parse_clamped_timeout_env(
+                &raw,
+                BRIDGE_BACKEND_PING_TIMEOUT_ENV,
+                fallback,
+                BACKEND_PING_TIMEOUT_MIN_MS,
+                BACKEND_PING_TIMEOUT_MAX_MS,
+            ),
             Err(_) => fallback,
         }
     })
