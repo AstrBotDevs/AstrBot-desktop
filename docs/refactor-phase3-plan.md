@@ -45,3 +45,4 @@ Phase 3 聚焦“运行时装配边界”：继续把路径解析、资源定位
 
 1. 新增 Phase 3 计划文档。
 2. 抽离运行时路径与资源定位模块（`src-tauri/src/runtime_paths.rs`），下沉 source root/packaged root/resource path 解析并补充模块单测。
+3. 抽离打包 WebUI 解析模块（`src-tauri/src/packaged_webui.rs`），下沉 fallback 路径决策与多语言错误文案生成。

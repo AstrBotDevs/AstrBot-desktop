@@ -7,6 +7,7 @@ mod http_response;
 mod logging;
 mod main_window;
 mod origin_policy;
+mod packaged_webui;
 mod process_control;
 mod runtime_paths;
 mod shell_locale;
@@ -334,7 +335,12 @@ impl BackendState {
                 runtime_paths::resolve_resource_path(app, "webui/index.html", append_desktop_log)
                     .and_then(|index_path| index_path.parent().map(Path::to_path_buf))
             });
-        let webui_dir = resolve_packaged_webui_dir(embedded_webui_dir, root_dir.as_deref())?;
+        let webui_dir = packaged_webui::resolve_packaged_webui_dir(
+            embedded_webui_dir,
+            root_dir.as_deref(),
+            DEFAULT_SHELL_LOCALE,
+            append_desktop_log,
+        )?;
 
         let args = vec![
             launch_script_path.to_string_lossy().to_string(),
@@ -1838,99 +1844,6 @@ fn backend_path_override() -> Option<OsString> {
             backend_path::build_backend_path_override(|message| append_desktop_log(&message))
         })
         .clone()
-}
-
-fn packaged_webui_unavailable_error(locale: &str, embedded_index: Option<&Path>) -> String {
-    if locale == "en-US" {
-        if let Some(index) = embedded_index {
-            return format!(
-                "Packaged WebUI is unavailable. Missing embedded index at {} and fallback data/dist. Please reinstall AstrBot or download the matching dist.zip to data/dist.",
-                index.display()
-            );
-        }
-        return "Packaged WebUI directory is missing and fallback data/dist is unavailable. Please reinstall AstrBot or download the matching dist.zip to data/dist."
-            .to_string();
-    }
-
-    if let Some(index) = embedded_index {
-        return format!(
-            "内置 WebUI 不可用。缺少内置入口文件：{}，且回退目录 data/dist 也不可用。请重装 AstrBot，或下载匹配版本的 dist.zip 到 data/dist。",
-            index.display()
-        );
-    }
-
-    "内置 WebUI 目录缺失，且回退目录 data/dist 也不可用。请重装 AstrBot，或下载匹配版本的 dist.zip 到 data/dist。".to_string()
-}
-
-fn resolve_packaged_webui_dir(
-    embedded_webui_dir: Option<PathBuf>,
-    root_dir: Option<&Path>,
-) -> Result<PathBuf, String> {
-    let locale = shell_locale::resolve_shell_locale(
-        DEFAULT_SHELL_LOCALE,
-        runtime_paths::default_packaged_root_dir(),
-    );
-    let fallback_webui_dir = webui_paths::packaged_fallback_webui_dir(
-        root_dir,
-        runtime_paths::default_packaged_root_dir(),
-    );
-
-    match embedded_webui_dir {
-        Some(candidate) => {
-            let embedded_index = candidate.join("index.html");
-            if embedded_index.is_file() {
-                return Ok(candidate);
-            }
-
-            append_desktop_log(&format!(
-                "packaged webui index is missing at {}, trying fallback data/dist",
-                embedded_index.display()
-            ));
-
-            if let Some(fallback) = fallback_webui_dir {
-                append_desktop_log(&format!(
-                    "using fallback webui directory: {}",
-                    fallback.display()
-                ));
-                return Ok(fallback);
-            }
-
-            let fallback_index = webui_paths::packaged_fallback_webui_index_display(
-                root_dir,
-                runtime_paths::default_packaged_root_dir(),
-            );
-            append_desktop_log(&format!(
-                "packaged webui resolution failed: embedded index missing at {}, fallback index missing at {}",
-                embedded_index.display(),
-                fallback_index
-            ));
-
-            Err(packaged_webui_unavailable_error(
-                locale,
-                Some(&embedded_index),
-            ))
-        }
-        None => {
-            if let Some(fallback) = fallback_webui_dir {
-                append_desktop_log(&format!(
-                    "embedded webui directory not found, using fallback webui directory: {}",
-                    fallback.display()
-                ));
-                return Ok(fallback);
-            }
-
-            let fallback_index = webui_paths::packaged_fallback_webui_index_display(
-                root_dir,
-                runtime_paths::default_packaged_root_dir(),
-            );
-            append_desktop_log(&format!(
-                "packaged webui resolution failed: embedded webui directory is missing, fallback index missing at {}",
-                fallback_index
-            ));
-
-            Err(packaged_webui_unavailable_error(locale, None))
-        }
-    }
 }
 
 fn backend_wait_timeout(packaged_mode: bool) -> Duration {

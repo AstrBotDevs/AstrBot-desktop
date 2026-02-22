@@ -132,6 +132,14 @@ HTTP 响应解析模块：
 - 默认打包根目录解析（`~/.astrbot`）
 - 资源路径定位（含 `_up_/resources` 回退探测）
 
+### 2.15 `src-tauri/src/packaged_webui.rs`
+
+打包 WebUI 解析模块：
+
+- embedded/fallback webui 目录决策
+- fallback index 诊断路径组装
+- 多语言不可用错误文案生成
+
 ## 3. 关键流程
 
 ### 3.1 启动流程

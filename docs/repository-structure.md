@@ -47,6 +47,8 @@
   - 主窗口 show/hide/reload/navigate 操作封装。
 - `runtime_paths.rs`
   - source root / packaged root / 资源路径探测逻辑。
+- `packaged_webui.rs`
+  - 打包 WebUI fallback 决策与错误文案组装。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 
