@@ -1,5 +1,5 @@
 use std::{
-    io::{Read, Write},
+    io::{ErrorKind, Read, Write},
     net::{TcpStream, ToSocketAddrs},
     time::Duration,
 };
@@ -87,12 +87,7 @@ Content-Length: {}\\r\\n\
             return None;
         }
 
-        let mut response = Vec::new();
-        if stream.read_to_end(&mut response).is_err() {
-            return None;
-        }
-
-        Some(response)
+        read_http_response_bytes(&mut stream)
     }
 
     pub(crate) fn request_backend_with<T, F>(
@@ -157,5 +152,105 @@ Content-Length: {}\\r\\n\
             None,
         )?;
         http_response::parse_backend_start_time(&payload)
+    }
+}
+
+fn is_complete_http_response(raw: &[u8]) -> bool {
+    let Some(header_end) = raw.windows(4).position(|window| window == b"\r\n\r\n") else {
+        return false;
+    };
+    let headers = &raw[..header_end + 4];
+    let body = &raw[header_end + 4..];
+    let header_text = String::from_utf8_lossy(headers).to_ascii_lowercase();
+
+    if header_text.contains("transfer-encoding: chunked") {
+        return body.windows(5).any(|window| window == b"0\r\n\r\n");
+    }
+
+    if let Some(content_length) = header_text
+        .lines()
+        .find_map(|line| line.strip_prefix("content-length:"))
+        .and_then(|value| value.trim().parse::<usize>().ok())
+    {
+        return body.len() >= content_length;
+    }
+
+    false
+}
+
+fn read_http_response_bytes<R: Read>(reader: &mut R) -> Option<Vec<u8>> {
+    let mut response = Vec::new();
+    let mut chunk = [0u8; 4096];
+    loop {
+        match reader.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(read) => {
+                response.extend_from_slice(&chunk[..read]);
+                if is_complete_http_response(&response) {
+                    break;
+                }
+            }
+            Err(error) if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
+                if response.is_empty() {
+                    return None;
+                }
+                break;
+            }
+            Err(_) => return None,
+        }
+    }
+
+    if response.is_empty() {
+        None
+    } else {
+        Some(response)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{Cursor, Error, ErrorKind, Read};
+
+    use super::{is_complete_http_response, read_http_response_bytes};
+
+    #[test]
+    fn is_complete_http_response_respects_content_length() {
+        let full = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK";
+        assert!(is_complete_http_response(full));
+
+        let partial = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nO";
+        assert!(!is_complete_http_response(partial));
+    }
+
+    #[test]
+    fn read_http_response_bytes_keeps_partial_data_on_timeout() {
+        let mut reader = TimeoutAfterPayloadReader {
+            payload: Cursor::new(
+                b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n".to_vec(),
+            ),
+            timed_out: false,
+        };
+
+        let raw = read_http_response_bytes(&mut reader).expect("response should be preserved");
+        assert!(raw.starts_with(b"HTTP/1.1 200 OK\r\n"));
+    }
+
+    struct TimeoutAfterPayloadReader {
+        payload: Cursor<Vec<u8>>,
+        timed_out: bool,
+    }
+
+    impl Read for TimeoutAfterPayloadReader {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let bytes = self.payload.read(buf)?;
+            if bytes > 0 {
+                return Ok(bytes);
+            }
+            if self.timed_out {
+                return Ok(0);
+            }
+            self.timed_out = true;
+            Err(Error::new(ErrorKind::TimedOut, "simulated read timeout"))
+        }
     }
 }
