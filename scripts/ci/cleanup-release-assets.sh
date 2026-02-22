@@ -17,6 +17,19 @@ if [ -z "${GITHUB_REPOSITORY:-}" ]; then
   exit 1
 fi
 
+release_lookup_err=""
+assets_list_err=""
+assets_list_output=""
+cleanup_temp_files() {
+  local candidate=""
+  for candidate in "${release_lookup_err:-}" "${assets_list_err:-}" "${assets_list_output:-}"; do
+    if [ -n "${candidate}" ]; then
+      rm -f "${candidate}"
+    fi
+  done
+}
+trap cleanup_temp_files EXIT
+
 release_lookup_err="$(mktemp)"
 release_id=""
 if release_id="$(
@@ -30,11 +43,9 @@ else
   else
     echo "Failed to resolve release ${RELEASE_TAG} from ${GITHUB_REPOSITORY}:" >&2
     cat "${release_lookup_err}" >&2
-    rm -f "${release_lookup_err}"
     exit 1
   fi
 fi
-rm -f "${release_lookup_err}"
 
 if [ -z "${release_id}" ]; then
   echo "Release ${RELEASE_TAG} does not exist yet. No assets to clean."
@@ -51,10 +62,8 @@ if gh api --paginate "repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets?p
 else
   echo "Failed to list assets for release ${RELEASE_TAG} (id=${release_id}) from ${GITHUB_REPOSITORY}:" >&2
   cat "${assets_list_err}" >&2
-  rm -f "${assets_list_err}" "${assets_list_output}"
   exit 1
 fi
-rm -f "${assets_list_err}"
 
 while IFS=$'\t' read -r asset_id asset_name; do
   [ -n "${asset_id}" ] || continue
@@ -62,7 +71,6 @@ while IFS=$'\t' read -r asset_id asset_name; do
   echo "Deleted existing release asset: id=${asset_id}, name=${asset_name}"
   deleted_count=$((deleted_count + 1))
 done < "${assets_list_output}"
-rm -f "${assets_list_output}"
 
 if [ "${deleted_count}" -eq 0 ]; then
   echo "Release ${RELEASE_TAG} has no existing assets."

@@ -3,6 +3,7 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+root_dir="$(cd "${script_dir}/../.." && pwd)"
 # shellcheck source=./lib/version-utils.sh
 . "${script_dir}/lib/version-utils.sh"
 
@@ -21,4 +22,7 @@ fi
 
 export ASTRBOT_DESKTOP_VERSION="$(with_version_prefix "${normalized_version}")"
 echo "Syncing desktop version with ASTRBOT_DESKTOP_VERSION=${ASTRBOT_DESKTOP_VERSION}"
-pnpm run sync:version
+(
+  cd "${root_dir}"
+  pnpm run sync:version
+)

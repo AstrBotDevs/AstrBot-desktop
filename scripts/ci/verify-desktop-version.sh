@@ -3,6 +3,7 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+root_dir="$(cd "${script_dir}/../.." && pwd)"
 # shellcheck source=./lib/version-utils.sh
 . "${script_dir}/lib/version-utils.sh"
 
@@ -29,15 +30,25 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
-pkg_version="$(node -e "console.log(require('./package.json').version)")"
+pkg_version="$(
+  node -e '
+const fs = require("fs");
+const path = require("path");
+const root = process.argv[1];
+const packageJsonPath = path.join(root, "package.json");
+const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+console.log(typeof packageJson.version === "string" ? packageJson.version : "");
+' "${root_dir}"
+)"
 if [ -z "${pkg_version}" ]; then
   echo "Failed to read the version from package.json (pkg_version is empty)" >&2
   exit 1
 fi
 
 tauri_and_cargo_versions="$(
-  python3 - <<'PY'
+  ROOT_DIR="${root_dir}" python3 - <<'PY'
 import json
+import os
 import pathlib
 import sys
 
@@ -53,7 +64,7 @@ except ModuleNotFoundError:
         )
         raise SystemExit(1)
 
-root = pathlib.Path(".")
+root = pathlib.Path(os.environ["ROOT_DIR"]).resolve()
 tauri_conf_path = root / "src-tauri" / "tauri.conf.json"
 cargo_toml_path = root / "src-tauri" / "Cargo.toml"
 
