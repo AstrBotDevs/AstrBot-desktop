@@ -168,22 +168,7 @@ export const patchDesktopReleaseRedirectBehavior = async ({
   }
 };`;
 
-  // 1) legacy fallbackReleaseUrl default
-  if (
-    /const fallbackReleaseUrl = `\$\{desktopReleaseBaseUrl\}\/latest`;/.test(patched) ||
-    /const getReleaseUrlByTag\s*=\s*\(/.test(patched)
-  ) {
-    // already patched or new implementation
-  } else if (/const fallbackReleaseUrl = desktopReleaseBaseUrl;/.test(patched)) {
-    patched = patched.replace(
-      /const fallbackReleaseUrl = desktopReleaseBaseUrl;/,
-      "const fallbackReleaseUrl = `${desktopReleaseBaseUrl}/latest`;",
-    );
-  } else {
-    reportPatternMiss('legacy fallbackReleaseUrl default');
-  }
-
-  // 2) open() implementation
+  // 1) open() implementation
   if (/const open = \(link: string\) => \{[\s\S]*?\n\};/m.test(patched)) {
     patched = patched.replace(
       /const open = \(link: string\) => \{[\s\S]*?\n\};/m,
@@ -195,7 +180,7 @@ export const patchDesktopReleaseRedirectBehavior = async ({
     reportPatternMiss('open() implementation');
   }
 
-  // 3) handleUpdateClick desktop redirect flow
+  // 2) handleUpdateClick desktop redirect flow
   if (
     /function handleUpdateClick\(\)\s*\{[\s\S]*?\n\}(?=\n\n\/\/ 检测是否为预发布版本)/m.test(
       patched,
