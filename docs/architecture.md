@@ -124,6 +124,14 @@ HTTP 响应解析模块：
 - 导航到 backend dashboard
 - 主窗口异常处理日志收敛
 
+### 2.14 `src-tauri/src/runtime_paths.rs`
+
+运行时路径模块：
+
+- AstrBot source root 探测
+- 默认打包根目录解析（`~/.astrbot`）
+- 资源路径定位（含 `_up_/resources` 回退探测）
+
 ## 3. 关键流程
 
 ### 3.1 启动流程

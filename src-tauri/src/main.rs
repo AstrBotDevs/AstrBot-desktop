@@ -8,6 +8,7 @@ mod logging;
 mod main_window;
 mod origin_policy;
 mod process_control;
+mod runtime_paths;
 mod shell_locale;
 mod startup_mode;
 mod tray_actions;
@@ -33,7 +34,6 @@ use std::{
 };
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
-    path::BaseDirectory,
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     webview::PageLoadEvent,
     AppHandle, Emitter, Manager, RunEvent, WindowEvent,
@@ -241,8 +241,8 @@ impl BackendState {
         let cwd = env::var("ASTRBOT_BACKEND_CWD")
             .map(PathBuf::from)
             .ok()
-            .or_else(detect_astrbot_source_root)
-            .unwrap_or_else(workspace_root_dir);
+            .or_else(runtime_paths::detect_astrbot_source_root)
+            .unwrap_or_else(runtime_paths::workspace_root_dir);
         let root_dir = env::var("ASTRBOT_ROOT").ok().map(PathBuf::from);
         let webui_dir = env::var("ASTRBOT_WEBUI_DIR").ok().map(PathBuf::from);
 
@@ -257,7 +257,11 @@ impl BackendState {
     }
 
     fn resolve_packaged_launch(&self, app: &AppHandle) -> Result<Option<LaunchPlan>, String> {
-        let manifest_path = match resolve_resource_path(app, "backend/runtime-manifest.json") {
+        let manifest_path = match runtime_paths::resolve_resource_path(
+            app,
+            "backend/runtime-manifest.json",
+            append_desktop_log,
+        ) {
             Some(path) if path.is_file() => path,
             _ => return Ok(None),
         };
@@ -315,7 +319,7 @@ impl BackendState {
         let root_dir = env::var("ASTRBOT_ROOT")
             .map(PathBuf::from)
             .ok()
-            .or_else(default_packaged_root_dir);
+            .or_else(runtime_paths::default_packaged_root_dir);
         let cwd = env::var("ASTRBOT_BACKEND_CWD")
             .map(PathBuf::from)
             .unwrap_or_else(|_| {
@@ -327,7 +331,7 @@ impl BackendState {
             .ok()
             .map(PathBuf::from)
             .or_else(|| {
-                resolve_resource_path(app, "webui/index.html")
+                runtime_paths::resolve_resource_path(app, "webui/index.html", append_desktop_log)
                     .and_then(|index_path| index_path.parent().map(Path::to_path_buf))
             });
         let webui_dir = resolve_packaged_webui_dir(embedded_webui_dir, root_dir.as_deref())?;
@@ -350,7 +354,7 @@ impl BackendState {
     }
 
     fn resolve_dev_launch(&self) -> Result<LaunchPlan, String> {
-        let source_root = detect_astrbot_source_root().ok_or_else(|| {
+        let source_root = runtime_paths::detect_astrbot_source_root().ok_or_else(|| {
             "Cannot locate AstrBot source directory. Set ASTRBOT_SOURCE_DIR, or configure ASTRBOT_SOURCE_GIT_URL/ASTRBOT_SOURCE_GIT_REF and run resource prepare.".to_string()
         })?;
 
@@ -459,7 +463,7 @@ impl BackendState {
 
         let backend_log_path = Some(logging::resolve_backend_log_path(
             plan.root_dir.as_deref(),
-            default_packaged_root_dir(),
+            runtime_paths::default_packaged_root_dir(),
         ));
         if let Some(log_path) = backend_log_path.as_ref() {
             if let Some(log_parent) = log_path.parent() {
@@ -1263,7 +1267,11 @@ fn main() {
     append_startup_log("desktop process starting");
     append_startup_log(&format!(
         "desktop log path: {}",
-        logging::resolve_desktop_log_path(default_packaged_root_dir(), DESKTOP_LOG_FILE).display()
+        logging::resolve_desktop_log_path(
+            runtime_paths::default_packaged_root_dir(),
+            DESKTOP_LOG_FILE,
+        )
+        .display()
     ));
     tauri::Builder::default()
         .manage(BackendState::default())
@@ -1398,8 +1406,10 @@ fn main() {
 }
 
 fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
-    let locale =
-        shell_locale::resolve_shell_locale(DEFAULT_SHELL_LOCALE, default_packaged_root_dir());
+    let locale = shell_locale::resolve_shell_locale(
+        DEFAULT_SHELL_LOCALE,
+        runtime_paths::default_packaged_root_dir(),
+    );
     let shell_texts = shell_locale::shell_texts_for_locale(locale);
     let main_window_visible = app_handle
         .get_webview_window("main")
@@ -1640,8 +1650,10 @@ fn update_tray_menu_labels(app_handle: &AppHandle) {
         return;
     };
 
-    let locale =
-        shell_locale::resolve_shell_locale(DEFAULT_SHELL_LOCALE, default_packaged_root_dir());
+    let locale = shell_locale::resolve_shell_locale(
+        DEFAULT_SHELL_LOCALE,
+        runtime_paths::default_packaged_root_dir(),
+    );
     let shell_texts = shell_locale::shell_texts_for_locale(locale);
     let is_visible = app_handle
         .get_webview_window("main")
@@ -1820,41 +1832,6 @@ fn backend_readiness_config() -> backend_config::BackendReadinessConfig {
     )
 }
 
-fn workspace_root_dir() -> PathBuf {
-    let candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
-    candidate
-        .canonicalize()
-        .unwrap_or_else(|_| candidate.to_path_buf())
-}
-
-fn detect_astrbot_source_root() -> Option<PathBuf> {
-    if let Ok(source_dir) = env::var("ASTRBOT_SOURCE_DIR") {
-        let candidate = PathBuf::from(source_dir.trim());
-        if candidate.join("main.py").is_file() && candidate.join("astrbot").is_dir() {
-            return Some(candidate.canonicalize().unwrap_or(candidate));
-        }
-    }
-
-    let workspace_root = workspace_root_dir();
-    let candidates = [
-        workspace_root.join("vendor").join("AstrBot"),
-        workspace_root.join("AstrBot"),
-        workspace_root,
-    ];
-    for candidate in candidates {
-        if candidate.join("main.py").is_file() && candidate.join("astrbot").is_dir() {
-            return Some(candidate.canonicalize().unwrap_or(candidate));
-        }
-    }
-    None
-}
-
-fn default_packaged_root_dir() -> Option<PathBuf> {
-    home::home_dir().map(|home| home.join(".astrbot"))
-}
-
 fn backend_path_override() -> Option<OsString> {
     BACKEND_PATH_OVERRIDE
         .get_or_init(|| {
@@ -1889,10 +1866,14 @@ fn resolve_packaged_webui_dir(
     embedded_webui_dir: Option<PathBuf>,
     root_dir: Option<&Path>,
 ) -> Result<PathBuf, String> {
-    let locale =
-        shell_locale::resolve_shell_locale(DEFAULT_SHELL_LOCALE, default_packaged_root_dir());
-    let fallback_webui_dir =
-        webui_paths::packaged_fallback_webui_dir(root_dir, default_packaged_root_dir());
+    let locale = shell_locale::resolve_shell_locale(
+        DEFAULT_SHELL_LOCALE,
+        runtime_paths::default_packaged_root_dir(),
+    );
+    let fallback_webui_dir = webui_paths::packaged_fallback_webui_dir(
+        root_dir,
+        runtime_paths::default_packaged_root_dir(),
+    );
 
     match embedded_webui_dir {
         Some(candidate) => {
@@ -1916,7 +1897,7 @@ fn resolve_packaged_webui_dir(
 
             let fallback_index = webui_paths::packaged_fallback_webui_index_display(
                 root_dir,
-                default_packaged_root_dir(),
+                runtime_paths::default_packaged_root_dir(),
             );
             append_desktop_log(&format!(
                 "packaged webui resolution failed: embedded index missing at {}, fallback index missing at {}",
@@ -1940,7 +1921,7 @@ fn resolve_packaged_webui_dir(
 
             let fallback_index = webui_paths::packaged_fallback_webui_index_display(
                 root_dir,
-                default_packaged_root_dir(),
+                runtime_paths::default_packaged_root_dir(),
             );
             append_desktop_log(&format!(
                 "packaged webui resolution failed: embedded webui directory is missing, fallback index missing at {}",
@@ -1966,30 +1947,6 @@ fn build_debug_command(plan: &LaunchPlan) -> Vec<String> {
     let mut parts = vec![plan.cmd.clone()];
     parts.extend(plan.args.clone());
     parts
-}
-
-fn resolve_resource_path(app: &AppHandle, relative_path: &str) -> Option<PathBuf> {
-    if let Ok(path) = app.path().resolve(relative_path, BaseDirectory::Resource) {
-        if path.exists() {
-            return Some(path);
-        }
-    }
-
-    let updater_resource = Path::new("_up_").join("resources").join(relative_path);
-    if let Ok(path) = app
-        .path()
-        .resolve(&updater_resource, BaseDirectory::Resource)
-    {
-        if path.exists() {
-            return Some(path);
-        }
-    }
-
-    append_desktop_log(&format!(
-        "resource not found: {} (checked direct and _up_/resources)",
-        relative_path
-    ));
-    None
 }
 
 fn backend_ping_timeout_ms() -> u64 {
@@ -2043,7 +2000,7 @@ fn append_desktop_log_with_category(category: logging::DesktopLogCategory, messa
     logging::append_desktop_log(
         category,
         message,
-        default_packaged_root_dir(),
+        runtime_paths::default_packaged_root_dir(),
         DESKTOP_LOG_FILE,
         DESKTOP_LOG_MAX_BYTES,
         LOG_BACKUP_COUNT,

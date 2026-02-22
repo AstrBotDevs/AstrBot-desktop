@@ -52,6 +52,7 @@ make help
 - 环境变量清单：`docs/environment-variables.md`
 - 重构归档：`docs/refactor-plan.md`
 - Phase 2 计划：`docs/refactor-phase2-plan.md`
+- Phase 3 计划：`docs/refactor-phase3-plan.md`
 
 ## 常用维护命令
 

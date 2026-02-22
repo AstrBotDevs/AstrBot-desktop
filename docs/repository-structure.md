@@ -45,6 +45,8 @@
   - shell locale 归一化、缓存读取与托盘文案映射。
 - `main_window.rs`
   - 主窗口 show/hide/reload/navigate 操作封装。
+- `runtime_paths.rs`
+  - source root / packaged root / 资源路径探测逻辑。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 
@@ -77,6 +79,8 @@
   - 重构归档文档（阅读/存档用途）。
 - `refactor-phase2-plan.md`
   - Phase 2 重构计划文档（执行参考 + 归档记录）。
+- `refactor-phase3-plan.md`
+  - Phase 3 重构计划文档（执行参考 + 归档记录）。
 
 ## 5. 新增代码落位规则
 
