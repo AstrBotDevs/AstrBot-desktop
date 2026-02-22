@@ -160,6 +160,10 @@
       process.env &&
       process.env.NODE_ENV !== 'production') ||
     (typeof __DEV__ !== 'undefined' && __DEV__ === true);
+  const devWarn =
+    IS_DEV && typeof console !== 'undefined' && typeof console.warn === 'function'
+      ? console.warn.bind(console)
+      : null;
 
   const normalizeExternalHttpUrl = (rawUrl) => {
     if (rawUrl instanceof URL) {
@@ -167,14 +171,16 @@
       return rawUrl;
     }
 
-    const normalizedSource =
-      rawUrl == null
-        ? ''
-        : typeof rawUrl === 'string'
-        ? rawUrl
-        : typeof rawUrl.toString === 'function'
-        ? rawUrl.toString()
-        : String(rawUrl);
+    let normalizedSource = '';
+    if (rawUrl == null) {
+      normalizedSource = '';
+    } else if (typeof rawUrl === 'string') {
+      normalizedSource = rawUrl;
+    } else if (typeof rawUrl.toString === 'function') {
+      normalizedSource = rawUrl.toString();
+    } else {
+      normalizedSource = String(rawUrl);
+    }
 
     const normalized = normalizedSource.trim();
     if (!normalized) return null;
@@ -238,180 +244,182 @@
       patchFn();
     } catch (error) {
       if (error instanceof TypeError) {
-        if (IS_DEV && typeof console !== 'undefined' && typeof console.warn === 'function') {
-          console.warn(`astrbotDesktop: failed to patch ${label}`, error);
-        }
+        if (devWarn) devWarn(`astrbotDesktop: failed to patch ${label}`, error);
         return;
       }
       throw error;
     }
   };
 
-  let externalAnchorInterceptorInstalled = false;
-  const installExternalAnchorInterceptor = () => {
-    if (externalAnchorInterceptorInstalled) return;
-    externalAnchorInterceptorInstalled = true;
-    document.addEventListener(
-      'click',
-      (event) => {
-        if (event.defaultPrevented || event.button !== 0) {
-          return;
-        }
-        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-          return;
-        }
-
-        const anchor = findAnchorFromEvent(event);
-        if (!anchor || !(anchor instanceof HTMLAnchorElement)) {
-          return;
-        }
-        if (anchor.hasAttribute('download')) {
-          return;
-        }
-
-        const rawHref = anchor.getAttribute('href') || anchor.href || '';
-        if (!openExternalUrl(rawHref, { allowSameOrigin: false })) {
-          return;
-        }
-
-        event.preventDefault();
-      },
-      true,
-    );
+  const installRegistry = new Set();
+  const installOnce = (key, installer) => {
+    if (installRegistry.has(key)) return;
+    installRegistry.add(key);
+    installer();
   };
 
-  let windowOpenBridgeInstalled = false;
+  const installExternalAnchorInterceptor = () => {
+    installOnce('externalAnchorInterceptor', () => {
+      document.addEventListener(
+        'click',
+        (event) => {
+          if (event.defaultPrevented || event.button !== 0) {
+            return;
+          }
+          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+            return;
+          }
+
+          const anchor = findAnchorFromEvent(event);
+          if (!anchor || !(anchor instanceof HTMLAnchorElement)) {
+            return;
+          }
+          if (anchor.hasAttribute('download')) {
+            return;
+          }
+
+          const rawHref = anchor.getAttribute('href') || anchor.href || '';
+          if (!openExternalUrl(rawHref, { allowSameOrigin: false })) {
+            return;
+          }
+
+          event.preventDefault();
+        },
+        true,
+      );
+    });
+  };
+
   const installWindowOpenBridge = () => {
-    if (windowOpenBridgeInstalled) return;
-    windowOpenBridgeInstalled = true;
-    const nativeWindowOpen =
-      typeof window.open === 'function' ? window.open.bind(window) : null;
+    installOnce('windowOpenBridge', () => {
+      const nativeWindowOpen =
+        typeof window.open === 'function' ? window.open.bind(window) : null;
 
-    const createWindowOpenHandle = (url) => {
-      let closed = false;
-      const locationProxy = {
-        href: String(url ?? ''),
-        assign: () => {},
-        replace: () => {},
-        reload: () => {},
+      const createWindowOpenHandle = (url) => {
+        let closed = false;
+        const locationProxy = {
+          href: String(url ?? ''),
+          assign: () => {},
+          replace: () => {},
+          reload: () => {},
+        };
+        return {
+          get closed() {
+            return closed;
+          },
+          set closed(value) {
+            closed = !!value;
+          },
+          close: () => {
+            closed = true;
+          },
+          focus: () => {},
+          blur: () => {},
+          postMessage: () => {},
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          dispatchEvent: () => false,
+          document: null,
+          location: locationProxy,
+          opener: null,
+        };
       };
-      return {
-        get closed() {
-          return closed;
-        },
-        set closed(value) {
-          closed = !!value;
-        },
-        close: () => {
-          closed = true;
-        },
-        focus: () => {},
-        blur: () => {},
-        postMessage: () => {},
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        dispatchEvent: () => false,
-        document: null,
-        location: locationProxy,
-        opener: null,
-      };
-    };
 
-    const bridgeWindowOpen = (url, target, features) => {
-      if (target === '_self' || target === '_top' || target === '_parent') {
+      const bridgeWindowOpen = (url, target, features) => {
+        if (target === '_self' || target === '_top' || target === '_parent') {
+          if (nativeWindowOpen) {
+            return nativeWindowOpen(url, target, features);
+          }
+          return null;
+        }
+
+        if (openExternalUrl(url, { allowSameOrigin: false })) {
+          // Lightweight window-like handle for callers that only check basic fields.
+          return createWindowOpenHandle(url);
+        }
+
         if (nativeWindowOpen) {
           return nativeWindowOpen(url, target, features);
         }
         return null;
-      }
-
-      if (openExternalUrl(url, { allowSameOrigin: false })) {
-        // Lightweight window-like handle for callers that only check basic fields.
-        return createWindowOpenHandle(url);
-      }
+      };
 
       if (nativeWindowOpen) {
-        return nativeWindowOpen(url, target, features);
-      }
-      return null;
-    };
-
-    if (nativeWindowOpen) {
-      patchWithDevTypeErrorWarn('window.__astrbotNativeWindowOpen', () => {
-        Object.defineProperty(window, '__astrbotNativeWindowOpen', {
-          configurable: true,
-          writable: false,
-          enumerable: false,
-          value: nativeWindowOpen,
+        patchWithDevTypeErrorWarn('window.__astrbotNativeWindowOpen', () => {
+          Object.defineProperty(window, '__astrbotNativeWindowOpen', {
+            configurable: true,
+            writable: false,
+            enumerable: false,
+            value: nativeWindowOpen,
+          });
         });
-      });
-    }
+      }
 
-    patchWithDevTypeErrorWarn('window.open', () => {
-      window.open = bridgeWindowOpen;
+      patchWithDevTypeErrorWarn('window.open', () => {
+        window.open = bridgeWindowOpen;
+      });
     });
   };
 
-  let locationNavigationBridgeInstalled = false;
   const installLocationNavigationBridge = () => {
-    if (locationNavigationBridgeInstalled) return;
-    locationNavigationBridgeInstalled = true;
-    const locationObject = window.location;
-    const nativeAssign =
-      typeof locationObject.assign === 'function'
-        ? locationObject.assign.bind(locationObject)
-        : null;
-    const nativeReplace =
-      typeof locationObject.replace === 'function'
-        ? locationObject.replace.bind(locationObject)
-        : null;
+    installOnce('locationNavigationBridge', () => {
+      const locationObject = window.location;
+      const nativeAssign =
+        typeof locationObject.assign === 'function'
+          ? locationObject.assign.bind(locationObject)
+          : null;
+      const nativeReplace =
+        typeof locationObject.replace === 'function'
+          ? locationObject.replace.bind(locationObject)
+          : null;
 
-    const wrapMutator = (nativeFn) => (url) => {
-      if (openExternalUrl(url, { allowSameOrigin: false })) {
-        return;
-      }
-      nativeFn(url);
-    };
+      const wrapMutator = (nativeFn) => (url) => {
+        if (openExternalUrl(url, { allowSameOrigin: false })) {
+          return;
+        }
+        nativeFn(url);
+      };
 
-    if (nativeAssign) {
-      patchWithDevTypeErrorWarn('location.assign', () => {
-        locationObject.assign = wrapMutator(nativeAssign);
-      });
-    }
-
-    if (nativeReplace) {
-      patchWithDevTypeErrorWarn('location.replace', () => {
-        locationObject.replace = wrapMutator(nativeReplace);
-      });
-    }
-
-    const descriptor =
-      Object.getOwnPropertyDescriptor(locationObject, 'href') ||
-      Object.getOwnPropertyDescriptor(window.Location?.prototype ?? {}, 'href');
-    const nativeHrefGetter =
-      descriptor && typeof descriptor.get === 'function'
-        ? descriptor.get.bind(locationObject)
-        : null;
-    const nativeHrefSetter =
-      descriptor && typeof descriptor.set === 'function'
-        ? descriptor.set.bind(locationObject)
-        : null;
-
-    if (nativeHrefSetter) {
-      patchWithDevTypeErrorWarn('location.href', () => {
-        Object.defineProperty(locationObject, 'href', {
-          configurable: true,
-          enumerable: descriptor?.enumerable ?? true,
-          get() {
-            if (nativeHrefGetter) {
-              return nativeHrefGetter();
-            }
-            return locationObject.toString();
-          },
-          set: wrapMutator(nativeHrefSetter),
+      if (nativeAssign) {
+        patchWithDevTypeErrorWarn('location.assign', () => {
+          locationObject.assign = wrapMutator(nativeAssign);
         });
-      });
-    }
+      }
+
+      if (nativeReplace) {
+        patchWithDevTypeErrorWarn('location.replace', () => {
+          locationObject.replace = wrapMutator(nativeReplace);
+        });
+      }
+
+      const descriptor =
+        Object.getOwnPropertyDescriptor(locationObject, 'href') ||
+        Object.getOwnPropertyDescriptor(window.Location?.prototype ?? {}, 'href');
+      const nativeHrefGetter =
+        descriptor && typeof descriptor.get === 'function'
+          ? descriptor.get.bind(locationObject)
+          : null;
+      const nativeHrefSetter =
+        descriptor && typeof descriptor.set === 'function'
+          ? descriptor.set.bind(locationObject)
+          : null;
+
+      if (nativeHrefSetter) {
+        patchWithDevTypeErrorWarn('location.href', () => {
+          Object.defineProperty(locationObject, 'href', {
+            configurable: true,
+            enumerable: descriptor?.enumerable ?? true,
+            get() {
+              if (nativeHrefGetter) {
+                return nativeHrefGetter();
+              }
+              return locationObject.toString();
+            },
+            set: wrapMutator(nativeHrefSetter),
+          });
+        });
+      }
+    });
   };
 
   const RUNTIME_BRIDGE_DETAIL_MAX_LENGTH = 240;
@@ -614,42 +622,42 @@
     return normalizedFallback;
   };
 
-  let localStorageTokenSyncPatched = false;
   const patchLocalStorageTokenSync = () => {
-    if (localStorageTokenSyncPatched || window.__astrbotDesktopTokenSyncPatched) return;
-    localStorageTokenSyncPatched = true;
-    window.__astrbotDesktopTokenSyncPatched = true;
-    try {
-      const storage = window.localStorage;
-      if (!storage) return;
+    installOnce('localStorageTokenSync', () => {
+      if (window.__astrbotDesktopTokenSyncPatched) return;
+      window.__astrbotDesktopTokenSyncPatched = true;
+      try {
+        const storage = window.localStorage;
+        if (!storage) return;
 
-      const rawSetItem = storage.setItem?.bind(storage);
-      const rawRemoveItem = storage.removeItem?.bind(storage);
-      const rawClear = storage.clear?.bind(storage);
+        const rawSetItem = storage.setItem?.bind(storage);
+        const rawRemoveItem = storage.removeItem?.bind(storage);
+        const rawClear = storage.clear?.bind(storage);
 
-      if (typeof rawSetItem === 'function') {
-        storage.setItem = (key, value) => {
-          rawSetItem(key, value);
-          if (key === 'token') {
-            void syncAuthToken(value);
-          }
-        };
-      }
-      if (typeof rawRemoveItem === 'function') {
-        storage.removeItem = (key) => {
-          rawRemoveItem(key);
-          if (key === 'token') {
+        if (typeof rawSetItem === 'function') {
+          storage.setItem = (key, value) => {
+            rawSetItem(key, value);
+            if (key === 'token') {
+              void syncAuthToken(value);
+            }
+          };
+        }
+        if (typeof rawRemoveItem === 'function') {
+          storage.removeItem = (key) => {
+            rawRemoveItem(key);
+            if (key === 'token') {
+              void syncAuthToken(null);
+            }
+          };
+        }
+        if (typeof rawClear === 'function') {
+          storage.clear = () => {
+            rawClear();
             void syncAuthToken(null);
-          }
-        };
-      }
-      if (typeof rawClear === 'function') {
-        storage.clear = () => {
-          rawClear();
-          void syncAuthToken(null);
-        };
-      }
-    } catch {}
+          };
+        }
+      } catch {}
+    });
   };
 
   window.astrbotDesktop = {
