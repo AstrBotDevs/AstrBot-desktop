@@ -94,21 +94,9 @@ jobs:
         if: steps.detect-tauri.outputs.has_tauri == 'true'
         run: cargo check --manifest-path src-tauri/Cargo.toml --locked
 
-      - name: backend_config tests
+      - name: cargo test
         if: steps.detect-tauri.outputs.has_tauri == 'true'
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked backend_config::tests -- --nocapture
-
-      - name: startup_mode tests
-        if: steps.detect-tauri.outputs.has_tauri == 'true'
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked startup_mode::tests -- --nocapture
-
-      - name: exit_state tests
-        if: steps.detect-tauri.outputs.has_tauri == 'true'
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked exit_state::tests -- --nocapture
-
-      - name: webui_paths tests
-        if: steps.detect-tauri.outputs.has_tauri == 'true'
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked webui_paths::tests -- --nocapture
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked -- --nocapture
 
       - name: Skip notice
         if: steps.detect-tauri.outputs.has_tauri != 'true'

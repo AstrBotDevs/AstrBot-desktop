@@ -112,7 +112,11 @@ lint:
 
 test:
 	cargo test --manifest-path $(RUST_MANIFEST) --locked
-	pnpm run test:prepare-resources
+	@if command -v pnpm >/dev/null 2>&1; then \
+		pnpm run test:prepare-resources; \
+	else \
+		echo "pnpm is not installed; skipping script behavior tests (run 'pnpm run test:prepare-resources' when pnpm is available)."; \
+	fi
 
 doctor:
 	@echo "node:  $$(node -v)"

@@ -74,7 +74,7 @@ make prune
 `make test` 会执行：
 
 - Rust 全量单元测试（`cargo test --locked`）
-- 资源准备脚本行为测试（`pnpm run test:prepare-resources`）
+- 资源准备脚本行为测试（`pnpm run test:prepare-resources`，若本地无 `pnpm` 会跳过并提示）
 
 ## 版本维护（重要）
 
