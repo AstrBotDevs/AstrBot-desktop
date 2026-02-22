@@ -114,7 +114,14 @@ pub(crate) fn write_cached_shell_locale(
 
     let mut parsed = match fs::read_to_string(&state_path) {
         Ok(raw) => serde_json::from_str::<Value>(&raw).unwrap_or(Value::Object(Map::new())),
-        Err(_) => Value::Object(Map::new()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Value::Object(Map::new()),
+        Err(error) => {
+            return Err(format!(
+                "Failed to read shell locale state {}: {}",
+                state_path.display(),
+                error
+            ));
+        }
     };
     if !parsed.is_object() {
         parsed = Value::Object(Map::new());
