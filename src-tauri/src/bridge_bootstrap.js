@@ -164,6 +164,27 @@
     IS_DEV && typeof console !== 'undefined' && typeof console.warn === 'function'
       ? console.warn.bind(console)
       : null;
+  const devWarnPatchError = (label, error) => {
+    if (!(error instanceof TypeError)) {
+      return false;
+    }
+    if (devWarn) devWarn(`astrbotDesktop: failed to patch ${label}`, error);
+    return true;
+  };
+  const safeDefine = (obj, key, descriptor, label) => {
+    try {
+      Object.defineProperty(obj, key, descriptor);
+    } catch (error) {
+      if (!devWarnPatchError(label, error)) throw error;
+    }
+  };
+  const safeAssign = (obj, key, value, label) => {
+    try {
+      obj[key] = value;
+    } catch (error) {
+      if (!devWarnPatchError(label, error)) throw error;
+    }
+  };
 
   const normalizeExternalHttpUrl = (rawUrl) => {
     if (rawUrl instanceof URL) {
@@ -209,25 +230,76 @@
     }
   };
 
-  const findAnchorFromEvent = (event) => {
-    const target = event.target;
-    if (target instanceof Element && typeof target.closest === 'function') {
-      const direct = target.closest('a[href]');
-      if (direct instanceof HTMLAnchorElement) {
-        return direct;
-      }
-    }
-
+  const findAnchorViaClosest = (target) => {
+    if (!(target instanceof Element) || typeof target.closest !== 'function') return null;
+    const direct = target.closest('a[href]');
+    return direct instanceof HTMLAnchorElement ? direct : null;
+  };
+  const findAnchorViaComposedPath = (event) => {
     // Support anchors inside shadow DOM by walking the composed event path.
-    if (typeof event.composedPath === 'function') {
-      for (const node of event.composedPath()) {
-        if (node instanceof HTMLAnchorElement && node.hasAttribute('href')) {
-          return node;
-        }
+    if (typeof event.composedPath !== 'function') return null;
+    for (const node of event.composedPath()) {
+      if (node instanceof HTMLAnchorElement && node.hasAttribute('href')) {
+        return node;
       }
     }
-
     return null;
+  };
+  const findAnchorFromEvent = (event) =>
+    findAnchorViaClosest(event.target) ?? findAnchorViaComposedPath(event);
+
+  const patchLocationHref = (locationObject, wrapMutatorFn) => {
+    const descriptor =
+      Object.getOwnPropertyDescriptor(locationObject, 'href') ||
+      Object.getOwnPropertyDescriptor(window.Location?.prototype ?? {}, 'href');
+    const nativeHrefGetter =
+      descriptor && typeof descriptor.get === 'function'
+        ? descriptor.get.bind(locationObject)
+        : null;
+    const nativeHrefSetter =
+      descriptor && typeof descriptor.set === 'function'
+        ? descriptor.set.bind(locationObject)
+        : null;
+    if (!nativeHrefSetter) return;
+
+    safeDefine(
+      locationObject,
+      'href',
+      {
+        configurable: true,
+        enumerable: descriptor?.enumerable ?? true,
+        get() {
+          if (nativeHrefGetter) {
+            return nativeHrefGetter();
+          }
+          return locationObject.toString();
+        },
+        set: wrapMutatorFn(nativeHrefSetter),
+      },
+      'location.href',
+    );
+  };
+
+  // Best-effort fake Window-like handle for callers that only check `closed` and `location.href`.
+  const createWindowOpenHandle = (url) => {
+    let closed = false;
+    const locationProxy = {
+      href: String(url ?? ''),
+    };
+    return {
+      get closed() {
+        return closed;
+      },
+      set closed(value) {
+        closed = !!value;
+      },
+      close: () => {
+        closed = true;
+      },
+      focus: () => {},
+      location: locationProxy,
+      opener: null,
+    };
   };
 
   let externalAnchorInterceptorInstalled = false;
@@ -245,9 +317,7 @@
         }
 
         const anchor = findAnchorFromEvent(event);
-        if (!anchor || !(anchor instanceof HTMLAnchorElement)) {
-          return;
-        }
+        if (!anchor) return;
         if (anchor.hasAttribute('download')) {
           return;
         }
@@ -270,36 +340,6 @@
     const nativeWindowOpen =
       typeof window.open === 'function' ? window.open.bind(window) : null;
 
-    const createWindowOpenHandle = (url) => {
-      let closed = false;
-      const locationProxy = {
-        href: String(url ?? ''),
-        assign: () => {},
-        replace: () => {},
-        reload: () => {},
-      };
-      return {
-        get closed() {
-          return closed;
-        },
-        set closed(value) {
-          closed = !!value;
-        },
-        close: () => {
-          closed = true;
-        },
-        focus: () => {},
-        blur: () => {},
-        postMessage: () => {},
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        dispatchEvent: () => false,
-        document: null,
-        location: locationProxy,
-        opener: null,
-      };
-    };
-
     const bridgeWindowOpen = (url, target, features) => {
       if (target === '_self' || target === '_top' || target === '_parent') {
         if (nativeWindowOpen) {
@@ -320,33 +360,20 @@
     };
 
     if (nativeWindowOpen) {
-      try {
-        Object.defineProperty(window, '__astrbotNativeWindowOpen', {
+      safeDefine(
+        window,
+        '__astrbotNativeWindowOpen',
+        {
           configurable: true,
           writable: false,
           enumerable: false,
           value: nativeWindowOpen,
-        });
-      } catch (error) {
-        if (error instanceof TypeError) {
-          if (devWarn) {
-            devWarn('astrbotDesktop: failed to patch window.__astrbotNativeWindowOpen', error);
-          }
-        } else {
-          throw error;
-        }
-      }
+        },
+        'window.__astrbotNativeWindowOpen',
+      );
     }
 
-    try {
-      window.open = bridgeWindowOpen;
-    } catch (error) {
-      if (error instanceof TypeError) {
-        if (devWarn) devWarn('astrbotDesktop: failed to patch window.open', error);
-      } else {
-        throw error;
-      }
-    }
+    safeAssign(window, 'open', bridgeWindowOpen, 'window.open');
   };
 
   let locationNavigationBridgeInstalled = false;
@@ -371,62 +398,14 @@
     };
 
     if (nativeAssign) {
-      try {
-        locationObject.assign = wrapMutator(nativeAssign);
-      } catch (error) {
-        if (error instanceof TypeError) {
-          if (devWarn) devWarn('astrbotDesktop: failed to patch location.assign', error);
-        } else {
-          throw error;
-        }
-      }
+      safeAssign(locationObject, 'assign', wrapMutator(nativeAssign), 'location.assign');
     }
 
     if (nativeReplace) {
-      try {
-        locationObject.replace = wrapMutator(nativeReplace);
-      } catch (error) {
-        if (error instanceof TypeError) {
-          if (devWarn) devWarn('astrbotDesktop: failed to patch location.replace', error);
-        } else {
-          throw error;
-        }
-      }
+      safeAssign(locationObject, 'replace', wrapMutator(nativeReplace), 'location.replace');
     }
 
-    const descriptor =
-      Object.getOwnPropertyDescriptor(locationObject, 'href') ||
-      Object.getOwnPropertyDescriptor(window.Location?.prototype ?? {}, 'href');
-    const nativeHrefGetter =
-      descriptor && typeof descriptor.get === 'function'
-        ? descriptor.get.bind(locationObject)
-        : null;
-    const nativeHrefSetter =
-      descriptor && typeof descriptor.set === 'function'
-        ? descriptor.set.bind(locationObject)
-        : null;
-
-    if (nativeHrefSetter) {
-      try {
-        Object.defineProperty(locationObject, 'href', {
-          configurable: true,
-          enumerable: descriptor?.enumerable ?? true,
-          get() {
-            if (nativeHrefGetter) {
-              return nativeHrefGetter();
-            }
-            return locationObject.toString();
-          },
-          set: wrapMutator(nativeHrefSetter),
-        });
-      } catch (error) {
-        if (error instanceof TypeError) {
-          if (devWarn) devWarn('astrbotDesktop: failed to patch location.href', error);
-        } else {
-          throw error;
-        }
-      }
-    }
+    patchLocationHref(locationObject, wrapMutator);
   };
 
   const RUNTIME_BRIDGE_DETAIL_MAX_LENGTH = 240;
