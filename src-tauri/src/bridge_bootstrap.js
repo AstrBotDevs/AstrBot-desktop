@@ -166,17 +166,14 @@
       console.warn(...args);
     }
   };
-  const warnPatchTypeError = (label, error) => {
-    if (!(error instanceof TypeError)) {
-      throw error;
-    }
-    devWarn(`astrbotDesktop: failed to patch ${label}`, error);
-  };
   const safePatch = (label, patchFn) => {
     try {
       patchFn();
     } catch (error) {
-      warnPatchTypeError(label, error);
+      if (!(error instanceof TypeError)) {
+        throw error;
+      }
+      devWarn(`astrbotDesktop: failed to patch ${label}`, error);
     }
   };
   const warnExternalUrlBridgeError = (phase, url, error) => {
@@ -207,10 +204,10 @@
     }
   };
 
-  const openExternalUrl = (rawUrl, { allowSameOrigin = false } = {}) => {
+  const openExternalUrl = (rawUrl) => {
     const url = normalizeExternalHttpUrl(rawUrl);
     if (!url) return false;
-    if (!allowSameOrigin && url.origin === window.location.origin) {
+    if (url.origin === window.location.origin) {
       return false;
     }
 
@@ -250,8 +247,6 @@
       return false;
     }
   };
-  const openStrictExternalUrl = (rawUrl) =>
-    openExternalUrl(rawUrl, { allowSameOrigin: false });
 
   const findAnchorFromEvent = (event) => {
     const target = event.target;
@@ -294,7 +289,7 @@
           return locationObject.toString();
         },
         set(url) {
-          if (openStrictExternalUrl(url)) {
+          if (openExternalUrl(url)) {
             return;
           }
           nativeHrefSetter(url);
@@ -344,7 +339,7 @@
         if (!anchor) return;
         if (anchor.hasAttribute('download')) return;
         const rawHref = anchor.getAttribute('href') || anchor.href || '';
-        if (!openStrictExternalUrl(rawHref)) return;
+        if (!openExternalUrl(rawHref)) return;
 
         event.preventDefault();
       },
@@ -364,7 +359,7 @@
         return null;
       }
 
-      if (openStrictExternalUrl(url)) {
+      if (openExternalUrl(url)) {
         // Lightweight window-like handle for callers that only check basic fields.
         return createWindowOpenHandle(url);
       }
@@ -405,7 +400,7 @@
     if (nativeAssign) {
       safePatch('location.assign', () => {
         locationObject.assign = (url) => {
-          if (openStrictExternalUrl(url)) {
+          if (openExternalUrl(url)) {
             return;
           }
           nativeAssign(url);
@@ -416,7 +411,7 @@
     if (nativeReplace) {
       safePatch('location.replace', () => {
         locationObject.replace = (url) => {
-          if (openStrictExternalUrl(url)) {
+          if (openExternalUrl(url)) {
             return;
           }
           nativeReplace(url);
