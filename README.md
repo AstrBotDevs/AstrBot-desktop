@@ -27,7 +27,7 @@ AstrBot 桌面应用（Tauri）。
 版本说明：
 
 - [正式版](https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest)：适合大多数用户日常使用。
-- [Nightly 版](https://github.com/AstrBotDevs/AstrBot-desktop/releases?q=nightly&expanded=true)：基于上游最新提交自动构建，适合提前体验新改动。
+- [Nightly 版](https://github.com/AstrBotDevs/AstrBot-desktop/releases/tag/nightly)：基于上游最新提交自动构建，适合提前体验新改动。
 - 下载时请按操作系统与 CPU 架构选择对应安装包。
 
 ## 开源协议
