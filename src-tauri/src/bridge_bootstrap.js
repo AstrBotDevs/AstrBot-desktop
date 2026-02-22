@@ -160,19 +160,13 @@
       process.env &&
       process.env.NODE_ENV !== 'production') ||
     (typeof __DEV__ !== 'undefined' && __DEV__ === true);
-  const devWarn =
-    IS_DEV && typeof console !== 'undefined' && typeof console.warn === 'function'
-      ? console.warn.bind(console)
-      : null;
-  const patchSafely = (label, fn) => {
-    try {
-      fn();
-    } catch (error) {
-      if (error instanceof TypeError) {
-        if (devWarn) devWarn(`astrbotDesktop: failed to patch ${label}`, error);
-        return;
-      }
+  const warnPatchTypeError = (label, error) => {
+    if (!(error instanceof TypeError)) {
       throw error;
+    }
+    if (!IS_DEV) return;
+    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+      console.warn(`astrbotDesktop: failed to patch ${label}`, error);
     }
   };
 
@@ -236,23 +230,6 @@
     }
     return null;
   };
-  const isSimplePrimaryClick = (event) => {
-    if (event.defaultPrevented || event.button !== 0) {
-      return false;
-    }
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-      return false;
-    }
-    return true;
-  };
-  const shouldOpenAnchorExternally = (anchor) => {
-    if (anchor.hasAttribute('download')) {
-      return false;
-    }
-    const rawHref = anchor.getAttribute('href') || anchor.href || '';
-    return openExternalUrl(rawHref, { allowSameOrigin: false });
-  };
-
   const patchLocationHref = (locationObject) => {
     const descriptor =
       Object.getOwnPropertyDescriptor(locationObject, 'href') ||
@@ -267,7 +244,7 @@
         : null;
     if (!nativeHrefSetter) return;
 
-    patchSafely('location.href', () => {
+    try {
       Object.defineProperty(locationObject, 'href', {
         configurable: true,
         enumerable: descriptor?.enumerable ?? true,
@@ -284,7 +261,9 @@
           nativeHrefSetter(url);
         },
       });
-    });
+    } catch (error) {
+      warnPatchTypeError('location.href', error);
+    }
   };
 
   // Best-effort fake Window-like handle for callers that only check `closed` and `location.href`.
@@ -313,11 +292,22 @@
     document.addEventListener(
       'click',
       (event) => {
-        if (!isSimplePrimaryClick(event)) return;
+        if (
+          event.defaultPrevented ||
+          event.button !== 0 ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey
+        ) {
+          return;
+        }
 
         const anchor = findAnchorFromEvent(event);
         if (!anchor) return;
-        if (!shouldOpenAnchorExternally(anchor)) return;
+        if (anchor.hasAttribute('download')) return;
+        const rawHref = anchor.getAttribute('href') || anchor.href || '';
+        if (!openExternalUrl(rawHref, { allowSameOrigin: false })) return;
 
         event.preventDefault();
       },
@@ -349,19 +339,23 @@
     };
 
     if (nativeWindowOpen) {
-      patchSafely('window.__astrbotNativeWindowOpen', () => {
+      try {
         Object.defineProperty(window, '__astrbotNativeWindowOpen', {
           configurable: true,
           writable: false,
           enumerable: false,
           value: nativeWindowOpen,
         });
-      });
+      } catch (error) {
+        warnPatchTypeError('window.__astrbotNativeWindowOpen', error);
+      }
     }
 
-    patchSafely('window.open', () => {
+    try {
       window.open = bridgeWindowOpen;
-    });
+    } catch (error) {
+      warnPatchTypeError('window.open', error);
+    }
   };
 
   const installLocationNavigationBridge = () => {
@@ -376,25 +370,29 @@
         : null;
 
     if (nativeAssign) {
-      patchSafely('location.assign', () => {
+      try {
         locationObject.assign = (url) => {
           if (openExternalUrl(url, { allowSameOrigin: false })) {
             return;
           }
           nativeAssign(url);
         };
-      });
+      } catch (error) {
+        warnPatchTypeError('location.assign', error);
+      }
     }
 
     if (nativeReplace) {
-      patchSafely('location.replace', () => {
+      try {
         locationObject.replace = (url) => {
           if (openExternalUrl(url, { allowSameOrigin: false })) {
             return;
           }
           nativeReplace(url);
         };
-      });
+      } catch (error) {
+        warnPatchTypeError('location.replace', error);
+      }
     }
 
     patchLocationHref(locationObject);
