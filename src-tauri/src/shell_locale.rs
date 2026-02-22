@@ -99,6 +99,9 @@ pub(crate) fn write_cached_shell_locale(
     packaged_root_dir: Option<&Path>,
 ) -> Result<(), String> {
     let Some(state_path) = desktop_state_path_for_locale(packaged_root_dir) else {
+        crate::append_desktop_log(
+            "shell locale state path is unavailable; skipping locale persistence",
+        );
         return Ok(());
     };
 

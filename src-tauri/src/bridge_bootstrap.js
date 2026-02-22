@@ -144,6 +144,10 @@
 
   const TOKEN_STORAGE_KEY = 'token';
   const SHELL_LOCALE_STORAGE_KEY = 'astrbot-locale';
+  const SYNCED_STORAGE_KEYS = Object.freeze([
+    TOKEN_STORAGE_KEY,
+    SHELL_LOCALE_STORAGE_KEY,
+  ]);
 
   const normalizeStoredValue = (value) =>
     typeof value === 'string' && value ? value : null;
@@ -176,8 +180,9 @@
   };
 
   const clearSyncedStorageKeys = () => {
-    void syncAuthToken(null);
-    void syncShellLocale(null);
+    SYNCED_STORAGE_KEYS.forEach((storageKey) => {
+      syncKnownStorageKey(storageKey, null);
+    });
   };
 
   const IS_DEV =
@@ -720,6 +725,7 @@
   installNavigationBridges();
   void listenToTrayRestartBackendEvent();
   patchLocalStorageTokenSync();
-  void syncAuthToken();
-  void syncShellLocale();
+  SYNCED_STORAGE_KEYS.forEach((storageKey) => {
+    syncKnownStorageKey(storageKey);
+  });
 })();
