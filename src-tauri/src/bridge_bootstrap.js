@@ -155,8 +155,33 @@
       authToken: typeof token === 'string' && token ? token : null
     });
 
+  const IS_DEV =
+    (typeof process !== 'undefined' &&
+      process.env &&
+      process.env.NODE_ENV !== 'production') ||
+    (typeof __DEV__ !== 'undefined' && __DEV__ === true);
+
+  const isDesktopBridgeEnabled = () =>
+    window.astrbotDesktop?.__tauriBridge === true &&
+    window.astrbotDesktop?.isDesktop === true &&
+    typeof window.astrbotDesktop?.openExternalUrl === 'function';
+
   const normalizeExternalHttpUrl = (rawUrl) => {
-    const normalized = (typeof rawUrl === 'string' ? rawUrl : String(rawUrl ?? '')).trim();
+    if (rawUrl instanceof URL) {
+      if (rawUrl.protocol !== 'http:' && rawUrl.protocol !== 'https:') return null;
+      return rawUrl;
+    }
+
+    const normalizedSource =
+      rawUrl == null
+        ? ''
+        : typeof rawUrl === 'string'
+        ? rawUrl
+        : typeof rawUrl.toString === 'function'
+        ? rawUrl.toString()
+        : String(rawUrl);
+
+    const normalized = normalizedSource.trim();
     if (!normalized) return null;
 
     try {
@@ -209,6 +234,7 @@
       }
     }
 
+    // Support anchors inside shadow DOM by walking the composed event path.
     if (typeof event.composedPath === 'function') {
       for (const node of event.composedPath()) {
         if (node instanceof HTMLAnchorElement && node.hasAttribute('href')) {
@@ -220,36 +246,37 @@
     return null;
   };
 
+  const warnPatchError = (label, error) => {
+    if (!IS_DEV || !(error instanceof TypeError)) return;
+    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+      console.warn(`astrbotDesktop: failed to patch ${label}`, error);
+    }
+  };
+
   const swallowPatchErrors = (label, fn) => {
     try {
       fn();
     } catch (error) {
       if (error instanceof TypeError) {
-        const isDev =
-          (typeof process !== 'undefined' &&
-            process.env &&
-            process.env.NODE_ENV !== 'production') ||
-          (typeof __DEV__ !== 'undefined' && __DEV__ === true);
-        if (isDev && typeof console !== 'undefined' && typeof console.warn === 'function') {
-          console.warn(`astrbotDesktop: failed to patch ${label}`, error);
-        }
+        warnPatchError(label, error);
         return;
       }
       throw error;
     }
   };
 
-  const overrideLocationHref = (locationObject, wrapLocationMutator) => {
-    const hrefDescriptor =
+  const installLocationHrefBridge = (wrapLocationMutator) => {
+    const locationObject = window.location;
+    const descriptor =
       Object.getOwnPropertyDescriptor(locationObject, 'href') ||
       Object.getOwnPropertyDescriptor(window.Location?.prototype ?? {}, 'href');
     const nativeHrefGetter =
-      hrefDescriptor && typeof hrefDescriptor.get === 'function'
-        ? hrefDescriptor.get.bind(locationObject)
+      descriptor && typeof descriptor.get === 'function'
+        ? descriptor.get.bind(locationObject)
         : null;
     const nativeHrefSetter =
-      hrefDescriptor && typeof hrefDescriptor.set === 'function'
-        ? hrefDescriptor.set.bind(locationObject)
+      descriptor && typeof descriptor.set === 'function'
+        ? descriptor.set.bind(locationObject)
         : null;
 
     if (!nativeHrefSetter) return;
@@ -257,7 +284,7 @@
     swallowPatchErrors('location.href', () => {
       Object.defineProperty(locationObject, 'href', {
         configurable: true,
-        enumerable: hrefDescriptor?.enumerable ?? true,
+        enumerable: descriptor?.enumerable ?? true,
         get() {
           if (nativeHrefGetter) {
             return nativeHrefGetter();
@@ -272,6 +299,7 @@
   let externalAnchorInterceptorInstalled = false;
   const installExternalAnchorInterceptor = () => {
     if (externalAnchorInterceptorInstalled) return;
+    if (!isDesktopBridgeEnabled()) return;
     externalAnchorInterceptorInstalled = true;
     document.addEventListener(
       'click',
@@ -304,6 +332,7 @@
   let windowOpenBridgeInstalled = false;
   const installWindowOpenBridge = () => {
     if (windowOpenBridgeInstalled) return;
+    if (!isDesktopBridgeEnabled()) return;
     windowOpenBridgeInstalled = true;
     const nativeWindowOpen =
       typeof window.open === 'function' ? window.open.bind(window) : null;
@@ -314,6 +343,7 @@
         href: String(url ?? ''),
         assign: () => {},
         replace: () => {},
+        reload: () => {},
       };
       return {
         get closed() {
@@ -328,6 +358,10 @@
         focus: () => {},
         blur: () => {},
         postMessage: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+        document: null,
         location: locationProxy,
         opener: null,
       };
@@ -371,6 +405,7 @@
   let locationNavigationBridgeInstalled = false;
   const installLocationNavigationBridge = () => {
     if (locationNavigationBridgeInstalled) return;
+    if (!isDesktopBridgeEnabled()) return;
     locationNavigationBridgeInstalled = true;
     const locationObject = window.location;
     const nativeAssign =
@@ -401,7 +436,7 @@
       });
     }
 
-    overrideLocationHref(locationObject, wrapLocationMutator);
+    installLocationHrefBridge(wrapLocationMutator);
   };
 
   const RUNTIME_BRIDGE_DETAIL_MAX_LENGTH = 240;
