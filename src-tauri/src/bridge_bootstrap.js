@@ -160,30 +160,25 @@
       process.env &&
       process.env.NODE_ENV !== 'production') ||
     (typeof __DEV__ !== 'undefined' && __DEV__ === true);
+  const devWarn = (...args) => {
+    if (!IS_DEV) return;
+    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+      console.warn(...args);
+    }
+  };
   const warnPatchTypeError = (label, error) => {
     if (!(error instanceof TypeError)) {
       throw error;
     }
-    if (!IS_DEV) return;
-    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
-      console.warn(`astrbotDesktop: failed to patch ${label}`, error);
-    }
+    devWarn(`astrbotDesktop: failed to patch ${label}`, error);
   };
   const warnExternalUrlBridgeError = (phase, url, error) => {
-    if (!IS_DEV) return;
-    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
-      console.warn('[astrbotDesktop] openExternalUrl bridge failure', {
-        phase,
-        url,
-        error,
-      });
-    }
+    devWarn('[astrbotDesktop] openExternalUrl bridge failure', {
+      phase,
+      url,
+      error,
+    });
   };
-  const isBridgeFailureResult = (result) =>
-    !!result &&
-    typeof result === 'object' &&
-    Object.prototype.hasOwnProperty.call(result, 'ok') &&
-    result.ok === false;
 
   const normalizeExternalHttpUrl = (rawUrl) => {
     if (rawUrl instanceof URL) {
@@ -218,6 +213,11 @@
         : null;
     if (!bridgeOpenExternalUrl) return false;
     const href = url.toString();
+    const isBridgeFailureResult = (result) =>
+      !!result &&
+      typeof result === 'object' &&
+      Object.prototype.hasOwnProperty.call(result, 'ok') &&
+      result.ok === false;
 
     try {
       const bridgeResult = bridgeOpenExternalUrl(href);

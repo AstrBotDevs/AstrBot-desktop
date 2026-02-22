@@ -13,7 +13,8 @@ const GIT_COMMIT_SHA_PATTERN = /^[0-9a-f]{12,64}$/i;
 const VERSION_TAG_REF_PATTERN = /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 
 const shouldForceSourceCheckout = () => {
-  if (String(process.env.CI || '').trim().toLowerCase() === 'true') {
+  const rawCi = String(process.env.CI || '').trim().toLowerCase();
+  if (SOURCE_FORCE_CHECKOUT_TRUTHY.has(rawCi)) {
     return true;
   }
   const raw = String(process.env.ASTRBOT_SOURCE_FORCE_CHECKOUT || '')
