@@ -22,14 +22,12 @@ AstrBot 桌面应用（Tauri）。
 
 ## 一键安装（推荐）
 
-如果你只想使用软件，不需要本地构建，请直接从 Releases 下载对应系统的安装包：
+如果你只想使用软件，不需要本地构建，可按版本类型直接下载：
 
-[`Releases`](https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest)
+Release 版本说明：
 
-Release 版本说明（简要）：
-
-- 稳定版（正式版）：标签通常为 `vX.Y.Z`，适合大多数用户日常使用。
-- Nightly 预发布版：标签通常为 `vX.Y.Z-nightly.YYYYMMDD.<short_sha>`，基于上游最新提交自动构建，适合提前体验新改动。
+- 正式版：[`最新稳定版 Release`](https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest)，适合大多数用户日常使用。
+- Nightly 版：[`Nightly 预发布列表`](https://github.com/AstrBotDevs/AstrBot-desktop/releases?q=nightly&expanded=true)，基于上游最新提交自动构建，适合提前体验新改动。
 - 下载时请按操作系统与 CPU 架构选择对应安装包。
 
 ## 开源协议
