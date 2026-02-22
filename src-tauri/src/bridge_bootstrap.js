@@ -164,20 +164,9 @@
     IS_DEV && typeof console !== 'undefined' && typeof console.warn === 'function'
       ? console.warn.bind(console)
       : null;
-  const safeDefine = (obj, key, descriptor, label) => {
+  const patchSafely = (label, fn) => {
     try {
-      Object.defineProperty(obj, key, descriptor);
-    } catch (error) {
-      if (error instanceof TypeError) {
-        if (devWarn) devWarn(`astrbotDesktop: failed to patch ${label}`, error);
-        return;
-      }
-      throw error;
-    }
-  };
-  const safeAssign = (obj, key, value, label) => {
-    try {
-      obj[key] = value;
+      fn();
     } catch (error) {
       if (error instanceof TypeError) {
         if (devWarn) devWarn(`astrbotDesktop: failed to patch ${label}`, error);
@@ -264,7 +253,7 @@
     return openExternalUrl(rawHref, { allowSameOrigin: false });
   };
 
-  const patchLocationHref = (locationObject, wrapMutatorFn) => {
+  const patchLocationHref = (locationObject) => {
     const descriptor =
       Object.getOwnPropertyDescriptor(locationObject, 'href') ||
       Object.getOwnPropertyDescriptor(window.Location?.prototype ?? {}, 'href');
@@ -278,10 +267,8 @@
         : null;
     if (!nativeHrefSetter) return;
 
-    safeDefine(
-      locationObject,
-      'href',
-      {
+    patchSafely('location.href', () => {
+      Object.defineProperty(locationObject, 'href', {
         configurable: true,
         enumerable: descriptor?.enumerable ?? true,
         get() {
@@ -290,10 +277,14 @@
           }
           return locationObject.toString();
         },
-        set: wrapMutatorFn(nativeHrefSetter),
-      },
-      'location.href',
-    );
+        set(url) {
+          if (openExternalUrl(url, { allowSameOrigin: false })) {
+            return;
+          }
+          nativeHrefSetter(url);
+        },
+      });
+    });
   };
 
   // Best-effort fake Window-like handle for callers that only check `closed` and `location.href`.
@@ -358,20 +349,19 @@
     };
 
     if (nativeWindowOpen) {
-      safeDefine(
-        window,
-        '__astrbotNativeWindowOpen',
-        {
+      patchSafely('window.__astrbotNativeWindowOpen', () => {
+        Object.defineProperty(window, '__astrbotNativeWindowOpen', {
           configurable: true,
           writable: false,
           enumerable: false,
           value: nativeWindowOpen,
-        },
-        'window.__astrbotNativeWindowOpen',
-      );
+        });
+      });
     }
 
-    safeAssign(window, 'open', bridgeWindowOpen, 'window.open');
+    patchSafely('window.open', () => {
+      window.open = bridgeWindowOpen;
+    });
   };
 
   const installLocationNavigationBridge = () => {
@@ -385,22 +375,29 @@
         ? locationObject.replace.bind(locationObject)
         : null;
 
-    const wrapMutator = (nativeFn) => (url) => {
-      if (openExternalUrl(url, { allowSameOrigin: false })) {
-        return;
-      }
-      nativeFn(url);
-    };
-
     if (nativeAssign) {
-      safeAssign(locationObject, 'assign', wrapMutator(nativeAssign), 'location.assign');
+      patchSafely('location.assign', () => {
+        locationObject.assign = (url) => {
+          if (openExternalUrl(url, { allowSameOrigin: false })) {
+            return;
+          }
+          nativeAssign(url);
+        };
+      });
     }
 
     if (nativeReplace) {
-      safeAssign(locationObject, 'replace', wrapMutator(nativeReplace), 'location.replace');
+      patchSafely('location.replace', () => {
+        locationObject.replace = (url) => {
+          if (openExternalUrl(url, { allowSameOrigin: false })) {
+            return;
+          }
+          nativeReplace(url);
+        };
+      });
     }
 
-    patchLocationHref(locationObject, wrapMutator);
+    patchLocationHref(locationObject);
   };
   let navigationBridgesInstalled = false;
   const installNavigationBridges = () => {
