@@ -155,6 +155,12 @@
       authToken: typeof token === 'string' && token ? token : null
     });
 
+  const bridgeRuntimeState =
+    window.__astrbotDesktopBridgeRuntimeState &&
+    typeof window.__astrbotDesktopBridgeRuntimeState === 'object'
+      ? window.__astrbotDesktopBridgeRuntimeState
+      : (window.__astrbotDesktopBridgeRuntimeState = {});
+
   const EXTERNAL_HTTP_PROTOCOLS = new Set(['http:', 'https:']);
 
   const resolveExternalHttpUrl = (rawHref, allowSameOrigin = false) => {
@@ -187,11 +193,58 @@
     return true;
   };
 
+  const openExternalUrlForAnchor = (anchor) => {
+    const rawHref = anchor.getAttribute('href') || anchor.href || '';
+    const allowSameOrigin = anchor.target === '_blank';
+    return openExternalHttpUrl(rawHref, allowSameOrigin);
+  };
+
+  const openExternalUrlForNavigation = (url) => openExternalHttpUrl(url, true);
+
+  const findAnchorFromEvent = (event) => {
+    if (event.target instanceof Element) {
+      const direct = event.target.closest('a[href]');
+      if (direct instanceof HTMLAnchorElement) {
+        return direct;
+      }
+    }
+
+    // Fallback path: composedPath handles shadow DOM and portaled nodes.
+    const eventPath = typeof event.composedPath === 'function' ? event.composedPath() : [];
+    for (const node of eventPath) {
+      if (node instanceof HTMLAnchorElement) {
+        return node;
+      }
+      if (node instanceof Element) {
+        const candidate = node.closest?.('a[href]');
+        if (candidate instanceof HTMLAnchorElement) {
+          return candidate;
+        }
+      }
+    }
+    return null;
+  };
+
+  const safeMethod = (obj, name) =>
+    typeof obj?.[name] === 'function' ? obj[name].bind(obj) : null;
+
+  const getPropertyDescriptor = (obj, propName) => {
+    let cursor = obj;
+    while (cursor) {
+      const descriptor = Object.getOwnPropertyDescriptor(cursor, propName);
+      if (descriptor) {
+        return descriptor;
+      }
+      cursor = Object.getPrototypeOf(cursor);
+    }
+    return null;
+  };
+
   const installExternalAnchorInterceptor = () => {
-    if (window.__astrbotDesktopExternalAnchorInterceptorInstalled) {
+    if (bridgeRuntimeState.externalAnchorInterceptorInstalled) {
       return;
     }
-    window.__astrbotDesktopExternalAnchorInterceptorInstalled = true;
+    bridgeRuntimeState.externalAnchorInterceptorInstalled = true;
 
     document.addEventListener(
       'click',
@@ -203,38 +256,15 @@
           return;
         }
 
-        const eventPath =
-          typeof event.composedPath === 'function' ? event.composedPath() : [];
-        let anchor = null;
-        for (const node of eventPath) {
-          if (node instanceof HTMLAnchorElement) {
-            anchor = node;
-            break;
-          }
-          if (node instanceof Element) {
-            const candidate = node.closest?.('a[href]');
-            if (candidate instanceof HTMLAnchorElement) {
-              anchor = candidate;
-              break;
-            }
-          }
-        }
-        if (!anchor && event.target instanceof Element) {
-          const candidate = event.target.closest('a[href]');
-          if (candidate instanceof HTMLAnchorElement) {
-            anchor = candidate;
-          }
-        }
-        if (!(anchor instanceof HTMLAnchorElement)) {
+        const anchor = findAnchorFromEvent(event);
+        if (!anchor || !(anchor instanceof HTMLAnchorElement)) {
           return;
         }
         if (anchor.hasAttribute('download')) {
           return;
         }
 
-        const rawHref = anchor.getAttribute('href') || anchor.href || '';
-        const allowSameOrigin = anchor.target === '_blank';
-        if (!openExternalHttpUrl(rawHref, allowSameOrigin)) {
+        if (!openExternalUrlForAnchor(anchor)) {
           return;
         }
 
@@ -245,13 +275,12 @@
   };
 
   const installWindowOpenBridge = () => {
-    if (window.__astrbotDesktopWindowOpenPatched) {
+    if (bridgeRuntimeState.windowOpenPatched) {
       return;
     }
-    window.__astrbotDesktopWindowOpenPatched = true;
+    bridgeRuntimeState.windowOpenPatched = true;
 
-    const nativeWindowOpen =
-      typeof window.open === 'function' ? window.open.bind(window) : null;
+    const nativeWindowOpen = safeMethod(window, 'open');
 
     const bridgeWindowOpen = (url, target, features) => {
       if (target === '_self' || target === '_top' || target === '_parent') {
@@ -261,7 +290,7 @@
         return null;
       }
 
-      if (openExternalHttpUrl(url, true)) {
+      if (openExternalUrlForNavigation(url)) {
         // Return a truthy window-like object so callers that treat null as blocked
         // do not trigger extra fallback navigation.
         return {
@@ -284,25 +313,19 @@
   };
 
   const installLocationNavigationBridge = () => {
-    if (window.__astrbotDesktopLocationBridgeInstalled) {
+    if (bridgeRuntimeState.locationNavigationBridgeInstalled) {
       return;
     }
-    window.__astrbotDesktopLocationBridgeInstalled = true;
+    bridgeRuntimeState.locationNavigationBridgeInstalled = true;
 
     const locationObject = window.location;
-    const nativeAssign =
-      typeof locationObject?.assign === 'function'
-        ? locationObject.assign.bind(locationObject)
-        : null;
-    const nativeReplace =
-      typeof locationObject?.replace === 'function'
-        ? locationObject.replace.bind(locationObject)
-        : null;
+    const nativeAssign = safeMethod(locationObject, 'assign');
+    const nativeReplace = safeMethod(locationObject, 'replace');
 
     if (nativeAssign) {
       try {
         locationObject.assign = (url) => {
-          if (openExternalHttpUrl(url, true)) {
+          if (openExternalUrlForNavigation(url)) {
             return;
           }
           nativeAssign(url);
@@ -313,11 +336,42 @@
     if (nativeReplace) {
       try {
         locationObject.replace = (url) => {
-          if (openExternalHttpUrl(url, true)) {
+          if (openExternalUrlForNavigation(url)) {
             return;
           }
           nativeReplace(url);
         };
+      } catch {}
+    }
+
+    const hrefDescriptor = getPropertyDescriptor(locationObject, 'href');
+    const nativeHrefGetter =
+      hrefDescriptor && typeof hrefDescriptor.get === 'function'
+        ? hrefDescriptor.get.bind(locationObject)
+        : null;
+    const nativeHrefSetter =
+      hrefDescriptor && typeof hrefDescriptor.set === 'function'
+        ? hrefDescriptor.set.bind(locationObject)
+        : null;
+
+    if (nativeHrefSetter) {
+      try {
+        Object.defineProperty(locationObject, 'href', {
+          configurable: true,
+          enumerable: hrefDescriptor?.enumerable ?? true,
+          get() {
+            if (nativeHrefGetter) {
+              return nativeHrefGetter();
+            }
+            return locationObject.toString();
+          },
+          set(url) {
+            if (openExternalUrlForNavigation(url)) {
+              return;
+            }
+            nativeHrefSetter(url);
+          },
+        });
       } catch {}
     }
   };
@@ -525,8 +579,8 @@
   const patchLocalStorageTokenSync = () => {
     try {
       const storage = window.localStorage;
-      if (!storage || window.__astrbotDesktopTokenSyncPatched) return;
-      window.__astrbotDesktopTokenSyncPatched = true;
+      if (!storage || bridgeRuntimeState.localStorageTokenSyncPatched) return;
+      bridgeRuntimeState.localStorageTokenSyncPatched = true;
 
       const rawSetItem = storage.setItem?.bind(storage);
       const rawRemoveItem = storage.removeItem?.bind(storage);
