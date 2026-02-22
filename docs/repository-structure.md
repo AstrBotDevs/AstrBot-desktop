@@ -127,26 +127,12 @@
   - 文件组织说明（本文档）。
 - `environment-variables.md`
   - 环境变量单一来源文档。
-- `refactor-plan.md`
-  - 重构归档文档（阅读/存档用途）。
-- `refactor-phase2-plan.md`
-  - Phase 2 重构计划文档（执行参考 + 归档记录）。
-- `refactor-phase3-plan.md`
-  - Phase 3 重构计划文档（执行参考 + 归档记录）。
-- `refactor-phase4-plan.md`
-  - Phase 4 重构计划文档（执行参考 + 归档记录）。
-- `refactor-phase5-plan.md`
-  - Phase 5 重构计划文档（执行参考 + 归档记录）。
-- `refactor-phase6-plan.md`
-  - Phase 6 重构计划文档（执行参考 + 归档记录）。
-- `refactor-phase7-plan.md`
-  - Phase 7 重构计划文档（执行参考 + 归档记录）。
-- `refactor-phase8-plan.md`
-  - Phase 8 重构计划文档（执行参考 + 归档记录）。
-- `refactor-phase9-plan.md`
-  - Phase 9 重构计划文档（执行参考 + 归档记录）。
-- `refactor-phase10-plan.md`
-  - Phase 10 重构计划文档（执行参考 + 归档记录）。
+- `refactor/`
+  - 重构文档子目录（阅读/存档用途）。
+- `refactor/refactor-plan.md`
+  - 重构总计划归档文档。
+- `refactor/refactor-phase2-plan.md` ~ `refactor/refactor-phase10-plan.md`
+  - 分阶段重构计划文档（执行参考 + 归档记录）。
 
 ## 5. 新增代码落位规则
 
