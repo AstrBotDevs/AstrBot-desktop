@@ -247,6 +247,22 @@
     }
     return null;
   };
+  const isSimplePrimaryClick = (event) => {
+    if (event.defaultPrevented || event.button !== 0) {
+      return false;
+    }
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return false;
+    }
+    return true;
+  };
+  const shouldOpenAnchorExternally = (anchor) => {
+    if (anchor.hasAttribute('download')) {
+      return false;
+    }
+    const rawHref = anchor.getAttribute('href') || anchor.href || '';
+    return openExternalUrl(rawHref, { allowSameOrigin: false });
+  };
 
   const patchLocationHref = (locationObject, wrapMutatorFn) => {
     const descriptor =
@@ -302,30 +318,15 @@
     };
   };
 
-  let externalAnchorInterceptorInstalled = false;
   const installExternalAnchorInterceptor = () => {
-    if (externalAnchorInterceptorInstalled) return;
-    externalAnchorInterceptorInstalled = true;
     document.addEventListener(
       'click',
       (event) => {
-        if (event.defaultPrevented || event.button !== 0) {
-          return;
-        }
-        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-          return;
-        }
+        if (!isSimplePrimaryClick(event)) return;
 
         const anchor = findAnchorFromEvent(event);
         if (!anchor) return;
-        if (anchor.hasAttribute('download')) {
-          return;
-        }
-
-        const rawHref = anchor.getAttribute('href') || anchor.href || '';
-        if (!openExternalUrl(rawHref, { allowSameOrigin: false })) {
-          return;
-        }
+        if (!shouldOpenAnchorExternally(anchor)) return;
 
         event.preventDefault();
       },
@@ -333,10 +334,7 @@
     );
   };
 
-  let windowOpenBridgeInstalled = false;
   const installWindowOpenBridge = () => {
-    if (windowOpenBridgeInstalled) return;
-    windowOpenBridgeInstalled = true;
     const nativeWindowOpen =
       typeof window.open === 'function' ? window.open.bind(window) : null;
 
@@ -376,10 +374,7 @@
     safeAssign(window, 'open', bridgeWindowOpen, 'window.open');
   };
 
-  let locationNavigationBridgeInstalled = false;
   const installLocationNavigationBridge = () => {
-    if (locationNavigationBridgeInstalled) return;
-    locationNavigationBridgeInstalled = true;
     const locationObject = window.location;
     const nativeAssign =
       typeof locationObject.assign === 'function'
@@ -406,6 +401,14 @@
     }
 
     patchLocationHref(locationObject, wrapMutator);
+  };
+  let navigationBridgesInstalled = false;
+  const installNavigationBridges = () => {
+    if (navigationBridgesInstalled) return;
+    navigationBridgesInstalled = true;
+    installWindowOpenBridge();
+    installExternalAnchorInterceptor();
+    installLocationNavigationBridge();
   };
 
   const RUNTIME_BRIDGE_DETAIL_MAX_LENGTH = 240;
@@ -610,10 +613,10 @@
 
   const patchLocalStorageTokenSync = () => {
     if (window.__astrbotDesktopTokenSyncPatched) return;
-    window.__astrbotDesktopTokenSyncPatched = true;
     try {
       const storage = window.localStorage;
       if (!storage) return;
+      window.__astrbotDesktopTokenSyncPatched = true;
 
       const rawSetItem = storage.setItem?.bind(storage);
       const rawRemoveItem = storage.removeItem?.bind(storage);
@@ -674,9 +677,7 @@
     onTrayRestartBackend,
   };
 
-  installWindowOpenBridge();
-  installExternalAnchorInterceptor();
-  installLocationNavigationBridge();
+  installNavigationBridges();
   void listenToTrayRestartBackendEvent();
   patchLocalStorageTokenSync();
   void syncAuthToken();
