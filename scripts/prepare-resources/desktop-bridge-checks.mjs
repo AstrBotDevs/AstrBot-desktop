@@ -122,6 +122,56 @@ export const patchMonacoCssNestingWarnings = async ({ dashboardDir, projectRoot 
   }
 };
 
+export const patchDesktopReleaseRedirectBehavior = async ({ dashboardDir, projectRoot }) => {
+  const headerFile = path.join(
+    dashboardDir,
+    'src',
+    'layouts',
+    'full',
+    'vertical-header',
+    'VerticalHeader.vue',
+  );
+  if (!existsSync(headerFile)) {
+    return;
+  }
+
+  const source = await readFile(headerFile, 'utf8');
+  let patched = source;
+
+  patched = patched.replace(
+    /const fallbackReleaseUrl = desktopReleaseBaseUrl;/,
+    "const fallbackReleaseUrl = `${desktopReleaseBaseUrl}/latest`;",
+  );
+
+  patched = patched.replace(
+    /const open = \(link: string\) => \{\s*window\.open\(link, '_blank'\);\s*\};/m,
+    `const open = (link: string) => {
+  if (!link) return;
+  const opened = window.open(link, '_blank', 'noopener,noreferrer');
+  if (!opened) {
+    window.location.assign(link);
+  }
+};`,
+  );
+
+  patched = patched.replace(
+    /if \(isDesktopReleaseMode\.value\) \{\s*requestExternalRedirect\(''\);\s*resolvingReleaseTarget\.value = true;\s*checkUpdate\(\);\s*void getReleases\(\)\.finally\(\(\) => \{\s*pendingRedirectUrl\.value = getReleaseUrlForDesktop\(\) \|\| fallbackReleaseUrl;\s*resolvingReleaseTarget\.value = false;\s*\}\);\s*return;\s*\}/m,
+    `if (isDesktopReleaseMode.value) {
+    pendingRedirectUrl.value = fallbackReleaseUrl;
+    resolvingReleaseTarget.value = false;
+    requestExternalRedirect(pendingRedirectUrl.value);
+    return;
+  }`,
+  );
+
+  if (patched !== source) {
+    await writeFile(headerFile, patched, 'utf8');
+    console.log(
+      `[prepare-resources] Patched desktop release redirect behavior in ${path.relative(projectRoot, headerFile)}`,
+    );
+  }
+};
+
 export const verifyDesktopBridgeArtifacts = async ({
   dashboardDir,
   projectRoot,
