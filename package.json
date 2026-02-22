@@ -6,6 +6,7 @@
   "packageManager": "pnpm@10.28.2",
   "scripts": {
     "sync:version": "node scripts/prepare-resources.mjs version",
+    "test:prepare-resources": "node --test \"scripts/**/*.test.mjs\"",
     "prepare:webui": "node scripts/prepare-resources.mjs webui",
     "prepare:backend": "node scripts/prepare-resources.mjs backend",
     "prepare:resources": "pnpm run prepare:webui && pnpm run prepare:backend",

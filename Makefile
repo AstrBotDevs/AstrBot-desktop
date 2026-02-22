@@ -40,7 +40,7 @@ help:
 	@echo "                          (set ASTRBOT_SOURCE_DIR=... or ASTRBOT_BUILD_SOURCE_DIR=...)"
 	@echo "  make rebuild            Clean and build"
 	@echo "  make lint               Run formatting and clippy checks"
-	@echo "  make test               Run Rust tests"
+	@echo "  make test               Run Rust + script behavior tests"
 	@echo "  make doctor             Show local toolchain versions"
 	@echo "  make prune              Remove heavy local runtime caches"
 	@echo ""
@@ -112,6 +112,11 @@ lint:
 
 test:
 	cargo test --manifest-path $(RUST_MANIFEST) --locked
+	@if command -v pnpm >/dev/null 2>&1; then \
+		pnpm run test:prepare-resources; \
+	else \
+		echo "pnpm is not installed; skipping script behavior tests (run 'pnpm run test:prepare-resources' when pnpm is available)."; \
+	fi
 
 doctor:
 	@echo "node:  $$(node -v)"

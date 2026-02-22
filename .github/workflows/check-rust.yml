@@ -94,6 +94,10 @@ jobs:
         if: steps.detect-tauri.outputs.has_tauri == 'true'
         run: cargo check --manifest-path src-tauri/Cargo.toml --locked
 
+      - name: cargo test
+        if: steps.detect-tauri.outputs.has_tauri == 'true'
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked -- --nocapture
+
       - name: Skip notice
         if: steps.detect-tauri.outputs.has_tauri != 'true'
         run: echo "Rust checks skipped because src-tauri crate files are missing."

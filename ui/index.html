@@ -151,7 +151,7 @@
         const status = document.getElementById("startup-status");
         if (!title || !desc || !status) return;
 
-        // Keep in sync with STARTUP_MODE_* in src-tauri/src/main.rs.
+        // Keep in sync with startup mode constants in src-tauri/src/startup_mode.rs.
         const STARTUP_MODES = Object.freeze({
           LOADING: "loading",
           PANEL_UPDATE: "panel-update",
