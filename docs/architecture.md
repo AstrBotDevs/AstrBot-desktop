@@ -213,6 +213,14 @@ desktop bridge 模块：
 - 主窗口动作与 tray label 刷新联动
 - 主窗口可见性判定日志收敛
 
+### 2.25 `src-tauri/src/tray_setup.rs`
+
+托盘初始化模块：
+
+- tray 菜单项构建与状态注册
+- tray icon 事件绑定
+- tray setup 失败错误收敛
+
 ## 3. 关键流程
 
 ### 3.1 启动流程

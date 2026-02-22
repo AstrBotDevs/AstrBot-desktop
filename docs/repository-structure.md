@@ -67,6 +67,8 @@
   - 托盘菜单事件动作分发与重启链路处理。
 - `window_actions.rs`
   - 主窗口动作与托盘文案刷新联动封装。
+- `tray_setup.rs`
+  - 托盘初始化、菜单构建与事件绑定。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 
