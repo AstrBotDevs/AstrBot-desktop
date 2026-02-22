@@ -180,6 +180,14 @@ desktop bridge 模块：
 - 主窗口可见性与 toggle 文案联动
 - `set_text` 失败日志收敛
 
+### 2.21 `src-tauri/src/exit_cleanup.rs`
+
+退出清理模块：
+
+- 退出清理并发判定
+- ExitRequested/Exit fallback 分支日志语义
+- backend stop 后续退出放行日志
+
 ## 3. 关键流程
 
 ### 3.1 启动流程

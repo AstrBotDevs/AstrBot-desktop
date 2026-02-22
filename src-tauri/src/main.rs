@@ -3,6 +3,7 @@
 mod backend_config;
 mod backend_path;
 mod desktop_bridge;
+mod exit_cleanup;
 mod exit_state;
 mod http_response;
 mod logging;
@@ -142,12 +143,6 @@ enum RestartStrategy {
     ManagedSkipGraceful,
     ManagedWithGracefulFallback,
     UnmanagedWithGracefulProbe,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum ExitTrigger {
-    ExitRequested,
-    ExitFallback,
 }
 
 #[derive(Debug)]
@@ -1409,7 +1404,11 @@ fn main() {
                 // Prevent immediate process exit so backend shutdown can run in the runtime's
                 // blocking pool; we exit explicitly after stop_backend() finishes.
                 api.prevent_exit();
-                if !try_begin_exit_cleanup(&state, ExitTrigger::ExitRequested) {
+                if !exit_cleanup::try_begin_exit_cleanup(
+                    &state,
+                    exit_cleanup::ExitTrigger::ExitRequested,
+                    append_shutdown_log,
+                ) {
                     return;
                 }
 
@@ -1417,19 +1416,31 @@ fn main() {
                 let app_handle_cloned = app_handle.clone();
                 tauri::async_runtime::spawn_blocking(move || {
                     let state = app_handle_cloned.state::<BackendState>();
-                    stop_backend_for_exit(&state, ExitTrigger::ExitRequested);
+                    exit_cleanup::stop_backend_for_exit(
+                        &state,
+                        exit_cleanup::ExitTrigger::ExitRequested,
+                        append_shutdown_log,
+                    );
                     state.allow_next_exit_request();
                     app_handle_cloned.exit(0);
                 });
             }
             RunEvent::Exit => {
                 let state = app_handle.state::<BackendState>();
-                if !try_begin_exit_cleanup(&state, ExitTrigger::ExitFallback) {
+                if !exit_cleanup::try_begin_exit_cleanup(
+                    &state,
+                    exit_cleanup::ExitTrigger::ExitFallback,
+                    append_shutdown_log,
+                ) {
                     return;
                 }
 
                 append_shutdown_log("exit event triggered fallback backend cleanup");
-                stop_backend_for_exit(&state, ExitTrigger::ExitFallback);
+                exit_cleanup::stop_backend_for_exit(
+                    &state,
+                    exit_cleanup::ExitTrigger::ExitFallback,
+                    append_shutdown_log,
+                );
             }
             _ => {}
         });
@@ -1787,33 +1798,4 @@ fn append_desktop_log_with_category(category: logging::DesktopLogCategory, messa
         LOG_BACKUP_COUNT,
         &DESKTOP_LOG_WRITE_LOCK,
     )
-}
-
-fn try_begin_exit_cleanup(state: &BackendState, trigger: ExitTrigger) -> bool {
-    if state.try_begin_exit_cleanup() {
-        return true;
-    }
-
-    let message = match trigger {
-        ExitTrigger::ExitRequested => "exit requested while backend cleanup is already running",
-        ExitTrigger::ExitFallback => {
-            "exit fallback cleanup skipped: backend cleanup already running"
-        }
-    };
-    append_shutdown_log(message);
-    false
-}
-
-fn stop_backend_for_exit(state: &BackendState, trigger: ExitTrigger) {
-    let stop_failure_prefix = match trigger {
-        ExitTrigger::ExitRequested => "backend graceful stop on ExitRequested failed",
-        ExitTrigger::ExitFallback => "backend fallback stop on Exit failed",
-    };
-    if let Err(error) = state.stop_backend() {
-        append_shutdown_log(&format!("{stop_failure_prefix}: {error}"));
-    }
-
-    if matches!(trigger, ExitTrigger::ExitRequested) {
-        append_shutdown_log("backend stop finished, exiting desktop process");
-    }
 }

@@ -59,6 +59,8 @@
   - desktop bridge bootstrap 组装与注入执行。
 - `tray_labels.rs`
   - 托盘菜单文案刷新与安全更新封装。
+- `exit_cleanup.rs`
+  - ExitRequested/Exit 清理流程与 stop-backend 分支封装。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 
@@ -93,6 +95,8 @@
   - Phase 2 重构计划文档（执行参考 + 归档记录）。
 - `refactor-phase3-plan.md`
   - Phase 3 重构计划文档（执行参考 + 归档记录）。
+- `refactor-phase4-plan.md`
+  - Phase 4 重构计划文档（执行参考 + 归档记录）。
 
 ## 5. 新增代码落位规则
 
