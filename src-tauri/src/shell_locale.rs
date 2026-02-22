@@ -113,7 +113,13 @@ pub(crate) fn write_cached_shell_locale(
     }
 
     let mut parsed = match fs::read_to_string(&state_path) {
-        Ok(raw) => serde_json::from_str::<Value>(&raw).unwrap_or(Value::Object(Map::new())),
+        Ok(raw) => serde_json::from_str::<Value>(&raw).map_err(|error| {
+            format!(
+                "Failed to parse shell locale state {}: {}",
+                state_path.display(),
+                error
+            )
+        })?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Value::Object(Map::new()),
         Err(error) => {
             return Err(format!(
@@ -123,19 +129,20 @@ pub(crate) fn write_cached_shell_locale(
             ));
         }
     };
-    if !parsed.is_object() {
-        parsed = Value::Object(Map::new());
-    }
+    let Some(object) = parsed.as_object_mut() else {
+        return Err(format!(
+            "Failed to parse shell locale state {}: expected JSON object at root",
+            state_path.display()
+        ));
+    };
 
-    if let Some(object) = parsed.as_object_mut() {
-        if let Some(normalized_locale) = locale.and_then(normalize_shell_locale) {
-            object.insert(
-                "locale".to_string(),
-                Value::String(normalized_locale.to_string()),
-            );
-        } else {
-            object.remove("locale");
-        }
+    if let Some(normalized_locale) = locale.and_then(normalize_shell_locale) {
+        object.insert(
+            "locale".to_string(),
+            Value::String(normalized_locale.to_string()),
+        );
+    } else {
+        object.remove("locale");
     }
 
     let serialized = serde_json::to_string_pretty(&parsed)

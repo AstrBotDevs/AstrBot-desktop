@@ -158,25 +158,26 @@
 
   const getStoredAuthToken = () => getStoredValue(TOKEN_STORAGE_KEY);
 
-  const makeSyncFn = (storageKey, command, payloadKey) =>
-    (value = getStoredValue(storageKey)) =>
-      invokeBridge(command, {
-        [payloadKey]: normalizeStoredValue(value),
-      });
+  const syncAuthToken = (value = getStoredAuthToken()) =>
+    invokeBridge(BRIDGE_COMMANDS.SET_AUTH_TOKEN, {
+      authToken: normalizeStoredValue(value),
+    });
+  const syncShellLocale = (value = getStoredValue(SHELL_LOCALE_STORAGE_KEY)) =>
+    invokeBridge(BRIDGE_COMMANDS.SET_SHELL_LOCALE, {
+      locale: normalizeStoredValue(value),
+    });
 
-  const syncAuthToken = makeSyncFn(
-    TOKEN_STORAGE_KEY,
-    BRIDGE_COMMANDS.SET_AUTH_TOKEN,
-    'authToken',
-  );
-  const syncShellLocale = makeSyncFn(
-    SHELL_LOCALE_STORAGE_KEY,
-    BRIDGE_COMMANDS.SET_SHELL_LOCALE,
-    'locale',
-  );
-  const SYNCED_STORAGE_KEYS = Object.freeze({
-    [TOKEN_STORAGE_KEY]: syncAuthToken,
-    [SHELL_LOCALE_STORAGE_KEY]: syncShellLocale,
+  const syncKnownStorageKey = (key, value) => {
+    if (key === TOKEN_STORAGE_KEY) {
+      void syncAuthToken(value);
+    } else if (key === SHELL_LOCALE_STORAGE_KEY) {
+      void syncShellLocale(value);
+    }
+  };
+
+  const clearSyncedStorageKeys = () => {
+    void syncAuthToken(null);
+    void syncShellLocale(null);
   });
 
   const IS_DEV =
@@ -668,27 +669,19 @@
       if (typeof rawSetItem === 'function') {
         storage.setItem = (key, value) => {
           rawSetItem(key, value);
-          const sync = SYNCED_STORAGE_KEYS[key];
-          if (sync) {
-            void sync(value);
-          }
+          syncKnownStorageKey(key, value);
         };
       }
       if (typeof rawRemoveItem === 'function') {
         storage.removeItem = (key) => {
           rawRemoveItem(key);
-          const sync = SYNCED_STORAGE_KEYS[key];
-          if (sync) {
-            void sync(null);
-          }
+          syncKnownStorageKey(key, null);
         };
       }
       if (typeof rawClear === 'function') {
         storage.clear = () => {
           rawClear();
-          Object.values(SYNCED_STORAGE_KEYS).forEach((sync) => {
-            void sync(null);
-          });
+          clearSyncedStorageKeys();
         };
       }
     } catch {}
@@ -727,7 +720,6 @@
   installNavigationBridges();
   void listenToTrayRestartBackendEvent();
   patchLocalStorageTokenSync();
-  Object.values(SYNCED_STORAGE_KEYS).forEach((sync) => {
-    void sync();
-  });
+  void syncAuthToken();
+  void syncShellLocale();
 })();
