@@ -63,3 +63,32 @@ fn append_desktop_log_with_category(category: logging::DesktopLogCategory, messa
         &DESKTOP_LOG_WRITE_LOCK,
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::build_debug_command;
+    use crate::LaunchPlan;
+
+    #[test]
+    fn build_debug_command_returns_cmd_followed_by_args() {
+        let plan = LaunchPlan {
+            cmd: "python".to_string(),
+            args: vec!["main.py".to_string(), "--flag".to_string()],
+            cwd: PathBuf::from("."),
+            root_dir: None,
+            webui_dir: None,
+            packaged_mode: false,
+        };
+
+        assert_eq!(
+            build_debug_command(&plan),
+            vec![
+                "python".to_string(),
+                "main.py".to_string(),
+                "--flag".to_string()
+            ]
+        );
+    }
+}

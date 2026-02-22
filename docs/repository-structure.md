@@ -141,6 +141,8 @@
   - Phase 7 重构计划文档（执行参考 + 归档记录）。
 - `refactor-phase8-plan.md`
   - Phase 8 重构计划文档（执行参考 + 归档记录）。
+- `refactor-phase9-plan.md`
+  - Phase 9 重构计划文档（执行参考 + 归档记录）。
 
 ## 5. 新增代码落位规则
 

@@ -104,3 +104,33 @@ impl Default for BackendState {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use super::AtomicFlagGuard;
+
+    #[test]
+    fn atomic_flag_guard_set_resets_flag_on_drop() {
+        let flag = AtomicBool::new(false);
+        {
+            let _guard = AtomicFlagGuard::set(&flag);
+            assert!(flag.load(Ordering::Relaxed));
+        }
+        assert!(!flag.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn atomic_flag_guard_try_set_rejects_double_set_until_drop() {
+        let flag = AtomicBool::new(false);
+
+        let guard = AtomicFlagGuard::try_set(&flag).expect("first set should succeed");
+        assert!(flag.load(Ordering::Relaxed));
+        assert!(AtomicFlagGuard::try_set(&flag).is_none());
+
+        drop(guard);
+        assert!(!flag.load(Ordering::Relaxed));
+        assert!(AtomicFlagGuard::try_set(&flag).is_some());
+    }
+}
