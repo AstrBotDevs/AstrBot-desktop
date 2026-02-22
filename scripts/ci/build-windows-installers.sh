@@ -10,6 +10,14 @@ if ! command -v cargo >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! (
+  cd "${root_dir}"
+  cargo tauri -V >/dev/null 2>&1
+); then
+  echo "Tauri CLI is required to build Windows installers (expected: cargo tauri)." >&2
+  exit 1
+fi
+
 bundles="${ASTRBOT_WINDOWS_BUNDLES:-nsis,nsis-web}"
 if [ -z "${bundles}" ]; then
   echo "ASTRBOT_WINDOWS_BUNDLES is empty. Expected a comma-separated bundle list." >&2
