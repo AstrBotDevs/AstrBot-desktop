@@ -20,7 +20,7 @@ missing_patterns=0
     [ -n "${pattern}" ] || continue
 
     # Use compgen + mapfile to preserve spaces in matched paths.
-    mapfile -t matches < <(compgen -G "${pattern}" -- || true)
+    mapfile -t matches < <(compgen -G "${pattern}" || true)
     if [ "${#matches[@]}" -eq 0 ]; then
       echo "Missing Windows installer output for pattern: ${pattern}" >&2
       missing_patterns=1
