@@ -418,13 +418,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          desktop_version="${{ steps.desktop_version.outputs.normalized }}"
-          bundles="msi,nsis,nsis-web"
-          if [[ "${desktop_version}" == *-* ]]; then
-            echo "::warning::Detected pre-release desktop version '${desktop_version}'; skipping MSI bundle due to Windows MSI version constraints."
-            bundles="nsis,nsis-web"
-          fi
-          cargo tauri build --bundles "${bundles}"
+          cargo tauri build --bundles "nsis,nsis-web"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6.0.0
@@ -434,7 +428,6 @@ jobs:
           # Only upload Windows installer executables.
           # A broad **/*.exe pattern also matches bundled Python runtime helpers.
           path: |
-            src-tauri/target/release/bundle/**/*.msi
             ${{ env.WINDOWS_INSTALLER_EXE_GLOBS }}
 
   release:
