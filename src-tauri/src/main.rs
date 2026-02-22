@@ -178,9 +178,10 @@ impl Default for BackendState {
     fn default() -> Self {
         Self {
             child: Mutex::new(None),
-            backend_url: normalize_backend_url(
+            backend_url: backend_config::normalize_backend_url(
                 &env::var("ASTRBOT_BACKEND_URL")
                     .unwrap_or_else(|_| DEFAULT_BACKEND_URL.to_string()),
+                DEFAULT_BACKEND_URL,
             ),
             restart_auth_token: Mutex::new(None),
             startup_loading_mode: Mutex::new(None),
@@ -1462,23 +1463,6 @@ fn navigate_main_window_to_backend(app_handle: &AppHandle) -> Result<(), String>
 
 fn inject_desktop_bridge(webview: &tauri::Webview<tauri::Wry>) {
     desktop_bridge::inject_desktop_bridge(webview, TRAY_RESTART_BACKEND_EVENT, append_desktop_log);
-}
-
-fn normalize_backend_url(raw: &str) -> String {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return DEFAULT_BACKEND_URL.to_string();
-    }
-
-    match Url::parse(trimmed) {
-        Ok(mut parsed) => {
-            if parsed.path().is_empty() {
-                parsed.set_path("/");
-            }
-            parsed.to_string()
-        }
-        Err(_) => DEFAULT_BACKEND_URL.to_string(),
-    }
 }
 
 fn backend_readiness_config() -> backend_config::BackendReadinessConfig {

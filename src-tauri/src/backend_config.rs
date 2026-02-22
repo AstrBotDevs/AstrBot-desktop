@@ -1,5 +1,6 @@
 use std::env;
 use std::time::Duration;
+use url::Url;
 
 #[derive(Debug, Clone)]
 pub struct BackendReadinessConfig {
@@ -169,6 +170,23 @@ pub fn resolve_backend_timeout_ms(
     None
 }
 
+pub fn normalize_backend_url(raw: &str, default_backend_url: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return default_backend_url.to_string();
+    }
+
+    match Url::parse(trimmed) {
+        Ok(mut parsed) => {
+            if parsed.path().is_empty() {
+                parsed.set_path("/");
+            }
+            parsed.to_string()
+        }
+        Err(_) => default_backend_url.to_string(),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn backend_readiness_config<F>(
     ready_http_path_env: &str,
@@ -262,5 +280,28 @@ mod tests {
         let timeout = resolve_backend_timeout_ms(false, env_name, 20_000, 300_000);
         env::remove_var(env_name);
         assert_eq!(timeout, None);
+    }
+
+    #[test]
+    fn normalize_backend_url_falls_back_to_default_when_empty_or_invalid() {
+        let default_url = "http://127.0.0.1:6185/";
+        assert_eq!(normalize_backend_url("", default_url), default_url);
+        assert_eq!(
+            normalize_backend_url("::invalid::", default_url),
+            default_url
+        );
+    }
+
+    #[test]
+    fn normalize_backend_url_keeps_valid_url_and_normalizes_path() {
+        let default_url = "http://127.0.0.1:6185/";
+        assert_eq!(
+            normalize_backend_url("http://localhost:6185", default_url),
+            "http://localhost:6185/"
+        );
+        assert_eq!(
+            normalize_backend_url("http://localhost:6185/api", default_url),
+            "http://localhost:6185/api"
+        );
     }
 }
