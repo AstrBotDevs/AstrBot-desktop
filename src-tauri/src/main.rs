@@ -13,6 +13,7 @@ mod runtime_paths;
 mod shell_locale;
 mod startup_mode;
 mod tray_actions;
+mod tray_bridge_event;
 mod ui_dispatch;
 mod webui_paths;
 
@@ -28,7 +29,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, Ordering},
         Arc, Mutex, OnceLock,
     },
     thread,
@@ -38,7 +39,7 @@ use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     webview::PageLoadEvent,
-    AppHandle, Emitter, Manager, RunEvent, WindowEvent,
+    AppHandle, Manager, RunEvent, WindowEvent,
 };
 use url::Url;
 
@@ -80,7 +81,6 @@ const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 static BACKEND_PING_TIMEOUT_MS: OnceLock<u64> = OnceLock::new();
 static BRIDGE_BACKEND_PING_TIMEOUT_MS: OnceLock<u64> = OnceLock::new();
 static DESKTOP_LOG_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-static TRAY_RESTART_SIGNAL_TOKEN: AtomicU64 = AtomicU64::new(0);
 static BACKEND_PATH_OVERRIDE: OnceLock<Option<OsString>> = OnceLock::new();
 
 #[derive(Clone)]
@@ -1539,7 +1539,11 @@ fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
             }
             append_restart_log("tray requested backend restart");
             show_main_window(app_handle);
-            emit_tray_restart_backend_event(app_handle);
+            tray_bridge_event::emit_tray_restart_backend_event(
+                app_handle,
+                TRAY_RESTART_BACKEND_EVENT,
+                append_restart_log,
+            );
 
             let app_handle_cloned = app_handle.clone();
             tauri::async_runtime::spawn(async move {
@@ -1570,20 +1574,6 @@ fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
             app_handle.exit(0);
         }
         None => {}
-    }
-}
-
-fn emit_tray_restart_backend_event(app_handle: &AppHandle) {
-    let Some(window) = app_handle.get_webview_window("main") else {
-        append_restart_log("tray restart event skipped: main window not found");
-        return;
-    };
-    let token = TRAY_RESTART_SIGNAL_TOKEN.fetch_add(1, Ordering::Relaxed) + 1;
-
-    if let Err(error) = window.emit(TRAY_RESTART_BACKEND_EVENT, token) {
-        append_restart_log(&format!(
-            "failed to emit tray restart backend event: {error}"
-        ));
     }
 }
 

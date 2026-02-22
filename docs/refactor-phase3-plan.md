@@ -47,3 +47,4 @@ Phase 3 聚焦“运行时装配边界”：继续把路径解析、资源定位
 2. 抽离运行时路径与资源定位模块（`src-tauri/src/runtime_paths.rs`），下沉 source root/packaged root/resource path 解析并补充模块单测。
 3. 抽离打包 WebUI 解析模块（`src-tauri/src/packaged_webui.rs`），下沉 fallback 路径决策与多语言错误文案生成。
 4. 抽离 UI 主线程分发与启动错误处理模块（`src-tauri/src/ui_dispatch.rs`），统一主线程任务调度与 startup error 展示路径。
+5. 抽离托盘重启 bridge 事件模块（`src-tauri/src/tray_bridge_event.rs`），集中 token 递增和事件发送日志语义。

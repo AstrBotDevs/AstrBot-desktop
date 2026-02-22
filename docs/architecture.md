@@ -148,6 +148,14 @@ UI 分发模块：
 - startup error 日志与退出流程
 - startup error 主线程派发兜底
 
+### 2.17 `src-tauri/src/tray_bridge_event.rs`
+
+托盘 bridge 事件模块：
+
+- tray restart signal token 递增
+- 向主窗口发射重启事件
+- 事件发送失败日志收敛
+
 ## 3. 关键流程
 
 ### 3.1 启动流程
