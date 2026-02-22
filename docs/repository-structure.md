@@ -77,6 +77,14 @@
   - RunEvent 退出分支处理与清理编排。
 - `backend_runtime.rs`
   - backend 运行时参数（timeout/readiness/ping）解析与缓存。
+- `backend_http.rs`
+  - backend TCP/HTTP 探活、请求封装与响应解析调用链。
+- `backend_restart.rs`
+  - backend restart token 管理、graceful/fallback 策略与 bridge 状态组装。
+- `backend_startup.rs`
+  - backend 启动计划解析、进程拉起与 readiness 轮询流程。
+- `backend_process_lifecycle.rs`
+  - backend 停止、日志轮转 worker 生命周期与进程存活判定。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 
@@ -113,6 +121,8 @@
   - Phase 3 重构计划文档（执行参考 + 归档记录）。
 - `refactor-phase4-plan.md`
   - Phase 4 重构计划文档（执行参考 + 归档记录）。
+- `refactor-phase5-plan.md`
+  - Phase 5 重构计划文档（执行参考 + 归档记录）。
 
 ## 5. 新增代码落位规则
 

@@ -254,6 +254,39 @@ desktop bridge 模块：
 - readiness 配置解析
 - backend/bridge ping timeout 解析与缓存
 
+### 2.30 `src-tauri/src/backend_http.rs`
+
+后端 HTTP 能力模块：
+
+- backend TCP 探活（ping）
+- 原始 HTTP 请求封装（method/path/body/token）
+- status/json/start_time 响应提取调用链
+
+### 2.31 `src-tauri/src/backend_restart.rs`
+
+后端重启策略模块：
+
+- restart auth token 读写与归一化
+- graceful restart 请求与轮询等待
+- managed/unmanaged 重启策略决策
+- bridge backend state 组装
+
+### 2.32 `src-tauri/src/backend_startup.rs`
+
+后端启动流程模块：
+
+- 启动计划解析（custom/packaged/dev）
+- 子进程启动参数与环境注入
+- readiness 轮询与超时日志
+
+### 2.33 `src-tauri/src/backend_process_lifecycle.rs`
+
+后端进程生命周期模块：
+
+- backend graceful stop
+- backend 日志轮转 worker 启停
+- child PID 存活判定与轮转退出协同
+
 ## 3. 关键流程
 
 ### 3.1 启动流程
