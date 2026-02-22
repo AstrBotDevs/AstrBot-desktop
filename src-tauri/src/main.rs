@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod app_constants;
+mod app_helpers;
 mod app_runtime;
 mod app_types;
 mod backend_config;
@@ -37,107 +39,17 @@ mod ui_dispatch;
 mod webui_paths;
 mod window_actions;
 
-use std::{
-    ffi::OsString,
-    sync::{Mutex, OnceLock},
-    time::Duration,
+pub(crate) use app_constants::*;
+pub(crate) use app_helpers::{
+    append_desktop_log, append_restart_log, append_shutdown_log, append_startup_log,
+    backend_path_override, build_debug_command, inject_desktop_bridge,
+    navigate_main_window_to_backend,
 };
-use tauri::{AppHandle, Manager};
-
 pub(crate) use app_types::{
     AtomicFlagGuard, BackendBridgeResult, BackendBridgeState, BackendState, LaunchPlan,
     RuntimeManifest, TrayMenuState,
 };
 
-const DEFAULT_BACKEND_URL: &str = "http://127.0.0.1:6185/";
-const BACKEND_TIMEOUT_ENV: &str = "ASTRBOT_BACKEND_TIMEOUT_MS";
-const PACKAGED_BACKEND_TIMEOUT_FALLBACK_MS: u64 = 5 * 60 * 1000;
-const GRACEFUL_RESTART_REQUEST_TIMEOUT_MS: u64 = 2_500;
-const GRACEFUL_RESTART_START_TIME_TIMEOUT_MS: u64 = 1_800;
-const GRACEFUL_RESTART_POLL_INTERVAL_MS: u64 = 350;
-const GRACEFUL_STOP_TIMEOUT_MS: u64 = 10_000;
-const DEFAULT_BACKEND_READY_POLL_INTERVAL_MS: u64 = 300;
-const BACKEND_READY_POLL_INTERVAL_MIN_MS: u64 = 50;
-const BACKEND_READY_POLL_INTERVAL_MAX_MS: u64 = 10_000;
-const BACKEND_READY_POLL_INTERVAL_ENV: &str = "ASTRBOT_BACKEND_READY_POLL_INTERVAL_MS";
-const DEFAULT_BACKEND_READY_HTTP_PATH: &str = "/api/stat/start-time";
-const BACKEND_READY_HTTP_PATH_ENV: &str = "ASTRBOT_BACKEND_READY_HTTP_PATH";
-const BACKEND_READY_PROBE_TIMEOUT_ENV: &str = "ASTRBOT_BACKEND_READY_PROBE_TIMEOUT_MS";
-const BACKEND_READY_PROBE_TIMEOUT_MIN_MS: u64 = 100;
-const BACKEND_READY_PROBE_TIMEOUT_MAX_MS: u64 = 30_000;
-const BACKEND_READY_TCP_PROBE_TIMEOUT_MAX_MS: u64 = 1_000;
-const DEFAULT_BACKEND_PING_TIMEOUT_MS: u64 = 800;
-const BACKEND_PING_TIMEOUT_MIN_MS: u64 = 50;
-const BACKEND_PING_TIMEOUT_MAX_MS: u64 = 30_000;
-const BACKEND_PING_TIMEOUT_ENV: &str = "ASTRBOT_BACKEND_PING_TIMEOUT_MS";
-const BRIDGE_BACKEND_PING_TIMEOUT_ENV: &str = "ASTRBOT_BRIDGE_BACKEND_PING_TIMEOUT_MS";
-const DESKTOP_LOG_MAX_BYTES: u64 = 5 * 1024 * 1024;
-const BACKEND_LOG_MAX_BYTES: u64 = 20 * 1024 * 1024;
-const LOG_BACKUP_COUNT: usize = 5;
-const BACKEND_LOG_ROTATION_CHECK_INTERVAL: Duration = Duration::from_secs(20);
-const DESKTOP_LOG_FILE: &str = "desktop.log";
-const TRAY_ID: &str = "astrbot-tray";
-const TRAY_RESTART_BACKEND_EVENT: &str = "astrbot://tray-restart-backend";
-const DEFAULT_SHELL_LOCALE: &str = "zh-CN";
-const STARTUP_MODE_ENV: &str = "ASTRBOT_DESKTOP_STARTUP_MODE";
-#[cfg(target_os = "windows")]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-#[cfg(target_os = "windows")]
-const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-static DESKTOP_LOG_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-static BACKEND_PATH_OVERRIDE: OnceLock<Option<OsString>> = OnceLock::new();
-
 fn main() {
     app_runtime::run();
-}
-
-fn navigate_main_window_to_backend(app_handle: &AppHandle) -> Result<(), String> {
-    let state = app_handle.state::<BackendState>();
-    main_window::navigate_main_window_to_backend(app_handle, &state.backend_url)
-}
-
-fn inject_desktop_bridge(webview: &tauri::Webview<tauri::Wry>) {
-    desktop_bridge::inject_desktop_bridge(webview, TRAY_RESTART_BACKEND_EVENT, append_desktop_log);
-}
-
-fn backend_path_override() -> Option<OsString> {
-    BACKEND_PATH_OVERRIDE
-        .get_or_init(|| {
-            backend_path::build_backend_path_override(|message| append_desktop_log(&message))
-        })
-        .clone()
-}
-
-fn build_debug_command(plan: &LaunchPlan) -> Vec<String> {
-    let mut parts = vec![plan.cmd.clone()];
-    parts.extend(plan.args.clone());
-    parts
-}
-
-fn append_desktop_log(message: &str) {
-    append_desktop_log_with_category(logging::DesktopLogCategory::Runtime, message);
-}
-
-fn append_startup_log(message: &str) {
-    append_desktop_log_with_category(logging::DesktopLogCategory::Startup, message);
-}
-
-fn append_restart_log(message: &str) {
-    append_desktop_log_with_category(logging::DesktopLogCategory::Restart, message);
-}
-
-fn append_shutdown_log(message: &str) {
-    append_desktop_log_with_category(logging::DesktopLogCategory::Shutdown, message);
-}
-
-fn append_desktop_log_with_category(category: logging::DesktopLogCategory, message: &str) {
-    logging::append_desktop_log(
-        category,
-        message,
-        runtime_paths::default_packaged_root_dir(),
-        DESKTOP_LOG_FILE,
-        DESKTOP_LOG_MAX_BYTES,
-        LOG_BACKUP_COUNT,
-        &DESKTOP_LOG_WRITE_LOCK,
-    )
 }

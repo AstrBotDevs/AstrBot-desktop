@@ -93,6 +93,10 @@
   - Tauri builder/run 编排与窗口/页面事件挂载。
 - `app_types.rs`
   - 共享核心类型定义（状态、启动计划、bridge 返回结构、原子 guard）。
+- `app_constants.rs`
+  - 全局运行常量（timeout/log/tray/startup/windows flags）。
+- `app_helpers.rs`
+  - 跨模块复用 helper（日志写入、bridge 注入、路径覆写、debug command）。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 
@@ -135,6 +139,8 @@
   - Phase 6 重构计划文档（执行参考 + 归档记录）。
 - `refactor-phase7-plan.md`
   - Phase 7 重构计划文档（执行参考 + 归档记录）。
+- `refactor-phase8-plan.md`
+  - Phase 8 重构计划文档（执行参考 + 归档记录）。
 
 ## 5. 新增代码落位规则
 

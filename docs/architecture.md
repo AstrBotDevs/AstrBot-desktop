@@ -23,9 +23,9 @@
 
 入口与编排层，主要保留：
 
-- 共享常量与公共 helper（日志、bridge 注入、路径覆写）
+- 模块声明与统一 re-export 出口
 - 进程入口（`main`）与运行委托（`app_runtime::run()`）
-- `app_types` 的 re-export 出口，维持 `crate::Type` 调用兼容
+- 维持 `crate::CONST` / `crate::fn` / `crate::Type` 调用兼容
 
 ### 2.2 `src-tauri/src/backend_config.rs`
 
@@ -317,6 +317,23 @@ bridge 命令模块：
 - `BackendState`、`LaunchPlan`、`TrayMenuState` 等核心结构定义
 - `BackendBridgeState/Result` 返回结构定义
 - `AtomicFlagGuard` 与 `BackendState::default` 收敛
+
+### 2.38 `src-tauri/src/app_constants.rs`
+
+共享常量模块：
+
+- timeout/readiness/ping 相关运行常量
+- 日志与托盘常量
+- 平台特定（Windows）进程创建 flags
+
+### 2.39 `src-tauri/src/app_helpers.rs`
+
+共享 helper 模块：
+
+- 日志写入 helper（startup/runtime/restart/shutdown）
+- desktop bridge 注入 helper
+- backend PATH 覆写与 debug command 组装
+- 主窗口导航 helper
 
 ## 3. 关键流程
 
