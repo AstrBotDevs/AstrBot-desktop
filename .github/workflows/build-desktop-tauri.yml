@@ -523,8 +523,9 @@ jobs:
           previous_prerelease_id="$(
             gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
               | jq -s -r --arg current_tag "${CURRENT_RELEASE_TAG}" '
-                  map(if type == "array" then . else [] end)
-                  | add
+                  # gh --paginate emits one JSON value per page; keep array pages and flatten.
+                  map(select(type == "array"))
+                  | flatten
                   | map(select(.prerelease == true and .draft == false and .tag_name != $current_tag))
                   | sort_by(.published_at // .created_at)
                   | reverse
