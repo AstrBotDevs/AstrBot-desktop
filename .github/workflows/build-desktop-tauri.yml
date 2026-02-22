@@ -378,6 +378,7 @@ jobs:
     name: windows-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     env:
+      ASTRBOT_WINDOWS_BUNDLES: nsis,nsis-web
       WINDOWS_INSTALLER_EXE_GLOBS: |
         src-tauri/target/release/bundle/nsis-web/*.exe
         src-tauri/target/release/bundle/nsis/*.exe
@@ -416,32 +417,11 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
         shell: bash
-        run: |
-          set -euo pipefail
-          pnpm run build -- --bundles "nsis,nsis-web"
+        run: bash scripts/ci/build-windows-installers.sh
 
       - name: Verify Windows installer outputs
         shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-
-          nsis_web_installers=(src-tauri/target/release/bundle/nsis-web/*.exe)
-          nsis_installers=(src-tauri/target/release/bundle/nsis/*.exe)
-
-          if [ "${#nsis_web_installers[@]}" -eq 0 ]; then
-            echo "Missing nsis-web installer output under src-tauri/target/release/bundle/nsis-web/*.exe" >&2
-            exit 1
-          fi
-          if [ "${#nsis_installers[@]}" -eq 0 ]; then
-            echo "Missing nsis installer output under src-tauri/target/release/bundle/nsis/*.exe" >&2
-            exit 1
-          fi
-
-          echo "Detected nsis-web installers:"
-          printf '  %s\n' "${nsis_web_installers[@]}"
-          echo "Detected nsis installers:"
-          printf '  %s\n' "${nsis_installers[@]}"
+        run: bash scripts/ci/verify-windows-installer-outputs.sh
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6.0.0
