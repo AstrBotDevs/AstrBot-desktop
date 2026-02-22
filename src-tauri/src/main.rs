@@ -8,6 +8,7 @@ mod logging;
 mod origin_policy;
 mod process_control;
 mod startup_mode;
+mod tray_actions;
 mod webui_paths;
 
 use serde::Deserialize;
@@ -65,10 +66,6 @@ const LOG_BACKUP_COUNT: usize = 5;
 const BACKEND_LOG_ROTATION_CHECK_INTERVAL: Duration = Duration::from_secs(20);
 const DESKTOP_LOG_FILE: &str = "desktop.log";
 const TRAY_ID: &str = "astrbot-tray";
-const TRAY_MENU_TOGGLE_WINDOW: &str = "tray_toggle_window";
-const TRAY_MENU_RELOAD_WINDOW: &str = "tray_reload_window";
-const TRAY_MENU_RESTART_BACKEND: &str = "tray_restart_backend";
-const TRAY_MENU_QUIT: &str = "tray_quit";
 const TRAY_RESTART_BACKEND_EVENT: &str = "astrbot://tray-restart-backend";
 const DEFAULT_SHELL_LOCALE: &str = "zh-CN";
 const STARTUP_MODE_ENV: &str = "ASTRBOT_DESKTOP_STARTUP_MODE";
@@ -1429,7 +1426,7 @@ fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
 
     let toggle_item = MenuItem::with_id(
         app_handle,
-        TRAY_MENU_TOGGLE_WINDOW,
+        tray_actions::TRAY_MENU_TOGGLE_WINDOW,
         toggle_label,
         true,
         None::<&str>,
@@ -1437,7 +1434,7 @@ fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
     .map_err(|error| format!("Failed to create tray toggle menu item: {error}"))?;
     let reload_item = MenuItem::with_id(
         app_handle,
-        TRAY_MENU_RELOAD_WINDOW,
+        tray_actions::TRAY_MENU_RELOAD_WINDOW,
         shell_texts.tray_reload,
         true,
         None::<&str>,
@@ -1445,7 +1442,7 @@ fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
     .map_err(|error| format!("Failed to create tray reload menu item: {error}"))?;
     let restart_backend_item = MenuItem::with_id(
         app_handle,
-        TRAY_MENU_RESTART_BACKEND,
+        tray_actions::TRAY_MENU_RESTART_BACKEND,
         shell_texts.tray_restart_backend,
         true,
         None::<&str>,
@@ -1453,7 +1450,7 @@ fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
     .map_err(|error| format!("Failed to create tray restart menu item: {error}"))?;
     let quit_item = MenuItem::with_id(
         app_handle,
-        TRAY_MENU_QUIT,
+        tray_actions::TRAY_MENU_QUIT,
         shell_texts.tray_quit,
         true,
         None::<&str>,
@@ -1515,10 +1512,10 @@ fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
 }
 
 fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
-    match menu_id {
-        TRAY_MENU_TOGGLE_WINDOW => toggle_main_window(app_handle),
-        TRAY_MENU_RELOAD_WINDOW => reload_main_window(app_handle),
-        TRAY_MENU_RESTART_BACKEND => {
+    match tray_actions::action_from_menu_id(menu_id) {
+        Some(tray_actions::TrayMenuAction::ToggleWindow) => toggle_main_window(app_handle),
+        Some(tray_actions::TrayMenuAction::ReloadWindow) => reload_main_window(app_handle),
+        Some(tray_actions::TrayMenuAction::RestartBackend) => {
             let state = app_handle.state::<BackendState>();
             if is_backend_action_in_progress(&state) {
                 append_restart_log("tray restart ignored: backend action already in progress");
@@ -1550,13 +1547,13 @@ fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
                 }
             });
         }
-        TRAY_MENU_QUIT => {
+        Some(tray_actions::TrayMenuAction::Quit) => {
             let state = app_handle.state::<BackendState>();
             state.mark_quitting();
             append_shutdown_log("tray quit requested, exiting desktop process");
             app_handle.exit(0);
         }
-        _ => {}
+        None => {}
     }
 }
 
@@ -1783,19 +1780,23 @@ fn update_tray_menu_labels(app_handle: &AppHandle) {
     set_menu_text_safe(
         &tray_state.toggle_item,
         toggle_label,
-        TRAY_MENU_TOGGLE_WINDOW,
+        tray_actions::TRAY_MENU_TOGGLE_WINDOW,
     );
     set_menu_text_safe(
         &tray_state.reload_item,
         shell_texts.tray_reload,
-        TRAY_MENU_RELOAD_WINDOW,
+        tray_actions::TRAY_MENU_RELOAD_WINDOW,
     );
     set_menu_text_safe(
         &tray_state.restart_backend_item,
         shell_texts.tray_restart_backend,
-        TRAY_MENU_RESTART_BACKEND,
+        tray_actions::TRAY_MENU_RESTART_BACKEND,
     );
-    set_menu_text_safe(&tray_state.quit_item, shell_texts.tray_quit, TRAY_MENU_QUIT);
+    set_menu_text_safe(
+        &tray_state.quit_item,
+        shell_texts.tray_quit,
+        tray_actions::TRAY_MENU_QUIT,
+    );
 }
 
 const DESKTOP_BRIDGE_BOOTSTRAP_TEMPLATE: &str = include_str!("bridge_bootstrap.js");

@@ -100,6 +100,14 @@ HTTP 响应解析模块：
 - loopback host 判定
 - tray bridge 注入来源决策
 
+### 2.11 `src-tauri/src/tray_actions.rs`
+
+托盘菜单动作映射模块：
+
+- 菜单 ID 常量集中定义
+- 菜单 ID 到动作枚举映射
+- 托盘事件分发入口去字符串硬编码
+
 ## 3. 关键流程
 
 ### 3.1 启动流程

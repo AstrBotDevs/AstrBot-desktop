@@ -39,6 +39,8 @@
   - 子进程 graceful/force 停止控制与等待策略。
 - `origin_policy.rs`
   - bridge 注入来源判定（同源/loopback/端口策略）。
+- `tray_actions.rs`
+  - 托盘菜单 ID 与动作映射。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 
