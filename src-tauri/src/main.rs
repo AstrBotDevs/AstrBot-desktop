@@ -16,6 +16,7 @@ mod startup_loading;
 mod startup_mode;
 mod tray_actions;
 mod tray_bridge_event;
+mod tray_labels;
 mod ui_dispatch;
 mod webui_paths;
 
@@ -1519,7 +1520,11 @@ fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
                 ..
             } = event
             {
-                update_tray_menu_labels(tray.app_handle());
+                tray_labels::update_tray_menu_labels(
+                    tray.app_handle(),
+                    DEFAULT_SHELL_LOCALE,
+                    append_desktop_log,
+                );
                 if button == MouseButton::Left {
                     toggle_main_window(tray.app_handle());
                 }
@@ -1533,7 +1538,7 @@ fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
         .build(app_handle)
         .map_err(|error| format!("Failed to create tray icon: {error}"))?;
 
-    update_tray_menu_labels(app_handle);
+    tray_labels::update_tray_menu_labels(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log);
     Ok(())
 }
 
@@ -1623,12 +1628,12 @@ async fn run_restart_backend_task(
 
 fn show_main_window(app_handle: &AppHandle) {
     main_window::show_main_window(app_handle, append_desktop_log);
-    update_tray_menu_labels(app_handle);
+    tray_labels::update_tray_menu_labels(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log);
 }
 
 fn hide_main_window(app_handle: &AppHandle) {
     main_window::hide_main_window(app_handle, append_desktop_log);
-    update_tray_menu_labels(app_handle);
+    tray_labels::update_tray_menu_labels(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log);
 }
 
 fn toggle_main_window(app_handle: &AppHandle) {
@@ -1653,57 +1658,6 @@ fn reload_main_window(app_handle: &AppHandle) {
 fn navigate_main_window_to_backend(app_handle: &AppHandle) -> Result<(), String> {
     let state = app_handle.state::<BackendState>();
     main_window::navigate_main_window_to_backend(app_handle, &state.backend_url)
-}
-
-fn set_menu_text_safe(item: &MenuItem<tauri::Wry>, text: &str, item_name: &str) {
-    if let Err(error) = item.set_text(text) {
-        append_desktop_log(&format!(
-            "failed to update tray menu text for {}: {}",
-            item_name, error
-        ));
-    }
-}
-
-fn update_tray_menu_labels(app_handle: &AppHandle) {
-    let Some(tray_state) = app_handle.try_state::<TrayMenuState>() else {
-        return;
-    };
-
-    let locale = shell_locale::resolve_shell_locale(
-        DEFAULT_SHELL_LOCALE,
-        runtime_paths::default_packaged_root_dir(),
-    );
-    let shell_texts = shell_locale::shell_texts_for_locale(locale);
-    let is_visible = app_handle
-        .get_webview_window("main")
-        .and_then(|window| window.is_visible().ok())
-        .unwrap_or(true);
-    let toggle_label = if is_visible {
-        shell_texts.tray_hide
-    } else {
-        shell_texts.tray_show
-    };
-
-    set_menu_text_safe(
-        &tray_state.toggle_item,
-        toggle_label,
-        tray_actions::TRAY_MENU_TOGGLE_WINDOW,
-    );
-    set_menu_text_safe(
-        &tray_state.reload_item,
-        shell_texts.tray_reload,
-        tray_actions::TRAY_MENU_RELOAD_WINDOW,
-    );
-    set_menu_text_safe(
-        &tray_state.restart_backend_item,
-        shell_texts.tray_restart_backend,
-        tray_actions::TRAY_MENU_RESTART_BACKEND,
-    );
-    set_menu_text_safe(
-        &tray_state.quit_item,
-        shell_texts.tray_quit,
-        tray_actions::TRAY_MENU_QUIT,
-    );
 }
 
 fn should_inject_desktop_bridge(app_handle: &AppHandle, page_url: &Url) -> bool {

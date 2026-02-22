@@ -172,6 +172,14 @@ desktop bridge 模块：
 - bridge script 缓存
 - bridge script 注入执行
 
+### 2.20 `src-tauri/src/tray_labels.rs`
+
+托盘文案模块：
+
+- 托盘菜单文案按 locale 刷新
+- 主窗口可见性与 toggle 文案联动
+- `set_text` 失败日志收敛
+
 ## 3. 关键流程
 
 ### 3.1 启动流程

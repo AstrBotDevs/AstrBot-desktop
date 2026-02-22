@@ -57,6 +57,8 @@
   - 启动页 loading mode 判定与注入逻辑。
 - `desktop_bridge.rs`
   - desktop bridge bootstrap 组装与注入执行。
+- `tray_labels.rs`
+  - 托盘菜单文案刷新与安全更新封装。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 

@@ -50,3 +50,4 @@ Phase 3 聚焦“运行时装配边界”：继续把路径解析、资源定位
 5. 抽离托盘重启 bridge 事件模块（`src-tauri/src/tray_bridge_event.rs`），集中 token 递增和事件发送日志语义。
 6. 抽离 startup loading 模块（`src-tauri/src/startup_loading.rs`），下沉启动页模式判定、缓存读取与前端注入逻辑。
 7. 抽离 desktop bridge 注入模块（`src-tauri/src/desktop_bridge.rs`），下沉 bootstrap 脚本装配与注入执行。
+8. 抽离托盘文案更新模块（`src-tauri/src/tray_labels.rs`），统一托盘菜单文案刷新与 set_text 错误处理。
