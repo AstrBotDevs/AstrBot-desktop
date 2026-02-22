@@ -5,6 +5,7 @@ mod backend_path;
 mod exit_state;
 mod http_response;
 mod logging;
+mod main_window;
 mod origin_policy;
 mod process_control;
 mod shell_locale;
@@ -1592,31 +1593,12 @@ async fn run_restart_backend_task(
 }
 
 fn show_main_window(app_handle: &AppHandle) {
-    let Some(window) = app_handle.get_webview_window("main") else {
-        append_desktop_log("show_main_window skipped: main window not found");
-        return;
-    };
-
-    if let Err(error) = window.unminimize() {
-        append_desktop_log(&format!("failed to unminimize main window: {error}"));
-    }
-    if let Err(error) = window.show() {
-        append_desktop_log(&format!("failed to show main window: {error}"));
-    }
-    if let Err(error) = window.set_focus() {
-        append_desktop_log(&format!("failed to focus main window: {error}"));
-    }
+    main_window::show_main_window(app_handle, append_desktop_log);
     update_tray_menu_labels(app_handle);
 }
 
 fn hide_main_window(app_handle: &AppHandle) {
-    let Some(window) = app_handle.get_webview_window("main") else {
-        append_desktop_log("hide_main_window skipped: main window not found");
-        return;
-    };
-    if let Err(error) = window.hide() {
-        append_desktop_log(&format!("failed to hide main window: {error}"));
-    }
+    main_window::hide_main_window(app_handle, append_desktop_log);
     update_tray_menu_labels(app_handle);
 }
 
@@ -1636,28 +1618,12 @@ fn toggle_main_window(app_handle: &AppHandle) {
 }
 
 fn reload_main_window(app_handle: &AppHandle) {
-    let Some(window) = app_handle.get_webview_window("main") else {
-        append_desktop_log("reload_main_window skipped: main window not found");
-        return;
-    };
-    if let Err(error) = window.reload() {
-        append_desktop_log(&format!("failed to reload main window: {error}"));
-    }
+    main_window::reload_main_window(app_handle, append_desktop_log);
 }
 
 fn navigate_main_window_to_backend(app_handle: &AppHandle) -> Result<(), String> {
     let state = app_handle.state::<BackendState>();
-    let backend_url =
-        serde_json::to_string(&state.backend_url).unwrap_or_else(|_| "\"/\"".to_string());
-
-    let Some(window) = app_handle.get_webview_window("main") else {
-        return Err("Main window is unavailable after backend startup.".to_string());
-    };
-
-    let js = format!("window.location.replace({backend_url});");
-    window
-        .eval(&js)
-        .map_err(|error| format!("Failed to navigate to backend dashboard: {error}"))
+    main_window::navigate_main_window_to_backend(app_handle, &state.backend_url)
 }
 
 fn set_menu_text_safe(item: &MenuItem<tauri::Wry>, text: &str, item_name: &str) {

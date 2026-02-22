@@ -43,6 +43,8 @@
   - 托盘菜单 ID 与动作映射。
 - `shell_locale.rs`
   - shell locale 归一化、缓存读取与托盘文案映射。
+- `main_window.rs`
+  - 主窗口 show/hide/reload/navigate 操作封装。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 

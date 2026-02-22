@@ -55,3 +55,4 @@ Phase 1 已完成入口瘦身与基础模块化，但 `src-tauri/src/main.rs` �
 4. 抽离托盘菜单动作映射模块（`src-tauri/src/tray_actions.rs`），把菜单 ID 解析与动作类型从入口分离。
 5. 抽离 shell locale 模块（`src-tauri/src/shell_locale.rs`），集中 locale 归一化、缓存读取与托盘文案映射。
 6. 将 readiness 配置结构与组装逻辑下沉到 `backend_config.rs`，入口仅保留调用。
+7. 抽离主窗口操作模块（`src-tauri/src/main_window.rs`），统一 show/hide/reload/navigate 行为实现。

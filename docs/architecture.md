@@ -116,6 +116,14 @@ HTTP 响应解析模块：
 - `desktop_state.json` 缓存 locale 读取
 - 托盘文案（中英）映射
 
+### 2.13 `src-tauri/src/main_window.rs`
+
+主窗口操作模块：
+
+- main window show/hide/reload
+- 导航到 backend dashboard
+- 主窗口异常处理日志收敛
+
 ## 3. 关键流程
 
 ### 3.1 启动流程
