@@ -11,6 +11,7 @@ mod main_window;
 mod origin_policy;
 mod packaged_webui;
 mod process_control;
+mod restart_backend_flow;
 mod runtime_paths;
 mod shell_locale;
 mod startup_loading;
@@ -1236,20 +1237,20 @@ async fn desktop_bridge_restart_backend(
     auth_token: Option<String>,
 ) -> BackendBridgeResult {
     let state = app_handle.state::<BackendState>();
-    if is_backend_action_in_progress(&state) {
+    if restart_backend_flow::is_backend_action_in_progress(&state) {
         return BackendBridgeResult {
             ok: false,
             reason: Some("Backend action already in progress.".to_string()),
         };
     }
 
-    run_restart_backend_task(app_handle, auth_token).await
+    restart_backend_flow::run_restart_backend_task(app_handle, auth_token).await
 }
 
 #[tauri::command]
 fn desktop_bridge_stop_backend(app_handle: AppHandle) -> BackendBridgeResult {
     let state = app_handle.state::<BackendState>();
-    if is_backend_action_in_progress(&state) {
+    if restart_backend_flow::is_backend_action_in_progress(&state) {
         return BackendBridgeResult {
             ok: false,
             reason: Some("Backend action already in progress.".to_string()),
@@ -1559,7 +1560,7 @@ fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
         Some(tray_actions::TrayMenuAction::ReloadWindow) => reload_main_window(app_handle),
         Some(tray_actions::TrayMenuAction::RestartBackend) => {
             let state = app_handle.state::<BackendState>();
-            if is_backend_action_in_progress(&state) {
+            if restart_backend_flow::is_backend_action_in_progress(&state) {
                 append_restart_log("tray restart ignored: backend action already in progress");
                 return;
             }
@@ -1573,7 +1574,9 @@ fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
 
             let app_handle_cloned = app_handle.clone();
             tauri::async_runtime::spawn(async move {
-                let result = run_restart_backend_task(app_handle_cloned.clone(), None).await;
+                let result =
+                    restart_backend_flow::run_restart_backend_task(app_handle_cloned.clone(), None)
+                        .await;
                 if result.ok {
                     append_restart_log("backend restarted from tray menu");
                     if let Err(error) = ui_dispatch::run_on_main_thread_dispatch(
@@ -1600,40 +1603,6 @@ fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
             app_handle.exit(0);
         }
         None => {}
-    }
-}
-
-fn do_restart_backend(app_handle: &AppHandle, auth_token: Option<&str>) -> Result<(), String> {
-    let state = app_handle.state::<BackendState>();
-    state.restart_backend(app_handle, auth_token)
-}
-
-fn is_backend_action_in_progress(state: &BackendState) -> bool {
-    state.is_spawning.load(Ordering::Relaxed) || state.is_restarting.load(Ordering::Relaxed)
-}
-
-async fn run_restart_backend_task(
-    app_handle: AppHandle,
-    auth_token: Option<String>,
-) -> BackendBridgeResult {
-    let app_handle_for_worker = app_handle.clone();
-    match tauri::async_runtime::spawn_blocking(move || {
-        do_restart_backend(&app_handle_for_worker, auth_token.as_deref())
-    })
-    .await
-    {
-        Ok(Ok(())) => BackendBridgeResult {
-            ok: true,
-            reason: None,
-        },
-        Ok(Err(error)) => BackendBridgeResult {
-            ok: false,
-            reason: Some(error),
-        },
-        Err(error) => BackendBridgeResult {
-            ok: false,
-            reason: Some(format!("Backend restart task failed: {error}")),
-        },
     }
 }
 

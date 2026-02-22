@@ -188,6 +188,14 @@ desktop bridge 模块：
 - ExitRequested/Exit fallback 分支日志语义
 - backend stop 后续退出放行日志
 
+### 2.22 `src-tauri/src/restart_backend_flow.rs`
+
+重启任务流程模块：
+
+- backend action 并发判定
+- 重启任务异步执行与结果归一
+- bridge 与 tray 重启入口复用
+
 ## 3. 关键流程
 
 ### 3.1 启动流程

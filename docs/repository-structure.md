@@ -61,6 +61,8 @@
   - 托盘菜单文案刷新与安全更新封装。
 - `exit_cleanup.rs`
   - ExitRequested/Exit 清理流程与 stop-backend 分支封装。
+- `restart_backend_flow.rs`
+  - backend 重启任务与并发判定流程封装。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 
