@@ -6,6 +6,20 @@ use crate::{
     DEFAULT_SHELL_LOCALE, TRAY_RESTART_BACKEND_EVENT,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TrayRestartDecision {
+    IgnoreBecauseBackendActionInProgress,
+    ProceedWithRestart,
+}
+
+fn decide_tray_restart(backend_action_in_progress: bool) -> TrayRestartDecision {
+    if backend_action_in_progress {
+        TrayRestartDecision::IgnoreBecauseBackendActionInProgress
+    } else {
+        TrayRestartDecision::ProceedWithRestart
+    }
+}
+
 pub fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
     match tray_actions::action_from_menu_id(menu_id) {
         Some(tray_actions::TrayMenuAction::ToggleWindow) => {
@@ -16,9 +30,12 @@ pub fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
         }
         Some(tray_actions::TrayMenuAction::RestartBackend) => {
             let state = app_handle.state::<BackendState>();
-            if restart_backend_flow::is_backend_action_in_progress(&state) {
-                append_restart_log("tray restart ignored: backend action already in progress");
-                return;
+            match decide_tray_restart(restart_backend_flow::is_backend_action_in_progress(&state)) {
+                TrayRestartDecision::IgnoreBecauseBackendActionInProgress => {
+                    append_restart_log("tray restart ignored: backend action already in progress");
+                    return;
+                }
+                TrayRestartDecision::ProceedWithRestart => {}
             }
             append_restart_log("tray requested backend restart");
             window_actions::show_main_window(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log);
@@ -59,5 +76,26 @@ pub fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
             app_handle.exit(0);
         }
         None => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{decide_tray_restart, TrayRestartDecision};
+
+    #[test]
+    fn decide_tray_restart_blocks_when_backend_action_in_progress() {
+        assert_eq!(
+            decide_tray_restart(true),
+            TrayRestartDecision::IgnoreBecauseBackendActionInProgress
+        );
+    }
+
+    #[test]
+    fn decide_tray_restart_allows_when_no_backend_action_in_progress() {
+        assert_eq!(
+            decide_tray_restart(false),
+            TrayRestartDecision::ProceedWithRestart
+        );
     }
 }

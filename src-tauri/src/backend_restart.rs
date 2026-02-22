@@ -12,7 +12,7 @@ use crate::{
     GRACEFUL_RESTART_REQUEST_TIMEOUT_MS,
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RestartStrategy {
     ManagedSkipGraceful,
     ManagedWithGracefulFallback,
@@ -28,10 +28,15 @@ enum GracefulRestartOutcome {
 
 impl BackendState {
     fn sanitize_auth_token(auth_token: Option<&str>) -> Option<String> {
-        auth_token
-            .map(str::trim)
-            .filter(|token| !token.is_empty())
-            .map(|token| token.to_string())
+        let token = auth_token?;
+        if token.contains('\r') || token.contains('\n') {
+            return None;
+        }
+        let token = token.trim();
+        if token.is_empty() {
+            return None;
+        }
+        Some(token.to_string())
     }
 
     fn get_restart_auth_token(&self) -> Option<String> {
@@ -148,13 +153,25 @@ impl BackendState {
     }
 
     fn restart_strategy(&self, plan: &LaunchPlan, has_managed_child: bool) -> RestartStrategy {
-        if cfg!(target_os = "windows") && plan.packaged_mode && has_managed_child {
-            return RestartStrategy::ManagedSkipGraceful;
+        Self::compute_restart_strategy(
+            cfg!(target_os = "windows"),
+            plan.packaged_mode,
+            has_managed_child,
+        )
+    }
+
+    fn compute_restart_strategy(
+        is_windows: bool,
+        packaged_mode: bool,
+        has_managed_child: bool,
+    ) -> RestartStrategy {
+        if is_windows && packaged_mode && has_managed_child {
+            RestartStrategy::ManagedSkipGraceful
+        } else if has_managed_child {
+            RestartStrategy::ManagedWithGracefulFallback
+        } else {
+            RestartStrategy::UnmanagedWithGracefulProbe
         }
-        if has_managed_child {
-            return RestartStrategy::ManagedWithGracefulFallback;
-        }
-        RestartStrategy::UnmanagedWithGracefulProbe
     }
 
     fn try_graceful_restart_and_wait(
@@ -262,5 +279,50 @@ impl BackendState {
             restarting: self.is_restarting.load(Ordering::Relaxed),
             can_manage,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BackendState, RestartStrategy};
+
+    #[test]
+    fn sanitize_auth_token_rejects_empty_and_newline_tokens() {
+        assert_eq!(BackendState::sanitize_auth_token(None), None);
+        assert_eq!(BackendState::sanitize_auth_token(Some("   ")), None);
+        assert_eq!(BackendState::sanitize_auth_token(Some("abc\r\ndef")), None);
+        assert_eq!(BackendState::sanitize_auth_token(Some("abc\ndef")), None);
+    }
+
+    #[test]
+    fn sanitize_auth_token_trims_valid_token() {
+        assert_eq!(
+            BackendState::sanitize_auth_token(Some("  token-123  ")),
+            Some("token-123".to_string())
+        );
+    }
+
+    #[test]
+    fn compute_restart_strategy_windows_packaged_managed_skips_graceful() {
+        assert_eq!(
+            BackendState::compute_restart_strategy(true, true, true),
+            RestartStrategy::ManagedSkipGraceful
+        );
+    }
+
+    #[test]
+    fn compute_restart_strategy_managed_uses_graceful_fallback() {
+        assert_eq!(
+            BackendState::compute_restart_strategy(false, true, true),
+            RestartStrategy::ManagedWithGracefulFallback
+        );
+    }
+
+    #[test]
+    fn compute_restart_strategy_unmanaged_uses_graceful_probe() {
+        assert_eq!(
+            BackendState::compute_restart_strategy(false, false, false),
+            RestartStrategy::UnmanagedWithGracefulProbe
+        );
     }
 }

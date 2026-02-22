@@ -65,8 +65,7 @@ impl BackendState {
 
         let payload = body.unwrap_or("");
         let authorization_header = auth_token
-            .map(str::trim)
-            .filter(|token| !token.is_empty())
+            .and_then(sanitize_authorization_token)
             .map(|token| format!("Authorization: Bearer {token}\\r\\n"))
             .unwrap_or_default();
         let request = format!(
@@ -178,6 +177,17 @@ fn is_complete_http_response(raw: &[u8]) -> bool {
     false
 }
 
+fn sanitize_authorization_token(token: &str) -> Option<&str> {
+    if token.contains('\r') || token.contains('\n') {
+        return None;
+    }
+    let token = token.trim();
+    if token.is_empty() {
+        return None;
+    }
+    Some(token)
+}
+
 fn read_http_response_bytes<R: Read>(reader: &mut R) -> Option<Vec<u8>> {
     let mut response = Vec::new();
     let mut chunk = [0u8; 4096];
@@ -211,7 +221,9 @@ fn read_http_response_bytes<R: Read>(reader: &mut R) -> Option<Vec<u8>> {
 mod tests {
     use std::io::{Cursor, Error, ErrorKind, Read};
 
-    use super::{is_complete_http_response, read_http_response_bytes};
+    use super::{
+        is_complete_http_response, read_http_response_bytes, sanitize_authorization_token,
+    };
 
     #[test]
     fn is_complete_http_response_respects_content_length() {
@@ -233,6 +245,20 @@ mod tests {
 
         let raw = read_http_response_bytes(&mut reader).expect("response should be preserved");
         assert!(raw.starts_with(b"HTTP/1.1 200 OK\r\n"));
+    }
+
+    #[test]
+    fn sanitize_authorization_token_rejects_crlf() {
+        assert_eq!(sanitize_authorization_token("abc\r\ndef"), None);
+        assert_eq!(sanitize_authorization_token("abc\ndef"), None);
+    }
+
+    #[test]
+    fn sanitize_authorization_token_trims_and_accepts_normal_token() {
+        assert_eq!(
+            sanitize_authorization_token("  token-abc  "),
+            Some("token-abc")
+        );
     }
 
     struct TimeoutAfterPayloadReader {

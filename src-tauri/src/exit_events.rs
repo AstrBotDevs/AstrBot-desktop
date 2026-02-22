@@ -2,11 +2,28 @@ use tauri::{AppHandle, Manager};
 
 use crate::{append_shutdown_log, exit_cleanup, BackendState};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExitRequestedDecision {
+    AllowImmediateExit,
+    RunBackendCleanupFirst,
+}
+
+fn decide_exit_requested_flow(has_exit_request_allowance: bool) -> ExitRequestedDecision {
+    if has_exit_request_allowance {
+        ExitRequestedDecision::AllowImmediateExit
+    } else {
+        ExitRequestedDecision::RunBackendCleanupFirst
+    }
+}
+
 pub fn handle_exit_requested(app_handle: &AppHandle, api: &tauri::ExitRequestApi) {
     let state = app_handle.state::<BackendState>();
-    if state.take_exit_request_allowance() {
-        append_shutdown_log("exit request allowed to pass through after backend cleanup");
-        return;
+    match decide_exit_requested_flow(state.take_exit_request_allowance()) {
+        ExitRequestedDecision::AllowImmediateExit => {
+            append_shutdown_log("exit request allowed to pass through after backend cleanup");
+            return;
+        }
+        ExitRequestedDecision::RunBackendCleanupFirst => {}
     }
     // Prevent immediate process exit so backend shutdown can run in the runtime's
     // blocking pool; we exit explicitly after stop_backend() finishes.
@@ -49,4 +66,25 @@ pub fn handle_exit_event(app_handle: &AppHandle) {
         exit_cleanup::ExitTrigger::ExitFallback,
         append_shutdown_log,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{decide_exit_requested_flow, ExitRequestedDecision};
+
+    #[test]
+    fn decide_exit_requested_flow_allows_immediate_exit_when_allowance_exists() {
+        assert_eq!(
+            decide_exit_requested_flow(true),
+            ExitRequestedDecision::AllowImmediateExit
+        );
+    }
+
+    #[test]
+    fn decide_exit_requested_flow_requires_cleanup_when_allowance_missing() {
+        assert_eq!(
+            decide_exit_requested_flow(false),
+            ExitRequestedDecision::RunBackendCleanupFirst
+        );
+    }
 }
