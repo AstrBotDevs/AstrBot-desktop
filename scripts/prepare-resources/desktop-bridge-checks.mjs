@@ -144,9 +144,14 @@ export const patchDesktopReleaseRedirectBehavior = async ({ dashboardDir, projec
   );
 
   patched = patched.replace(
-    /const open = \(link: string\) => \{\s*window\.open\(link, '_blank'\);\s*\};/m,
+    /const open = \(link: string\) => \{[\s\S]*?\n\};/m,
     `const open = (link: string) => {
   if (!link) return;
+  const bridgeOpenExternalUrl = (window as any).astrbotDesktop?.openExternalUrl;
+  if (typeof bridgeOpenExternalUrl === 'function') {
+    void bridgeOpenExternalUrl(link);
+    return;
+  }
   const opened = window.open(link, '_blank', 'noopener,noreferrer');
   if (!opened) {
     window.location.assign(link);
@@ -162,6 +167,21 @@ export const patchDesktopReleaseRedirectBehavior = async ({ dashboardDir, projec
     requestExternalRedirect(pendingRedirectUrl.value);
     return;
   }`,
+  );
+
+  patched = patched.replace(
+    /function handleUpdateClick\(\)\s*\{[\s\S]*?\n\}(?=\n\n\/\/ 检测是否为预发布版本)/m,
+    `function handleUpdateClick() {
+  if (isDesktopReleaseMode.value) {
+    pendingRedirectUrl.value = fallbackReleaseUrl;
+    resolvingReleaseTarget.value = false;
+    requestExternalRedirect(pendingRedirectUrl.value);
+    return;
+  }
+  checkUpdate();
+  getReleases();
+  updateStatusDialog.value = true;
+}`,
   );
 
   if (patched !== source) {

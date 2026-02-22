@@ -1,6 +1,67 @@
+use std::process::Command;
 use tauri::{AppHandle, Manager};
+use url::Url;
 
 use crate::{restart_backend_flow, BackendBridgeResult, BackendBridgeState, BackendState};
+
+fn parse_openable_url(raw_url: &str) -> Result<Url, String> {
+    let trimmed = raw_url.trim();
+    if trimmed.is_empty() {
+        return Err("Missing external URL.".to_string());
+    }
+
+    let parsed = Url::parse(trimmed).map_err(|error| format!("Invalid URL: {error}"))?;
+    match parsed.scheme() {
+        "http" | "https" => Ok(parsed),
+        scheme => Err(format!(
+            "Unsupported URL scheme '{scheme}', only http/https are allowed."
+        )),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn open_url_with_system_browser(url: &str) -> Result<(), String> {
+    let status = Command::new("open")
+        .arg(url)
+        .status()
+        .map_err(|error| format!("Failed to run 'open': {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("'open' exited with status {status}"))
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn open_url_with_system_browser(url: &str) -> Result<(), String> {
+    let status = Command::new("rundll32")
+        .args(["url.dll,FileProtocolHandler", url])
+        .status()
+        .map_err(|error| format!("Failed to run 'rundll32': {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("'rundll32' exited with status {status}"))
+    }
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn open_url_with_system_browser(url: &str) -> Result<(), String> {
+    let status = Command::new("xdg-open")
+        .arg(url)
+        .status()
+        .map_err(|error| format!("Failed to run 'xdg-open': {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("'xdg-open' exited with status {status}"))
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows", unix)))]
+fn open_url_with_system_browser(_url: &str) -> Result<(), String> {
+    Err("Opening external URLs is not supported on this platform.".to_string())
+}
 
 #[tauri::command]
 pub(crate) fn desktop_bridge_is_desktop_runtime() -> bool {
@@ -53,6 +114,30 @@ pub(crate) fn desktop_bridge_stop_backend(app_handle: AppHandle) -> BackendBridg
     }
 
     match state.stop_backend_for_bridge() {
+        Ok(()) => BackendBridgeResult {
+            ok: true,
+            reason: None,
+        },
+        Err(error) => BackendBridgeResult {
+            ok: false,
+            reason: Some(error),
+        },
+    }
+}
+
+#[tauri::command]
+pub(crate) fn desktop_bridge_open_external_url(url: String) -> BackendBridgeResult {
+    let parsed = match parse_openable_url(&url) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            return BackendBridgeResult {
+                ok: false,
+                reason: Some(error),
+            };
+        }
+    };
+
+    match open_url_with_system_browser(parsed.as_ref()) {
         Ok(()) => BackendBridgeResult {
             ok: true,
             reason: None,

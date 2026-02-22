@@ -51,6 +51,12 @@ const syncResourceDir = async (source, target) => {
   await cp(source, target, { recursive: true });
 };
 
+const resolveDesktopReleaseBaseUrl = () => {
+  const raw = process.env.ASTRBOT_DESKTOP_RELEASE_BASE_URL;
+  const trimmed = typeof raw === 'string' ? raw.trim() : '';
+  return trimmed || 'https://github.com/AstrBotDevs/AstrBot-desktop/releases';
+};
+
 export const prepareWebui = async ({
   sourceDir,
   projectRoot,
@@ -69,7 +75,9 @@ export const prepareWebui = async ({
     isSourceRepoRefVersionTag,
     isDesktopBridgeExpectationStrict,
   });
-  runPnpmChecked(['--dir', dashboardDir, 'build'], sourceDir);
+  runPnpmChecked(['--dir', dashboardDir, 'build'], sourceDir, {
+    VITE_ASTRBOT_RELEASE_BASE_URL: resolveDesktopReleaseBaseUrl(),
+  });
 
   const sourceWebuiDir = path.join(sourceDir, 'dashboard', 'dist');
   if (!existsSync(path.join(sourceWebuiDir, 'index.html'))) {
