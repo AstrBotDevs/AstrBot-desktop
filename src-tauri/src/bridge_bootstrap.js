@@ -179,6 +179,11 @@
       });
     }
   };
+  const isBridgeFailureResult = (result) =>
+    !!result &&
+    typeof result === 'object' &&
+    Object.prototype.hasOwnProperty.call(result, 'ok') &&
+    result.ok === false;
 
   const normalizeExternalHttpUrl = (rawUrl) => {
     if (rawUrl instanceof URL) {
@@ -215,10 +220,21 @@
 
     try {
       const bridgeResult = bridgeOpenExternalUrl(url.toString());
+      if (bridgeResult && typeof bridgeResult.then === 'function') {
+        bridgeResult.then((result) => {
+          if (isBridgeFailureResult(result)) {
+            warnExternalUrlBridgeError('result', url.toString(), result.reason ?? result);
+          }
+        });
+      }
       if (bridgeResult && typeof bridgeResult.catch === 'function') {
         bridgeResult.catch((error) => {
           warnExternalUrlBridgeError('async', url.toString(), error);
         });
+      }
+      if (isBridgeFailureResult(bridgeResult)) {
+        warnExternalUrlBridgeError('result', url.toString(), bridgeResult.reason ?? bridgeResult);
+        return false;
       }
       return true;
     } catch (error) {

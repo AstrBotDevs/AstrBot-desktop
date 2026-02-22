@@ -37,6 +37,7 @@
 | `ASTRBOT_SOURCE_GIT_URL` | 资源准备时源仓库 URL | 默认 `https://github.com/AstrBotDevs/AstrBot.git` |
 | `ASTRBOT_SOURCE_GIT_REF` | 资源准备时源仓库 ref | 默认空（不强制切 ref） |
 | `ASTRBOT_SOURCE_GIT_REF_IS_COMMIT` | 将 ref 明确标记为 commit | 默认关闭 |
+| `ASTRBOT_SOURCE_FORCE_CHECKOUT` | 强制 `git checkout -f` 覆盖本地改动（CI 默认启用） | 默认关闭 |
 | `ASTRBOT_SOURCE_DIR` | 指定本地源码目录（跳过 clone/fetch） | 默认 `vendor/AstrBot` |
 | `ASTRBOT_DESKTOP_VERSION` | 桌面版本号覆盖 | 默认读取源码 `pyproject.toml` |
 | `ASTRBOT_DESKTOP_RELEASE_BASE_URL` | 构建 dashboard 时覆盖 release 跳转基地址（注入 `VITE_ASTRBOT_RELEASE_BASE_URL`） | 默认 `https://github.com/AstrBotDevs/AstrBot-desktop/releases` |
