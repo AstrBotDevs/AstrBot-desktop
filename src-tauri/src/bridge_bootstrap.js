@@ -155,54 +155,39 @@
       authToken: typeof token === 'string' && token ? token : null
     });
 
-  const bridgeRuntimeState =
-    window.__astrbotDesktopBridgeRuntimeState &&
-    typeof window.__astrbotDesktopBridgeRuntimeState === 'object'
-      ? window.__astrbotDesktopBridgeRuntimeState
-      : (window.__astrbotDesktopBridgeRuntimeState = {});
+  const runtimeState = {
+    externalAnchorInterceptorInstalled: false,
+    windowOpenPatched: false,
+    locationNavigationBridgeInstalled: false,
+    localStorageTokenSyncPatched: false,
+  };
 
   const EXTERNAL_HTTP_PROTOCOLS = new Set(['http:', 'https:']);
 
-  const hasDesktopExternalUrlBridge = () =>
-    typeof window.astrbotDesktop?.openExternalUrl === 'function';
-
   const getDesktopExternalUrlBridge = () =>
-    hasDesktopExternalUrlBridge() ? window.astrbotDesktop.openExternalUrl.bind(window.astrbotDesktop) : null;
+    typeof window.astrbotDesktop?.openExternalUrl === 'function'
+      ? window.astrbotDesktop.openExternalUrl.bind(window.astrbotDesktop)
+      : null;
 
-  const resolveExternalHttpUrl = (rawHref, allowSameOrigin = false) => {
-    const normalizedRaw =
-      typeof rawHref === 'string' ? rawHref.trim() : String(rawHref ?? '').trim();
-    if (!normalizedRaw) {
-      return null;
-    }
+  const normalizeExternalHttpUrl = (rawUrl) => {
+    const normalized = (typeof rawUrl === 'string' ? rawUrl : String(rawUrl ?? '')).trim();
+    if (!normalized) return null;
 
     try {
-      const resolved = new URL(normalizedRaw, window.location.href);
-      if (!EXTERNAL_HTTP_PROTOCOLS.has(resolved.protocol)) {
-        return null;
-      }
-      if (!allowSameOrigin && resolved.origin === window.location.origin) {
-        return null;
-      }
-      return resolved.toString();
+      const url = new URL(normalized, window.location.href);
+      if (!EXTERNAL_HTTP_PROTOCOLS.has(url.protocol)) return null;
+      return url;
     } catch {
       return null;
     }
   };
 
-  const openExternalHttpUrl = (rawHref, allowSameOrigin = false) => {
-    const externalUrl = resolveExternalHttpUrl(rawHref, allowSameOrigin);
-    if (!externalUrl) {
-      return false;
-    }
-
+  const openExternalUrlViaBridge = (urlString) => {
     const bridgeOpenExternalUrl = getDesktopExternalUrlBridge();
-    if (!bridgeOpenExternalUrl) {
-      return false;
-    }
+    if (!bridgeOpenExternalUrl) return false;
 
     try {
-      const bridgeResult = bridgeOpenExternalUrl(externalUrl);
+      const bridgeResult = bridgeOpenExternalUrl(urlString);
       if (bridgeResult && typeof bridgeResult.catch === 'function') {
         bridgeResult.catch(() => {});
       }
@@ -214,11 +199,22 @@
 
   const openExternalUrlForAnchor = (anchor) => {
     const rawHref = anchor.getAttribute('href') || anchor.href || '';
+    const url = normalizeExternalHttpUrl(rawHref);
+    if (!url) return false;
+
     const allowSameOrigin = anchor.target === '_blank';
-    return openExternalHttpUrl(rawHref, allowSameOrigin);
+    if (!allowSameOrigin && url.origin === window.location.origin) {
+      return false;
+    }
+    return openExternalUrlViaBridge(url.toString());
   };
 
-  const openExternalUrlForNavigation = (url) => openExternalHttpUrl(url, true);
+  const openExternalUrlForNavigation = (rawUrl) => {
+    const url = normalizeExternalHttpUrl(rawUrl);
+    if (!url) return false;
+    if (url.origin === window.location.origin) return false;
+    return openExternalUrlViaBridge(url.toString());
+  };
 
   const findAnchorFromEvent = (event) => {
     const eventPath =
@@ -242,17 +238,11 @@
     return null;
   };
 
-  const safeMethod = (obj, name) =>
-    typeof obj?.[name] === 'function' ? obj[name].bind(obj) : null;
-
   const installExternalAnchorInterceptor = () => {
-    if (bridgeRuntimeState.externalAnchorInterceptorInstalled) {
+    if (runtimeState.externalAnchorInterceptorInstalled) {
       return;
     }
-    if (!hasDesktopExternalUrlBridge()) {
-      return;
-    }
-    bridgeRuntimeState.externalAnchorInterceptorInstalled = true;
+    runtimeState.externalAnchorInterceptorInstalled = true;
 
     document.addEventListener(
       'click',
@@ -283,15 +273,13 @@
   };
 
   const installWindowOpenBridge = () => {
-    if (bridgeRuntimeState.windowOpenPatched) {
+    if (runtimeState.windowOpenPatched) {
       return;
     }
-    if (!hasDesktopExternalUrlBridge()) {
-      return;
-    }
-    bridgeRuntimeState.windowOpenPatched = true;
+    runtimeState.windowOpenPatched = true;
 
-    const nativeWindowOpen = safeMethod(window, 'open');
+    const nativeWindowOpen =
+      typeof window.open === 'function' ? window.open.bind(window) : null;
 
     const createWindowOpenHandle = (url) => {
       let closed = false;
@@ -343,17 +331,20 @@
   };
 
   const installLocationNavigationBridge = () => {
-    if (bridgeRuntimeState.locationNavigationBridgeInstalled) {
+    if (runtimeState.locationNavigationBridgeInstalled) {
       return;
     }
-    if (!hasDesktopExternalUrlBridge()) {
-      return;
-    }
-    bridgeRuntimeState.locationNavigationBridgeInstalled = true;
+    runtimeState.locationNavigationBridgeInstalled = true;
 
     const locationObject = window.location;
-    const nativeAssign = safeMethod(locationObject, 'assign');
-    const nativeReplace = safeMethod(locationObject, 'replace');
+    const nativeAssign =
+      typeof locationObject.assign === 'function'
+        ? locationObject.assign.bind(locationObject)
+        : null;
+    const nativeReplace =
+      typeof locationObject.replace === 'function'
+        ? locationObject.replace.bind(locationObject)
+        : null;
 
     if (nativeAssign) {
       try {
@@ -614,8 +605,8 @@
   const patchLocalStorageTokenSync = () => {
     try {
       const storage = window.localStorage;
-      if (!storage || bridgeRuntimeState.localStorageTokenSyncPatched) return;
-      bridgeRuntimeState.localStorageTokenSyncPatched = true;
+      if (!storage || runtimeState.localStorageTokenSyncPatched) return;
+      runtimeState.localStorageTokenSyncPatched = true;
 
       const rawSetItem = storage.setItem?.bind(storage);
       const rawRemoveItem = storage.removeItem?.bind(storage);
