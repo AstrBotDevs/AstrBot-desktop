@@ -155,11 +155,6 @@
       authToken: typeof token === 'string' && token ? token : null
     });
 
-  const getDesktopExternalUrlBridge = () =>
-    typeof window.astrbotDesktop?.openExternalUrl === 'function'
-      ? window.astrbotDesktop.openExternalUrl.bind(window.astrbotDesktop)
-      : null;
-
   const normalizeExternalHttpUrl = (rawUrl) => {
     const normalized = (typeof rawUrl === 'string' ? rawUrl : String(rawUrl ?? '')).trim();
     if (!normalized) return null;
@@ -173,12 +168,21 @@
     }
   };
 
-  const openExternalUrlViaBridge = (urlString) => {
-    const bridgeOpenExternalUrl = getDesktopExternalUrlBridge();
+  const openExternalUrl = (rawUrl, { allowSameOrigin = false } = {}) => {
+    const url = normalizeExternalHttpUrl(rawUrl);
+    if (!url) return false;
+    if (!allowSameOrigin && url.origin === window.location.origin) {
+      return false;
+    }
+
+    const bridgeOpenExternalUrl =
+      typeof window.astrbotDesktop?.openExternalUrl === 'function'
+        ? window.astrbotDesktop.openExternalUrl.bind(window.astrbotDesktop)
+        : null;
     if (!bridgeOpenExternalUrl) return false;
 
     try {
-      const bridgeResult = bridgeOpenExternalUrl(urlString);
+      const bridgeResult = bridgeOpenExternalUrl(url.toString());
       if (bridgeResult && typeof bridgeResult.catch === 'function') {
         bridgeResult.catch(() => {});
       }
@@ -186,15 +190,6 @@
     } catch {
       return false;
     }
-  };
-
-  const openExternalUrl = (rawUrl, { allowSameOrigin = false } = {}) => {
-    const url = normalizeExternalHttpUrl(rawUrl);
-    if (!url) return false;
-    if (!allowSameOrigin && url.origin === window.location.origin) {
-      return false;
-    }
-    return openExternalUrlViaBridge(url.toString());
   };
 
   const openExternalUrlForAnchor = (anchor) => {
@@ -225,10 +220,23 @@
     return null;
   };
 
-  const swallowErrors = (fn) => {
+  const swallowPatchErrors = (label, fn) => {
     try {
       fn();
-    } catch {}
+    } catch (error) {
+      if (error instanceof TypeError) {
+        const isDev =
+          (typeof process !== 'undefined' &&
+            process.env &&
+            process.env.NODE_ENV !== 'production') ||
+          (typeof __DEV__ !== 'undefined' && __DEV__ === true);
+        if (isDev && typeof console !== 'undefined' && typeof console.warn === 'function') {
+          console.warn(`astrbotDesktop: failed to patch ${label}`, error);
+        }
+        return;
+      }
+      throw error;
+    }
   };
 
   const installOnce = (installer) => {
@@ -255,7 +263,7 @@
 
     if (!nativeHrefSetter) return;
 
-    swallowErrors(() => {
+    swallowPatchErrors('location.href', () => {
       Object.defineProperty(locationObject, 'href', {
         configurable: true,
         enumerable: hrefDescriptor?.enumerable ?? true,
@@ -348,7 +356,7 @@
     };
 
     if (nativeWindowOpen) {
-      swallowErrors(() => {
+      swallowPatchErrors('window.__astrbotNativeWindowOpen', () => {
         Object.defineProperty(window, '__astrbotNativeWindowOpen', {
           configurable: true,
           writable: false,
@@ -358,7 +366,7 @@
       });
     }
 
-    swallowErrors(() => {
+    swallowPatchErrors('window.open', () => {
       window.open = bridgeWindowOpen;
     });
   });
@@ -382,13 +390,13 @@
     };
 
     if (nativeAssign) {
-      swallowErrors(() => {
+      swallowPatchErrors('location.assign', () => {
         locationObject.assign = wrapLocationMutator(nativeAssign);
       });
     }
 
     if (nativeReplace) {
-      swallowErrors(() => {
+      swallowPatchErrors('location.replace', () => {
         locationObject.replace = wrapLocationMutator(nativeReplace);
       });
     }
