@@ -35,6 +35,10 @@
   - 退出状态机。
 - `http_response.rs`
   - HTTP 响应解析与后端 start_time 提取。
+- `process_control.rs`
+  - 子进程 graceful/force 停止控制与等待策略。
+- `origin_policy.rs`
+  - bridge 注入来源判定（同源/loopback/端口策略）。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 

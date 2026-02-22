@@ -84,6 +84,22 @@ HTTP 响应解析模块：
 - JSON 响应提取（2xx 门禁）
 - 后端 `start_time` 字段解析
 
+### 2.9 `src-tauri/src/process_control.rs`
+
+进程停止控制模块：
+
+- 子进程退出等待
+- graceful stop / force stop 命令编排
+- 跟随等待时间计算与失败降级策略
+
+### 2.10 `src-tauri/src/origin_policy.rs`
+
+桥接注入来源策略模块：
+
+- URL 同源判定
+- loopback host 判定
+- tray bridge 注入来源决策
+
 ## 3. 关键流程
 
 ### 3.1 启动流程

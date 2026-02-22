@@ -5,6 +5,8 @@ mod backend_path;
 mod exit_state;
 mod http_response;
 mod logging;
+mod origin_policy;
+mod process_control;
 mod startup_mode;
 mod webui_paths;
 
@@ -15,10 +17,10 @@ use std::{
     env,
     ffi::OsString,
     fs::{self, OpenOptions},
-    io::{self, Read, Write},
-    net::{IpAddr, TcpStream, ToSocketAddrs},
+    io::{Read, Write},
+    net::{TcpStream, ToSocketAddrs},
     path::{Path, PathBuf},
-    process::{Child, Command, ExitStatus, Stdio},
+    process::{Child, Command, Stdio},
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex, OnceLock,
@@ -52,13 +54,6 @@ const BACKEND_READY_PROBE_TIMEOUT_ENV: &str = "ASTRBOT_BACKEND_READY_PROBE_TIMEO
 const BACKEND_READY_PROBE_TIMEOUT_MIN_MS: u64 = 100;
 const BACKEND_READY_PROBE_TIMEOUT_MAX_MS: u64 = 30_000;
 const BACKEND_READY_TCP_PROBE_TIMEOUT_MAX_MS: u64 = 1_000;
-const FORCE_STOP_WAIT_MIN_MS: u64 = 200;
-#[cfg(target_os = "windows")]
-const WINDOWS_GRACEFUL_STOP_NONZERO_WAIT_MS: u64 = 350;
-#[cfg(target_os = "windows")]
-const FORCE_STOP_WAIT_MAX_WINDOWS_MS: u64 = 2_200;
-#[cfg(not(target_os = "windows"))]
-const FORCE_STOP_WAIT_MAX_NON_WINDOWS_MS: u64 = 1_500;
 const DEFAULT_BACKEND_PING_TIMEOUT_MS: u64 = 800;
 const BACKEND_PING_TIMEOUT_MIN_MS: u64 = 50;
 const BACKEND_PING_TIMEOUT_MAX_MS: u64 = 30_000;
@@ -165,11 +160,6 @@ enum GracefulRestartOutcome {
     Completed,
     WaitFailed(String),
     RequestRejected,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct TrayOriginDecision {
-    uses_backend_origin: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -912,7 +902,11 @@ Content-Length: {}\r\n\
             return Ok(());
         };
 
-        if stop_child_process_gracefully(child, Duration::from_millis(GRACEFUL_STOP_TIMEOUT_MS)) {
+        if process_control::stop_child_process_gracefully(
+            child,
+            Duration::from_millis(GRACEFUL_STOP_TIMEOUT_MS),
+            append_desktop_log,
+        ) {
             *guard = None;
             return Ok(());
         }
@@ -1817,54 +1811,12 @@ fn desktop_bridge_bootstrap_script() -> &'static str {
         .as_str()
 }
 
-fn same_origin(left: &Url, right: &Url) -> bool {
-    left.scheme() == right.scheme()
-        && left.host_str() == right.host_str()
-        && left.port_or_known_default() == right.port_or_known_default()
-}
-
-fn is_loopback_host(host: Option<&str>) -> bool {
-    match host {
-        Some("localhost") => true,
-        Some(raw) => raw.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback()),
-        None => false,
-    }
-}
-
-fn tray_origin_decision(backend_url: &Url, window_url: &Url) -> TrayOriginDecision {
-    if same_origin(backend_url, window_url) {
-        return TrayOriginDecision {
-            uses_backend_origin: true,
-        };
-    }
-    let backend_scheme = backend_url.scheme();
-    let window_scheme = window_url.scheme();
-    if !matches!(backend_scheme, "http" | "https") || !matches!(window_scheme, "http" | "https") {
-        return TrayOriginDecision {
-            uses_backend_origin: false,
-        };
-    }
-
-    let loopback_http =
-        is_loopback_host(backend_url.host_str()) && is_loopback_host(window_url.host_str());
-    if !loopback_http {
-        return TrayOriginDecision {
-            uses_backend_origin: false,
-        };
-    }
-
-    let same_port = backend_url.port_or_known_default() == window_url.port_or_known_default();
-    TrayOriginDecision {
-        uses_backend_origin: same_port,
-    }
-}
-
 fn should_inject_desktop_bridge(app_handle: &AppHandle, page_url: &Url) -> bool {
     let state = app_handle.state::<BackendState>();
     let Ok(backend_url) = Url::parse(&state.backend_url) else {
         return false;
     };
-    tray_origin_decision(&backend_url, page_url).uses_backend_origin
+    origin_policy::tray_origin_decision(&backend_url, page_url).uses_backend_origin
 }
 
 fn inject_desktop_bridge(webview: &tauri::Webview<tauri::Wry>) {
@@ -2137,161 +2089,6 @@ fn backend_wait_timeout(packaged_mode: bool) -> Duration {
         PACKAGED_BACKEND_TIMEOUT_FALLBACK_MS,
     )
     .unwrap_or(Duration::from_millis(20_000))
-}
-
-fn wait_for_child_exit(child: &mut Child, timeout: Duration) -> bool {
-    let start = Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => return true,
-            Ok(None) => {
-                if start.elapsed() >= timeout {
-                    return false;
-                }
-                thread::sleep(Duration::from_millis(120));
-            }
-            Err(_) => return false,
-        }
-    }
-}
-
-fn run_stop_command(pid: u32, label: &str, program: &str, args: &[&str]) -> io::Result<ExitStatus> {
-    let mut command = Command::new(program);
-    command
-        .args(args)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .stdin(Stdio::null());
-    #[cfg(target_os = "windows")]
-    {
-        // Avoid flashing transient black console windows when invoking taskkill.
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
-    let status = command.status();
-
-    match &status {
-        Ok(exit_status) if exit_status.success() => {}
-        Ok(exit_status) => append_desktop_log(&format!(
-            "{label} returned non-zero: pid={pid}, status={exit_status:?}"
-        )),
-        Err(error) => append_desktop_log(&format!(
-            "{label} failed to start: pid={pid}, error={error}"
-        )),
-    }
-
-    status
-}
-
-fn compute_followup_wait(timeout: Duration, max_extra_wait: Duration) -> Duration {
-    if timeout.is_zero() {
-        Duration::ZERO
-    } else {
-        (timeout / 4)
-            .max(Duration::from_millis(FORCE_STOP_WAIT_MIN_MS))
-            .min(max_extra_wait)
-    }
-}
-
-fn resolve_graceful_wait_timeout(
-    pid: u32,
-    timeout: Duration,
-    non_success_wait_cap: Duration,
-    graceful_status: &io::Result<ExitStatus>,
-    command_label: &str,
-) -> Duration {
-    match graceful_status {
-        Ok(status) if status.success() => timeout,
-        _ => {
-            let shortened_wait = timeout.min(non_success_wait_cap);
-            if shortened_wait < timeout {
-                let outcome = match graceful_status {
-                    Ok(status) => format!("status={status:?}"),
-                    Err(error) => format!("error={error}"),
-                };
-                append_desktop_log(&format!(
-                    "{command_label} not successful; shorten graceful wait: pid={pid}, {outcome}, requested_wait_ms={}, effective_wait_ms={}",
-                    timeout.as_millis(),
-                    shortened_wait.as_millis()
-                ));
-            }
-            shortened_wait
-        }
-    }
-}
-
-/// Attempt to stop a child process gracefully within `timeout`.
-///
-/// On the force-kill path, a follow-up wait is derived from `timeout` (`timeout / 4`)
-/// and capped per-platform:
-/// - Windows: up to 2200ms.
-/// - Non-Windows: up to 1500ms.
-#[cfg(target_os = "windows")]
-fn stop_child_process_gracefully(child: &mut Child, timeout: Duration) -> bool {
-    let pid = child.id();
-    let pid_arg = pid.to_string();
-
-    let graceful_status = run_stop_command(
-        pid,
-        "taskkill graceful stop",
-        "taskkill",
-        &["/pid", &pid_arg, "/t"],
-    );
-
-    let graceful_wait_timeout = resolve_graceful_wait_timeout(
-        pid,
-        timeout,
-        Duration::from_millis(WINDOWS_GRACEFUL_STOP_NONZERO_WAIT_MS),
-        &graceful_status,
-        "taskkill graceful stop",
-    );
-
-    if wait_for_child_exit(child, graceful_wait_timeout) {
-        return true;
-    }
-
-    let force_status = run_stop_command(
-        pid,
-        "taskkill force stop",
-        "taskkill",
-        &["/pid", &pid_arg, "/t", "/f"],
-    );
-
-    let followup_wait = compute_followup_wait(
-        timeout,
-        Duration::from_millis(FORCE_STOP_WAIT_MAX_WINDOWS_MS),
-    );
-    append_desktop_log(&format!(
-        "child graceful stop timed out, force-kill issued: pid={pid}, graceful={graceful_status:?}, force={force_status:?}, followup_wait_ms={}",
-        followup_wait.as_millis(),
-    ));
-    wait_for_child_exit(child, followup_wait)
-}
-
-#[cfg(not(target_os = "windows"))]
-fn stop_child_process_gracefully(child: &mut Child, timeout: Duration) -> bool {
-    let pid = child.id();
-    let pid_arg = pid.to_string();
-
-    let graceful_status = run_stop_command(pid, "kill -TERM", "kill", &["-TERM", &pid_arg]);
-
-    let graceful_wait_timeout =
-        resolve_graceful_wait_timeout(pid, timeout, timeout, &graceful_status, "kill -TERM");
-    if wait_for_child_exit(child, graceful_wait_timeout) {
-        return true;
-    }
-
-    let force_status = run_stop_command(pid, "kill -KILL", "kill", &["-KILL", &pid_arg]);
-
-    let followup_wait = compute_followup_wait(
-        timeout,
-        Duration::from_millis(FORCE_STOP_WAIT_MAX_NON_WINDOWS_MS),
-    );
-    append_desktop_log(&format!(
-        "child graceful stop timed out, force-kill issued: pid={pid}, graceful={graceful_status:?}, force={force_status:?}, followup_wait_ms={}",
-        followup_wait.as_millis(),
-    ));
-
-    wait_for_child_exit(child, followup_wait)
 }
 
 fn build_debug_command(plan: &LaunchPlan) -> Vec<String> {
