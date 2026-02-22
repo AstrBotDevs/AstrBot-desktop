@@ -154,9 +154,10 @@ pub(crate) fn desktop_bridge_set_shell_locale(
     app_handle: AppHandle,
     locale: Option<String>,
 ) -> BackendBridgeResult {
+    let packaged_root_dir = runtime_paths::default_packaged_root_dir();
     match shell_locale::write_cached_shell_locale(
         locale.as_deref(),
-        runtime_paths::default_packaged_root_dir(),
+        packaged_root_dir.as_deref(),
     ) {
         Ok(()) => {
             tray_labels::update_tray_menu_labels(
@@ -169,9 +170,12 @@ pub(crate) fn desktop_bridge_set_shell_locale(
                 reason: None,
             }
         }
-        Err(error) => BackendBridgeResult {
-            ok: false,
-            reason: Some(error),
-        },
+        Err(error) => {
+            append_desktop_log(&format!("failed to persist shell locale: {error}"));
+            BackendBridgeResult {
+                ok: false,
+                reason: Some(error),
+            }
+        }
     }
 }

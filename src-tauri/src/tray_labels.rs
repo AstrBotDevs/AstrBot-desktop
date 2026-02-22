@@ -41,11 +41,14 @@ pub fn update_tray_menu_labels_with_visibility<F>(
         runtime_paths::default_packaged_root_dir(),
     );
     let shell_texts = shell_locale::shell_texts_for_locale(locale);
-    let window_visibility = app_handle
-        .get_webview_window("main")
-        .and_then(|window| window.is_visible().ok());
-    let is_visible = window_visibility.unwrap_or(true);
-    let effective_visible = visible_override.unwrap_or(is_visible);
+    let effective_visible = if let Some(visible) = visible_override {
+        visible
+    } else {
+        app_handle
+            .get_webview_window("main")
+            .and_then(|window| window.is_visible().ok())
+            .unwrap_or(true)
+    };
 
     let toggle_label = if effective_visible {
         shell_texts.tray_hide

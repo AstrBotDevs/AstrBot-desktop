@@ -96,9 +96,9 @@ fn read_cached_shell_locale(packaged_root_dir: Option<&Path>) -> Option<&'static
 
 pub(crate) fn write_cached_shell_locale(
     locale: Option<&str>,
-    packaged_root_dir: Option<PathBuf>,
+    packaged_root_dir: Option<&Path>,
 ) -> Result<(), String> {
-    let Some(state_path) = desktop_state_path_for_locale(packaged_root_dir.as_deref()) else {
+    let Some(state_path) = desktop_state_path_for_locale(packaged_root_dir) else {
         return Ok(());
     };
 
