@@ -178,7 +178,7 @@
   const clearSyncedStorageKeys = () => {
     void syncAuthToken(null);
     void syncShellLocale(null);
-  });
+  };
 
   const IS_DEV =
     (typeof process !== 'undefined' &&

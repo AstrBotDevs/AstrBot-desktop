@@ -129,11 +129,13 @@ pub(crate) fn write_cached_shell_locale(
             ));
         }
     };
-    let Some(object) = parsed.as_object_mut() else {
-        return Err(format!(
-            "Failed to parse shell locale state {}: expected JSON object at root",
-            state_path.display()
-        ));
+    let object = if let Some(object) = parsed.as_object_mut() {
+        object
+    } else {
+        parsed = Value::Object(Map::new());
+        parsed
+            .as_object_mut()
+            .expect("JSON object was just initialized")
     };
 
     if let Some(normalized_locale) = locale.and_then(normalize_shell_locale) {
