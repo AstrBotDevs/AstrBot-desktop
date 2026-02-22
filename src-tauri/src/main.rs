@@ -11,6 +11,7 @@ mod packaged_webui;
 mod process_control;
 mod runtime_paths;
 mod shell_locale;
+mod startup_loading;
 mod startup_mode;
 mod tray_actions;
 mod tray_bridge_event;
@@ -1328,8 +1329,16 @@ fn main() {
                 append_desktop_log(&format!("page-load finished: {}", payload.url()));
                 if should_inject_desktop_bridge(webview.app_handle(), payload.url()) {
                     inject_desktop_bridge(webview);
-                } else if should_apply_startup_loading_mode(webview, payload.url()) {
-                    apply_startup_loading_mode(webview);
+                } else if startup_loading::should_apply_startup_loading_mode(
+                    webview.window().label(),
+                    payload.url(),
+                ) {
+                    startup_loading::apply_startup_loading_mode(
+                        webview.app_handle(),
+                        webview,
+                        STARTUP_MODE_ENV,
+                        append_startup_log,
+                    );
                 }
             }
         })
@@ -1720,90 +1729,6 @@ fn should_inject_desktop_bridge(app_handle: &AppHandle, page_url: &Url) -> bool 
 fn inject_desktop_bridge(webview: &tauri::Webview<tauri::Wry>) {
     if let Err(error) = webview.eval(desktop_bridge_bootstrap_script()) {
         append_desktop_log(&format!("failed to inject desktop bridge script: {error}"));
-    }
-}
-
-fn should_apply_startup_loading_mode(webview: &tauri::Webview<tauri::Wry>, page_url: &Url) -> bool {
-    if webview.window().label() != "main" {
-        return false;
-    }
-
-    if matches!(page_url.scheme(), "http" | "https") {
-        return false;
-    }
-
-    let path = page_url.path();
-    path == "/" || path == "/index.html"
-}
-
-fn apply_startup_loading_mode(webview: &tauri::Webview<tauri::Wry>) {
-    let app_handle = webview.app_handle();
-    let mode = resolve_startup_loading_mode(app_handle);
-    let mode_js = serde_json::to_string(mode).expect("serializing startup mode");
-    let script = format!(
-        "if (typeof window !== 'undefined' && typeof window.__astrbotSetStartupMode === 'function') {{ window.__astrbotSetStartupMode({mode_js}); }}"
-    );
-    if let Err(error) = webview.eval(&script) {
-        append_startup_log(&format!("failed to apply startup loading mode: {error}"));
-    }
-}
-
-fn resolve_startup_loading_mode(app_handle: &AppHandle) -> &'static str {
-    let state = app_handle.state::<BackendState>();
-    match state.startup_loading_mode.lock() {
-        Ok(guard) => {
-            if let Some(mode) = *guard {
-                return mode;
-            }
-        }
-        Err(error) => {
-            append_startup_log(&format!(
-                "startup loading mode cache lock poisoned (read), recomputing mode: {error}"
-            ));
-        }
-    }
-
-    let mode = resolve_startup_loading_mode_uncached(&state, app_handle);
-    match state.startup_loading_mode.lock() {
-        Ok(mut guard) => {
-            *guard = Some(mode);
-        }
-        Err(error) => {
-            append_startup_log(&format!(
-                "startup loading mode cache lock poisoned (write), skip cache update: {error}"
-            ));
-        }
-    }
-    mode
-}
-
-fn resolve_startup_loading_mode_uncached(
-    state: &BackendState,
-    app_handle: &AppHandle,
-) -> &'static str {
-    if let Ok(raw_mode) = env::var(STARTUP_MODE_ENV) {
-        let (mode, message) = startup_mode::resolve_mode_from_env(&raw_mode, STARTUP_MODE_ENV);
-        if let Some(message) = message {
-            append_startup_log(&message);
-        }
-        return mode.as_str();
-    }
-
-    match state.resolve_launch_plan(app_handle) {
-        Ok(plan) => {
-            let (mode, message) =
-                startup_mode::resolve_mode_from_webui_dir(plan.webui_dir.as_deref());
-            if let Some(message) = message {
-                append_startup_log(&message);
-            }
-            mode.as_str()
-        }
-        Err(error) => {
-            append_startup_log(&format!(
-                "failed to resolve startup mode from launch plan, fallback to loading: {error}"
-            ));
-            startup_mode::STARTUP_MODE_LOADING
-        }
     }
 }
 

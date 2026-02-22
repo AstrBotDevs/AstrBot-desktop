@@ -53,6 +53,8 @@
   - 主线程任务调度与 startup error 分发封装。
 - `tray_bridge_event.rs`
   - 托盘重启 bridge 事件发射与 token 管理。
+- `startup_loading.rs`
+  - 启动页 loading mode 判定与注入逻辑。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 

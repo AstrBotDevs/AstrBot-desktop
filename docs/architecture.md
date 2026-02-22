@@ -156,6 +156,14 @@ UI 分发模块：
 - 向主窗口发射重启事件
 - 事件发送失败日志收敛
 
+### 2.18 `src-tauri/src/startup_loading.rs`
+
+启动 loading 模块：
+
+- 是否应用 startup loading 的 URL/窗口判定
+- startup mode 解析与缓存读写
+- startup mode 前端注入脚本执行
+
 ## 3. 关键流程
 
 ### 3.1 启动流程
