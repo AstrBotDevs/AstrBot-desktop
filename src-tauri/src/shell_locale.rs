@@ -5,6 +5,12 @@ use std::{
 
 use serde_json::{Map, Value};
 
+const LOCALE_FIELD: &str = "locale";
+
+fn empty_state_object() -> Value {
+    Value::Object(Map::new())
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ShellTexts {
     pub tray_hide: &'static str,
@@ -90,17 +96,20 @@ fn read_cached_shell_locale(packaged_root_dir: Option<&Path>) -> Option<&'static
     let state_path = desktop_state_path_for_locale(packaged_root_dir)?;
     let raw = fs::read_to_string(state_path).ok()?;
     let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    let locale = parsed.get("locale")?.as_str()?;
+    let locale = parsed.get(LOCALE_FIELD)?.as_str()?;
     normalize_shell_locale(locale)
 }
 
-fn ensure_object(value: &mut Value) -> Result<&mut Map<String, Value>, String> {
-    if !value.is_object() {
-        *value = Value::Object(Map::new());
+fn ensure_object(value: &mut Value) -> &mut Map<String, Value> {
+    if let Value::Object(map) = value {
+        return map;
     }
+
+    *value = empty_state_object();
+    // Safe because `value` was just replaced with an object.
     value
         .as_object_mut()
-        .ok_or_else(|| "failed to normalize value into JSON object".to_string())
+        .expect("value was just normalized into a JSON object")
 }
 
 pub(crate) fn write_cached_shell_locale(
@@ -143,10 +152,10 @@ pub(crate) fn write_cached_shell_locale(
                     state_path.display(),
                     error
                 ));
-                Value::Object(Map::new())
+                empty_state_object()
             }
         },
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Value::Object(Map::new()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => empty_state_object(),
         Err(error) => {
             return Err(format!(
                 "Failed to read shell locale state {}: {}",
@@ -161,21 +170,15 @@ pub(crate) fn write_cached_shell_locale(
             state_path.display()
         ));
     }
-    let object = ensure_object(&mut parsed).map_err(|error| {
-        format!(
-            "Failed to normalize shell locale state {}: {}",
-            state_path.display(),
-            error
-        )
-    })?;
+    let object = ensure_object(&mut parsed);
 
     if let Some(normalized_locale) = normalized_locale {
         object.insert(
-            "locale".to_string(),
+            LOCALE_FIELD.to_string(),
             Value::String(normalized_locale.to_string()),
         );
     } else {
-        object.remove("locale");
+        object.remove(LOCALE_FIELD);
     }
 
     let serialized = serde_json::to_string_pretty(&parsed)

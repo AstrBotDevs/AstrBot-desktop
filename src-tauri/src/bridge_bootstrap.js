@@ -144,6 +144,8 @@
 
   const TOKEN_STORAGE_KEY = 'token';
   const SHELL_LOCALE_STORAGE_KEY = 'astrbot-locale';
+  const STORAGE_SYNC_PATCHED_FLAG = '__astrbotDesktopStorageSyncPatched';
+  const LEGACY_TOKEN_SYNC_PATCHED_FLAG = '__astrbotDesktopTokenSyncPatched';
 
   const normalizeStoredValue = (value) =>
     typeof value === 'string' && value ? value : null;
@@ -643,18 +645,19 @@
   };
 
   const patchLocalStorageBridgeSync = () => {
-    if (
-      window.__astrbotDesktopStorageSyncPatched ||
-      window.__astrbotDesktopTokenSyncPatched
-    ) {
+    if (window[STORAGE_SYNC_PATCHED_FLAG]) {
+      return;
+    }
+    // Legacy compatibility: migrate the old guard flag to the new canonical flag.
+    if (window[LEGACY_TOKEN_SYNC_PATCHED_FLAG]) {
+      window[STORAGE_SYNC_PATCHED_FLAG] = true;
       return;
     }
     try {
       const storage = window.localStorage;
       if (!storage) return;
-      window.__astrbotDesktopStorageSyncPatched = true;
-      // Keep backward compatibility with previous guard key.
-      window.__astrbotDesktopTokenSyncPatched = true;
+      window[STORAGE_SYNC_PATCHED_FLAG] = true;
+      window[LEGACY_TOKEN_SYNC_PATCHED_FLAG] = true;
 
       const rawSetItem = storage.setItem?.bind(storage);
       const rawRemoveItem = storage.removeItem?.bind(storage);
