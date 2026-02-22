@@ -1,250 +1,38 @@
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { existsSync, mkdirSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import {
+  normalizeDesktopVersionOverride,
+  readAstrbotVersionFromPyproject,
+  syncDesktopVersionFiles,
+} from './prepare-resources/version-sync.mjs';
+import {
+  DEFAULT_ASTRBOT_SOURCE_GIT_URL,
+  ensureSourceRepo,
+  getSourceRefInfo,
+  normalizeSourceRepoConfig,
+  resolveSourceDir,
+} from './prepare-resources/source-repo.mjs';
+import {
+  ensureStartupShellAssets,
+  prepareBackend,
+  prepareWebui,
+} from './prepare-resources/mode-tasks.mjs';
 
-const DEFAULT_ASTRBOT_SOURCE_GIT_URL = 'https://github.com/AstrBotDevs/AstrBot.git';
 const sourceRepoUrlRaw =
   process.env.ASTRBOT_SOURCE_GIT_URL?.trim() || DEFAULT_ASTRBOT_SOURCE_GIT_URL;
 const sourceRepoRefRaw = process.env.ASTRBOT_SOURCE_GIT_REF?.trim() || '';
+const sourceRepoRefIsCommitRaw = process.env.ASTRBOT_SOURCE_GIT_REF_IS_COMMIT?.trim() || '';
+const sourceDirOverrideRaw = process.env.ASTRBOT_SOURCE_DIR?.trim() || '';
 const desktopVersionOverrideRaw = process.env.ASTRBOT_DESKTOP_VERSION?.trim() || '';
-const PYTHON_BUILD_STANDALONE_RELEASE =
-  process.env.ASTRBOT_PBS_RELEASE?.trim() || '20260211';
-const PYTHON_BUILD_STANDALONE_VERSION =
-  process.env.ASTRBOT_PBS_VERSION?.trim() || '3.12.12';
+const pythonBuildStandaloneRelease = process.env.ASTRBOT_PBS_RELEASE?.trim() || '20260211';
+const pythonBuildStandaloneVersion = process.env.ASTRBOT_PBS_VERSION?.trim() || '3.12.12';
 const mode = process.argv[2] || 'all';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 
-const normalizeDesktopVersionOverride = (version) => {
-  const trimmed = typeof version === 'string' ? version.trim() : '';
-  if (!trimmed) {
-    return '';
-  }
-  if (/^v\d/i.test(trimmed)) {
-    return trimmed.slice(1);
-  }
-  return trimmed;
-};
-
 const desktopVersionOverride = normalizeDesktopVersionOverride(desktopVersionOverrideRaw);
-
-const normalizeSourceRepoConfig = () => {
-  if (!sourceRepoUrlRaw) {
-    return { repoUrl: '', repoRef: sourceRepoRefRaw };
-  }
-
-  const treeMatch =
-    /^https?:\/\/github\.com\/([^/]+\/[^/]+)\/tree\/([^/]+)\/?$/.exec(sourceRepoUrlRaw) ||
-    /^https?:\/\/github\.com\/([^/]+\/[^/]+)\/tree\/([^/]+)\/.+$/.exec(sourceRepoUrlRaw);
-  if (treeMatch) {
-    const repoPath = treeMatch[1];
-    const refFromUrl = treeMatch[2];
-    return {
-      repoUrl: `https://github.com/${repoPath}.git`,
-      repoRef: sourceRepoRefRaw || refFromUrl,
-    };
-  }
-
-  return {
-    repoUrl: sourceRepoUrlRaw,
-    repoRef: sourceRepoRefRaw,
-  };
-};
-
-const { repoUrl: sourceRepoUrl, repoRef: sourceRepoRefResolved } = normalizeSourceRepoConfig();
-const SOURCE_REPO_REF_COMMIT_HINT_TRUTHY = new Set(['1', 'true', 'yes', 'on']);
-// Accept full SHAs and longer abbreviated SHAs (>= 12) to reduce false positives
-// from hex-looking branch/tag names while still supporting common CI short refs.
-const GIT_COMMIT_SHA_PATTERN = /^[0-9a-f]{12,64}$/i;
-// Treat both `v1.2.3` and `1.2.3` style refs as release tags.
-const VERSION_TAG_REF_PATTERN = /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
-
-const getSourceRefInfo = (resolvedRef) => {
-  const ref = typeof resolvedRef === 'string' ? resolvedRef.trim() : '';
-  const commitHintRaw = String(process.env.ASTRBOT_SOURCE_GIT_REF_IS_COMMIT || '')
-    .trim()
-    .toLowerCase();
-  const hasExplicitCommitHint = SOURCE_REPO_REF_COMMIT_HINT_TRUTHY.has(commitHintRaw);
-  const isCommit = !!ref && (GIT_COMMIT_SHA_PATTERN.test(ref) || hasExplicitCommitHint);
-  const isVersionTag = VERSION_TAG_REF_PATTERN.test(ref);
-
-  return { ref, isCommit, isVersionTag };
-};
-
-const {
-  ref: sourceRepoRef,
-  isCommit: isSourceRepoRefCommitSha,
-  isVersionTag: isSourceRepoRefVersionTag,
-} = getSourceRefInfo(sourceRepoRefResolved);
-
-const resolveSourceDir = () => {
-  const fromEnv = process.env.ASTRBOT_SOURCE_DIR?.trim();
-  if (fromEnv) {
-    return path.resolve(process.cwd(), fromEnv);
-  }
-  return path.join(projectRoot, 'vendor', 'AstrBot');
-};
-
-const ensureSourceRepo = (sourceDir) => {
-  if (process.env.ASTRBOT_SOURCE_DIR?.trim()) {
-    if (!existsSync(path.join(sourceDir, 'main.py'))) {
-      throw new Error(
-        `ASTRBOT_SOURCE_DIR is set but invalid: ${sourceDir}. Cannot find main.py.`,
-      );
-    }
-    return;
-  }
-
-  if (!existsSync(path.join(sourceDir, '.git'))) {
-    mkdirSync(path.dirname(sourceDir), { recursive: true });
-    const cloneArgs = ['clone', '--depth', '1'];
-    if (sourceRepoRef && !isSourceRepoRefCommitSha) {
-      cloneArgs.push('--branch', sourceRepoRef);
-    }
-    cloneArgs.push(sourceRepoUrl, sourceDir);
-
-    const cloneResult = spawnSync('git', cloneArgs, {
-      stdio: 'inherit',
-    });
-    if (cloneResult.status !== 0) {
-      throw new Error(`Failed to clone AstrBot from ${sourceRepoUrl}`);
-    }
-  } else {
-    const setUrlResult = spawnSync(
-      'git',
-      ['-C', sourceDir, 'remote', 'set-url', 'origin', sourceRepoUrl],
-      { stdio: 'inherit' },
-    );
-    if (setUrlResult.status !== 0) {
-      throw new Error(`Failed to set origin url for ${sourceDir}`);
-    }
-  }
-
-  if (sourceRepoRef) {
-    const fetchResult = spawnSync(
-      'git',
-      ['-C', sourceDir, 'fetch', '--depth', '1', 'origin', sourceRepoRef],
-      { stdio: 'inherit' },
-    );
-    if (fetchResult.status !== 0) {
-      throw new Error(`Failed to fetch upstream ref ${sourceRepoRef}`);
-    }
-
-    const checkoutArgs = isSourceRepoRefCommitSha
-      ? ['-C', sourceDir, 'checkout', '--detach', 'FETCH_HEAD']
-      : ['-C', sourceDir, 'checkout', '-B', sourceRepoRef, 'FETCH_HEAD'];
-    const checkoutResult = spawnSync('git', checkoutArgs, { stdio: 'inherit' });
-    if (checkoutResult.status !== 0) {
-      throw new Error(`Failed to checkout upstream ref ${sourceRepoRef}`);
-    }
-  }
-
-  if (!existsSync(path.join(sourceDir, 'main.py'))) {
-    throw new Error(
-      `Resolved source repository is invalid: ${sourceDir}. Cannot find main.py.`,
-    );
-  }
-};
-
-const runChecked = (cmd, args, cwd, envExtra = {}, spawnExtra = {}) => {
-  const result = spawnSync(cmd, args, {
-    cwd,
-    stdio: 'inherit',
-    env: { ...process.env, ...envExtra },
-    ...spawnExtra,
-  });
-  if (result.error) {
-    throw result.error;
-  }
-  if (result.status !== 0) {
-    throw new Error(`Command failed: ${cmd} ${args.join(' ')}`);
-  }
-};
-
-const runPnpmChecked = (args, cwd, envExtra = {}) => {
-  runChecked('pnpm', args, cwd, envExtra, {
-    shell: process.platform === 'win32',
-  });
-};
-
-const ensurePackageInstall = (packageDir, installLabel) => {
-  const nodeModulesDir = path.join(packageDir, 'node_modules');
-  if (existsSync(nodeModulesDir)) {
-    return;
-  }
-
-  console.log(`[prepare-resources] Installing dependencies for ${installLabel} ...`);
-  const lockfilePath = path.join(packageDir, 'pnpm-lock.yaml');
-  const installArgs = ['--dir', packageDir, 'install'];
-  if (existsSync(lockfilePath)) {
-    installArgs.push('--frozen-lockfile');
-  }
-  runPnpmChecked(installArgs, packageDir);
-};
-
-const syncResourceDir = async (source, target) => {
-  await rm(target, { recursive: true, force: true });
-  await mkdir(path.dirname(target), { recursive: true });
-  await cp(source, target, { recursive: true });
-};
-
-const patchMonacoCssNestingWarnings = async (dashboardDir) => {
-  const patchRules = [
-    {
-      file: path.join(
-        dashboardDir,
-        'node_modules',
-        'monaco-editor',
-        'esm',
-        'vs',
-        'editor',
-        'browser',
-        'widget',
-        'multiDiffEditor',
-        'style.css',
-      ),
-      selector: 'a',
-    },
-    {
-      file: path.join(
-        dashboardDir,
-        'node_modules',
-        'monaco-editor',
-        'esm',
-        'vs',
-        'editor',
-        'contrib',
-        'inlineEdits',
-        'browser',
-        'inlineEditsWidget.css',
-      ),
-      selector: 'svg',
-    },
-  ];
-
-  for (const { file, selector } of patchRules) {
-    if (!existsSync(file)) {
-      continue;
-    }
-    const css = await readFile(file, 'utf8');
-    const pattern = new RegExp(`^(\\s*)${selector}\\s*\\{`, 'm');
-    if (!pattern.test(css)) {
-      continue;
-    }
-
-    const patched = css.replace(pattern, `$1& ${selector} {`);
-    if (patched !== css) {
-      await writeFile(file, patched, 'utf8');
-      console.log(
-        `[prepare-resources] Patched Monaco nested selector "${selector}" in ${path.relative(projectRoot, file)}`,
-      );
-    }
-  }
-};
-
 const TRUTHY_ENV_VALUES = new Set(['1', 'true', 'yes', 'on']);
 const isDesktopBridgeExpectationStrict = TRUTHY_ENV_VALUES.has(
   String(process.env.ASTRBOT_DESKTOP_STRICT_BRIDGE_EXPECTATIONS || '')
@@ -252,360 +40,94 @@ const isDesktopBridgeExpectationStrict = TRUTHY_ENV_VALUES.has(
     .toLowerCase(),
 );
 
-const DESKTOP_BRIDGE_PATTERNS = {
-  trayRestartGuard: /if\s*\(\s*!desktopBridge\s*\?\.\s*onTrayRestartBackend\s*\)\s*\{/,
-  trayRestartPromptInvoke:
-    /await\s+globalWaitingRef\s*\.\s*value\s*\?\.\s*check\s*\?\.\s*\(\s*[^)]*\s*\)\s*;?/,
-  desktopRuntimeImport:
-    /import\s+\{\s*getDesktopRuntimeInfo\s*\}\s+from\s+['"]@\/utils\/desktopRuntime['"]\s*;?/,
-  desktopRuntimeUsageInRestart:
-    /hasDesktopRestartCapability[\s\S]*?await\s+getDesktopRuntimeInfo\s*\(\s*\)/,
-  desktopRuntimeUsageInHeader:
-    /const\s+runtimeInfo\s*=\s*await\s+getDesktopRuntimeInfo\s*\(\s*\)\s*;?[\s\S]*?isDesktopReleaseMode\.value\s*=\s*runtimeInfo\.isDesktopRuntime/,
-  desktopReleaseModeFlag: /\bisDesktopReleaseMode\b/,
-  desktopRuntimeProbeWarn: /console\.warn\([\s\S]*desktop runtime/i,
-};
+const { repoUrl: sourceRepoUrl, repoRef: sourceRepoRefResolved } = normalizeSourceRepoConfig(
+  sourceRepoUrlRaw,
+  sourceRepoRefRaw,
+);
 
-const DESKTOP_BRIDGE_EXPECTATIONS = [
-  {
-    filePath: ['src', 'App.vue'],
-    pattern: DESKTOP_BRIDGE_PATTERNS.trayRestartGuard,
-    label: 'tray restart desktop guard',
-    hint: "Expected `if (!desktopBridge?.onTrayRestartBackend) {` in App.vue.",
-    required: false,
-  },
-  {
-    filePath: ['src', 'App.vue'],
-    pattern: DESKTOP_BRIDGE_PATTERNS.trayRestartPromptInvoke,
-    label: 'tray restart waiting prompt',
-    hint: 'Expected tray callback to call `globalWaitingRef.value?.check?.(...)`.',
-    required: false,
-  },
-  {
-    filePath: ['src', 'utils', 'restartAstrBot.ts'],
-    pattern: DESKTOP_BRIDGE_PATTERNS.desktopRuntimeImport,
-    label: 'desktop runtime helper import',
-    hint: 'Expected `import { getDesktopRuntimeInfo } from "@/utils/desktopRuntime"`.',
-    required: true,
-  },
-  {
-    filePath: ['src', 'utils', 'restartAstrBot.ts'],
-    pattern: DESKTOP_BRIDGE_PATTERNS.desktopRuntimeUsageInRestart,
-    label: 'desktop runtime helper usage in restart flow',
-    hint: 'Expected restart flow to use `hasDesktopRestartCapability` + `await getDesktopRuntimeInfo()`.',
-    required: true,
-  },
-  {
-    filePath: ['src', 'layouts', 'full', 'vertical-header', 'VerticalHeader.vue'],
-    pattern: DESKTOP_BRIDGE_PATTERNS.desktopReleaseModeFlag,
-    label: 'desktop release mode flag',
-    hint: 'Expected `isDesktopReleaseMode` flag in header update UI.',
-    required: false,
-  },
-  {
-    filePath: ['src', 'layouts', 'full', 'vertical-header', 'VerticalHeader.vue'],
-    pattern: DESKTOP_BRIDGE_PATTERNS.desktopRuntimeUsageInHeader,
-    label: 'desktop runtime helper usage in header',
-    hint: 'Expected header runtime probe: `const runtimeInfo = await getDesktopRuntimeInfo()`.',
-    required: true,
-  },
-  {
-    filePath: ['src', 'utils', 'desktopRuntime.ts'],
-    pattern: DESKTOP_BRIDGE_PATTERNS.desktopRuntimeProbeWarn,
-    label: 'desktop runtime probe warning',
-    hint: 'Expected warning log when desktop runtime detection fails.',
-    required: false,
-  },
-];
+const {
+  ref: sourceRepoRef,
+  isCommit: isSourceRepoRefCommitSha,
+  isVersionTag: isSourceRepoRefVersionTag,
+} = getSourceRefInfo(sourceRepoRefResolved, sourceRepoRefIsCommitRaw);
 
-const verifyDesktopBridgeArtifacts = async (dashboardDir) => {
-  const issues = [];
-  const isTaggedRelease = isSourceRepoRefVersionTag;
-  if (!isDesktopBridgeExpectationStrict && isTaggedRelease) {
-    console.warn(
-      `[prepare-resources] Desktop bridge required checks downgraded to warnings for source ref ${sourceRepoRef}. ` +
-        'Set ASTRBOT_DESKTOP_STRICT_BRIDGE_EXPECTATIONS=1 to enforce.',
-    );
+const runModeTasks = async (currentMode, sourceDir) => {
+  if (currentMode === 'version') {
+    return;
   }
 
-  const shouldEnforceDesktopBridgeExpectation = (expectation) => {
-    if (isDesktopBridgeExpectationStrict) {
-      return true;
-    }
-    return expectation.required && !isTaggedRelease;
-  };
-
-  for (const expectation of DESKTOP_BRIDGE_EXPECTATIONS) {
-    const mustPass = shouldEnforceDesktopBridgeExpectation(expectation);
-    const file = path.join(dashboardDir, ...expectation.filePath);
-    if (!existsSync(file)) {
-      const relativePath = path.relative(projectRoot, file);
-      const message = mustPass
-        ? `[prepare-resources] Missing required file for ${expectation.label}: ${relativePath}`
-        : `[prepare-resources] Missing optional (best-effort) file for ${expectation.label}: ${relativePath}`;
-      if (mustPass) {
-        issues.push(message);
-      } else {
-        console.warn(`${message} (compatibility check skipped)`);
-      }
-      continue;
-    }
-
-    const source = await readFile(file, 'utf8');
-    if (!expectation.pattern.test(source)) {
-      const message = `[prepare-resources] Expected ${expectation.label} in ${path.relative(projectRoot, file)}. ${expectation.hint || ''} Please sync AstrBot dashboard sources.`;
-      if (mustPass) {
-        issues.push(message);
-      } else {
-        console.warn(`${message} (compatibility check skipped)`);
-      }
-    }
-  }
-
-  if (issues.length > 0) {
-    throw new Error(issues.join('\n'));
-  }
-};
-
-const readAstrbotVersionFromPyproject = async (sourceDir) => {
-  const pyprojectPath = path.join(sourceDir, 'pyproject.toml');
-  if (!existsSync(pyprojectPath)) {
-    throw new Error(`Cannot find pyproject.toml in source directory: ${sourceDir}`);
-  }
-
-  const content = await readFile(pyprojectPath, 'utf8');
-  const lines = content.split(/\r?\n/);
-  let inProjectSection = false;
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#')) {
-      continue;
-    }
-
-    if (line.startsWith('[') && line.endsWith(']')) {
-      inProjectSection = line === '[project]';
-      continue;
-    }
-
-    if (!inProjectSection) {
-      continue;
-    }
-
-    const match = /^version\s*=\s*["']([^"']+)["']/.exec(line);
-    if (match) {
-      return match[1].trim();
-    }
-  }
-
-  throw new Error(`Cannot resolve [project].version from ${pyprojectPath}`);
-};
-
-const syncDesktopVersionFiles = async (version) => {
-  const packageJsonPath = path.join(projectRoot, 'package.json');
-  const tauriConfigPath = path.join(projectRoot, 'src-tauri', 'tauri.conf.json');
-  const cargoTomlPath = path.join(projectRoot, 'src-tauri', 'Cargo.toml');
-
-  const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
-  if (packageJson.version !== version) {
-    packageJson.version = version;
-    await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
-  }
-
-  const tauriConfig = JSON.parse(await readFile(tauriConfigPath, 'utf8'));
-  if (tauriConfig.version !== version) {
-    tauriConfig.version = version;
-    await writeFile(tauriConfigPath, `${JSON.stringify(tauriConfig, null, 2)}\n`, 'utf8');
-  }
-
-  const cargoToml = await readFile(cargoTomlPath, 'utf8');
-  const cargoVersionPattern = /(\[package\][\s\S]*?\nversion\s*=\s*")[^"]+(")/;
-  if (!cargoVersionPattern.test(cargoToml)) {
-    throw new Error(`Cannot update Cargo package version in ${cargoTomlPath}`);
-  }
-  const updatedCargoToml = cargoToml.replace(cargoVersionPattern, `$1${version}$2`);
-  if (updatedCargoToml !== cargoToml) {
-    await writeFile(cargoTomlPath, updatedCargoToml, 'utf8');
-  }
-};
-
-const resolvePbsTarget = () => {
-  const platformMap = {
-    linux: 'linux',
-    darwin: 'mac',
-    win32: 'windows',
-  };
-  const archMap = {
-    x64: 'amd64',
-    arm64: 'arm64',
-  };
-
-  const normalizedPlatform = platformMap[process.platform];
-  const normalizedArch = archMap[process.arch];
-  if (!normalizedPlatform || !normalizedArch) {
-    throw new Error(
-      `Unsupported platform/arch for python-build-standalone: ${process.platform}/${process.arch}`,
-    );
-  }
-
-  const targetMap = {
-    'linux/amd64': 'x86_64-unknown-linux-gnu',
-    'linux/arm64': 'aarch64-unknown-linux-gnu',
-    'mac/amd64': 'x86_64-apple-darwin',
-    'mac/arm64': 'aarch64-apple-darwin',
-    'windows/amd64': 'x86_64-pc-windows-msvc',
-    'windows/arm64': 'aarch64-pc-windows-msvc',
-  };
-
-  const key = `${normalizedPlatform}/${normalizedArch}`;
-  const target = targetMap[key];
-  if (!target) {
-    throw new Error(`Unsupported python-build-standalone mapping: ${key}`);
-  }
-
-  return target;
-};
-
-const resolveRuntimePythonPath = (runtimeRoot) => {
-  const candidates =
-    process.platform === 'win32'
-      ? [path.join(runtimeRoot, 'python.exe'), path.join(runtimeRoot, 'Scripts', 'python.exe')]
-      : [path.join(runtimeRoot, 'bin', 'python3'), path.join(runtimeRoot, 'bin', 'python')];
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  return null;
-};
-
-const ensureBundledRuntime = () => {
-  const externalRuntime =
-    process.env.ASTRBOT_DESKTOP_BACKEND_RUNTIME || process.env.ASTRBOT_DESKTOP_CPYTHON_HOME;
-  if (externalRuntime && existsSync(externalRuntime)) {
-    return externalRuntime;
-  }
-
-  const pbsTarget = resolvePbsTarget();
-  const runtimeBase = path.join(
-    projectRoot,
-    'runtime',
-    `${pbsTarget}-${PYTHON_BUILD_STANDALONE_VERSION}`,
-  );
-  const runtimeRoot = path.join(runtimeBase, 'astrbot-cpython-runtime');
-  const runtimePython = resolveRuntimePythonPath(runtimeRoot);
-  if (runtimePython) {
-    process.env.ASTRBOT_DESKTOP_CPYTHON_HOME = runtimeRoot;
-    return runtimeRoot;
-  }
-
-  mkdirSync(runtimeBase, { recursive: true });
-  const resolverScript = path.join(
-    projectRoot,
-    'scripts',
-    'cpython',
-    'resolve_packaged_cpython_runtime.py',
-  );
-
-  const pythonCandidates = process.platform === 'win32' ? ['python', 'py'] : ['python3', 'python'];
-  let lastErr = null;
-  for (const cmd of pythonCandidates) {
-    const args = cmd === 'py' ? ['-3', resolverScript] : [resolverScript];
-    const result = spawnSync(cmd, args, {
-      cwd: projectRoot,
-      stdio: 'inherit',
-      env: {
-        ...process.env,
-        RUNNER_TEMP_DIR: runtimeBase,
-        PYTHON_BUILD_STANDALONE_RELEASE,
-        PYTHON_BUILD_STANDALONE_VERSION,
-        PYTHON_BUILD_STANDALONE_TARGET: pbsTarget,
-      },
+  if (currentMode === 'webui') {
+    await prepareWebui({
+      sourceDir,
+      projectRoot,
+      sourceRepoRef,
+      isSourceRepoRefVersionTag,
+      isDesktopBridgeExpectationStrict,
     });
-
-    if (result.error && result.error.code === 'ENOENT') {
-      lastErr = result.error;
-      continue;
-    }
-    if (result.status !== 0) {
-      throw new Error(`Failed to prepare CPython runtime via ${cmd}.`);
-    }
-
-    process.env.ASTRBOT_DESKTOP_CPYTHON_HOME = runtimeRoot;
-    return runtimeRoot;
+    return;
   }
 
-  throw new Error(
-    `Cannot find Python interpreter to resolve CPython runtime (${String(lastErr || '')}).`,
-  );
-};
-
-const prepareWebui = async (sourceDir) => {
-  const dashboardDir = path.join(sourceDir, 'dashboard');
-  ensurePackageInstall(dashboardDir, 'AstrBot dashboard');
-  await patchMonacoCssNestingWarnings(dashboardDir);
-  await verifyDesktopBridgeArtifacts(dashboardDir);
-  runPnpmChecked(['--dir', dashboardDir, 'build'], sourceDir);
-
-  const sourceWebuiDir = path.join(sourceDir, 'dashboard', 'dist');
-  if (!existsSync(path.join(sourceWebuiDir, 'index.html'))) {
-    throw new Error(`WebUI build output missing: ${sourceWebuiDir}`);
+  if (currentMode === 'backend') {
+    await prepareBackend({
+      sourceDir,
+      projectRoot,
+      pythonBuildStandaloneRelease,
+      pythonBuildStandaloneVersion,
+    });
+    return;
   }
 
-  const targetWebuiDir = path.join(projectRoot, 'resources', 'webui');
-  await syncResourceDir(sourceWebuiDir, targetWebuiDir);
-};
-
-const prepareBackend = async (sourceDir) => {
-  const runtimeRoot = ensureBundledRuntime();
-  runChecked(
-    'node',
-    [path.join(projectRoot, 'scripts', 'backend', 'build-backend.mjs')],
-    projectRoot,
-    {
-      ASTRBOT_SOURCE_DIR: sourceDir,
-      ASTRBOT_DESKTOP_CPYTHON_HOME: runtimeRoot,
-    },
-  );
-
-  const sourceBackendDir = path.join(projectRoot, 'resources', 'backend');
-  if (!existsSync(path.join(sourceBackendDir, 'runtime-manifest.json'))) {
-    throw new Error(`Backend runtime output missing: ${sourceBackendDir}`);
+  if (currentMode === 'all') {
+    await prepareWebui({
+      sourceDir,
+      projectRoot,
+      sourceRepoRef,
+      isSourceRepoRefVersionTag,
+      isDesktopBridgeExpectationStrict,
+    });
+    await prepareBackend({
+      sourceDir,
+      projectRoot,
+      pythonBuildStandaloneRelease,
+      pythonBuildStandaloneVersion,
+    });
+    return;
   }
-};
 
-const ensureStartupShellAssets = () => {
-  const startupUiDir = path.join(projectRoot, 'ui');
-  const requiredFiles = ['index.html', 'astrbot-logo.png'];
-  for (const file of requiredFiles) {
-    const candidate = path.join(startupUiDir, file);
-    if (!existsSync(candidate)) {
-      throw new Error(`Startup shell asset missing: ${candidate}`);
-    }
-  }
+  throw new Error(`Unsupported mode: ${currentMode}. Expected version/webui/backend/all.`);
 };
 
 const main = async () => {
-  const sourceDir = resolveSourceDir();
+  const sourceDir = resolveSourceDir(projectRoot, sourceDirOverrideRaw);
   const needsSourceRepo = mode !== 'version' || !desktopVersionOverride;
   await mkdir(path.join(projectRoot, 'resources'), { recursive: true });
+
   if (desktopVersionOverrideRaw && desktopVersionOverrideRaw !== desktopVersionOverride) {
     console.log(
       `[prepare-resources] Normalized ASTRBOT_DESKTOP_VERSION from ${desktopVersionOverrideRaw} to ${desktopVersionOverride}`,
     );
   }
+
   if (needsSourceRepo) {
-    ensureSourceRepo(sourceDir);
+    ensureSourceRepo({
+      sourceDir,
+      sourceRepoUrl,
+      sourceRepoRef,
+      isSourceRepoRefCommitSha,
+      sourceDirOverrideRaw,
+    });
   } else {
     console.log(
       '[prepare-resources] Skip source repo sync in version-only mode because ASTRBOT_DESKTOP_VERSION is set.',
     );
   }
-  ensureStartupShellAssets();
-  const astrbotVersion = desktopVersionOverride || (await readAstrbotVersionFromPyproject(sourceDir));
+
+  ensureStartupShellAssets(projectRoot);
+  const astrbotVersion =
+    desktopVersionOverride || (await readAstrbotVersionFromPyproject({ sourceDir }));
 
   if (desktopVersionOverride && needsSourceRepo) {
-    const sourceVersion = await readAstrbotVersionFromPyproject(sourceDir);
+    const sourceVersion = await readAstrbotVersionFromPyproject({ sourceDir });
     if (sourceVersion !== desktopVersionOverride) {
       console.warn(
         `[prepare-resources] Version override drift detected: ASTRBOT_DESKTOP_VERSION=${desktopVersionOverrideRaw} (normalized=${desktopVersionOverride}), source pyproject version=${sourceVersion} (${sourceDir})`,
@@ -613,7 +135,7 @@ const main = async () => {
     }
   }
 
-  await syncDesktopVersionFiles(astrbotVersion);
+  await syncDesktopVersionFiles({ projectRoot, version: astrbotVersion });
   if (desktopVersionOverride) {
     console.log(
       `[prepare-resources] Synced desktop version to override ${astrbotVersion} (ASTRBOT_DESKTOP_VERSION)`,
@@ -622,27 +144,7 @@ const main = async () => {
     console.log(`[prepare-resources] Synced desktop version to AstrBot ${astrbotVersion}`);
   }
 
-  if (mode === 'version') {
-    return;
-  }
-
-  if (mode === 'webui') {
-    await prepareWebui(sourceDir);
-    return;
-  }
-
-  if (mode === 'backend') {
-    await prepareBackend(sourceDir);
-    return;
-  }
-
-  if (mode === 'all') {
-    await prepareWebui(sourceDir);
-    await prepareBackend(sourceDir);
-    return;
-  }
-
-  throw new Error(`Unsupported mode: ${mode}. Expected version/webui/backend/all.`);
+  await runModeTasks(mode, sourceDir);
 };
 
 main().catch((error) => {

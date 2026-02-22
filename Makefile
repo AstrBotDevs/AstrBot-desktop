@@ -40,7 +40,7 @@ help:
 	@echo "                          (set ASTRBOT_SOURCE_DIR=... or ASTRBOT_BUILD_SOURCE_DIR=...)"
 	@echo "  make rebuild            Clean and build"
 	@echo "  make lint               Run formatting and clippy checks"
-	@echo "  make test               Run Rust tests"
+	@echo "  make test               Run Rust + script behavior tests"
 	@echo "  make doctor             Show local toolchain versions"
 	@echo "  make prune              Remove heavy local runtime caches"
 	@echo ""
@@ -112,6 +112,7 @@ lint:
 
 test:
 	cargo test --manifest-path $(RUST_MANIFEST) --locked
+	pnpm run test:prepare-resources
 
 doctor:
 	@echo "node:  $$(node -v)"

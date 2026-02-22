@@ -1,11 +1,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod backend_config;
+mod backend_path;
+mod exit_state;
+mod logging;
+mod startup_mode;
+mod webui_paths;
+
 use serde::Deserialize;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 use std::{
     borrow::Cow,
-    collections::HashSet,
     env,
     ffi::OsString,
     fs::{self, OpenOptions},
@@ -30,6 +36,7 @@ use tauri::{
 use url::Url;
 
 const DEFAULT_BACKEND_URL: &str = "http://127.0.0.1:6185/";
+const BACKEND_TIMEOUT_ENV: &str = "ASTRBOT_BACKEND_TIMEOUT_MS";
 const PACKAGED_BACKEND_TIMEOUT_FALLBACK_MS: u64 = 5 * 60 * 1000;
 const GRACEFUL_RESTART_REQUEST_TIMEOUT_MS: u64 = 2_500;
 const GRACEFUL_RESTART_START_TIME_TIMEOUT_MS: u64 = 1_800;
@@ -70,9 +77,6 @@ const TRAY_MENU_QUIT: &str = "tray_quit";
 const TRAY_RESTART_BACKEND_EVENT: &str = "astrbot://tray-restart-backend";
 const DEFAULT_SHELL_LOCALE: &str = "zh-CN";
 const STARTUP_MODE_ENV: &str = "ASTRBOT_DESKTOP_STARTUP_MODE";
-// Keep in sync with STARTUP_MODES in ui/index.html.
-const STARTUP_MODE_LOADING: &str = "loading";
-const STARTUP_MODE_PANEL_UPDATE: &str = "panel-update";
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 #[cfg(target_os = "windows")]
@@ -123,14 +127,9 @@ struct BackendState {
     restart_auth_token: Mutex<Option<String>>,
     startup_loading_mode: Mutex<Option<&'static str>>,
     log_rotator_stop: Mutex<Option<Arc<AtomicBool>>>,
-    is_quitting: AtomicBool,
+    exit_state: Mutex<exit_state::ExitStateMachine>,
     is_spawning: AtomicBool,
     is_restarting: AtomicBool,
-    exit_cleanup_started: AtomicBool,
-    // One-shot allowance consumed by the next ExitRequested event.
-    // This is set only after backend cleanup finishes so our internal
-    // app_handle.exit(0) can pass through instead of being prevented again.
-    allow_next_exit_request: AtomicBool,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -153,6 +152,12 @@ enum RestartStrategy {
     ManagedSkipGraceful,
     ManagedWithGracefulFallback,
     UnmanagedWithGracefulProbe,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ExitTrigger {
+    ExitRequested,
+    ExitFallback,
 }
 
 #[derive(Debug)]
@@ -183,6 +188,12 @@ impl<'a> AtomicFlagGuard<'a> {
         flag.store(true, Ordering::Relaxed);
         Self { flag }
     }
+
+    fn try_set(flag: &'a AtomicBool) -> Option<Self> {
+        flag.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .ok()?;
+        Some(Self { flag })
+    }
 }
 
 impl Drop for AtomicFlagGuard<'_> {
@@ -202,11 +213,9 @@ impl Default for BackendState {
             restart_auth_token: Mutex::new(None),
             startup_loading_mode: Mutex::new(None),
             log_rotator_stop: Mutex::new(None),
-            is_quitting: AtomicBool::new(false),
+            exit_state: Mutex::new(exit_state::ExitStateMachine::default()),
             is_spawning: AtomicBool::new(false),
             is_restarting: AtomicBool::new(false),
-            exit_cleanup_started: AtomicBool::new(false),
-            allow_next_exit_request: AtomicBool::new(false),
         }
     }
 }
@@ -225,7 +234,8 @@ impl BackendState {
             );
         }
 
-        let _spawn_guard = AtomicFlagGuard::set(&self.is_spawning);
+        let _spawn_guard = AtomicFlagGuard::try_set(&self.is_spawning)
+            .ok_or_else(|| "Backend action already in progress.".to_string())?;
         let plan = self.resolve_launch_plan(app)?;
         self.start_backend_process(app, &plan)?;
         self.wait_for_backend(&plan)
@@ -474,7 +484,10 @@ impl BackendState {
             command.env("ASTRBOT_WEBUI_DIR", webui_dir);
         }
 
-        let backend_log_path = backend_log_path(plan.root_dir.as_deref());
+        let backend_log_path = Some(logging::resolve_backend_log_path(
+            plan.root_dir.as_deref(),
+            default_packaged_root_dir(),
+        ));
         if let Some(log_path) = backend_log_path.as_ref() {
             if let Some(log_parent) = log_path.parent() {
                 fs::create_dir_all(log_parent).map_err(|error| {
@@ -485,7 +498,7 @@ impl BackendState {
                     )
                 })?;
             }
-            rotate_log_if_needed(
+            logging::rotate_log_if_needed(
                 log_path,
                 BACKEND_LOG_MAX_BYTES,
                 LOG_BACKUP_COUNT,
@@ -542,7 +555,12 @@ impl BackendState {
     fn wait_for_backend(&self, plan: &LaunchPlan) -> Result<(), String> {
         // This uses blocking polling intentionally and is called from spawn_blocking
         // startup/restart workers, not directly on the UI thread.
-        let timeout_ms = resolve_backend_timeout_ms(plan.packaged_mode);
+        let timeout_ms = backend_config::resolve_backend_timeout_ms(
+            plan.packaged_mode,
+            BACKEND_TIMEOUT_ENV,
+            20_000,
+            PACKAGED_BACKEND_TIMEOUT_FALLBACK_MS,
+        );
         let readiness = backend_readiness_config();
         let start_time = Instant::now();
         let mut tcp_ready_logged = false;
@@ -803,7 +821,7 @@ Content-Length: {}\r\n\
         match self.restart_auth_token.lock() {
             Ok(guard) => guard.clone(),
             Err(error) => {
-                append_desktop_log(&format!(
+                append_restart_log(&format!(
                     "restart auth token lock poisoned when reading: {error}"
                 ));
                 None
@@ -817,7 +835,7 @@ Content-Length: {}\r\n\
             Ok(mut guard) => {
                 *guard = normalized;
             }
-            Err(error) => append_desktop_log(&format!(
+            Err(error) => append_restart_log(&format!(
                 "restart auth token lock poisoned when writing: {error}"
             )),
         }
@@ -834,13 +852,13 @@ Content-Length: {}\r\n\
         match status_code {
             Some(code) if (200..300).contains(&code) => true,
             Some(code) => {
-                append_desktop_log(&format!(
+                append_restart_log(&format!(
                     "graceful restart request rejected with HTTP status {code}"
                 ));
                 false
             }
             None => {
-                append_desktop_log(
+                append_restart_log(
                     "graceful restart request returned no HTTP status; will verify restart by polling backend",
                 );
                 true
@@ -990,7 +1008,7 @@ Content-Length: {}\r\n\
                 if !state.child_matches_pid_and_alive(child_pid) {
                     break;
                 }
-                rotate_log_if_needed(
+                logging::rotate_log_if_needed(
                     &log_path,
                     BACKEND_LOG_MAX_BYTES,
                     LOG_BACKUP_COUNT,
@@ -1057,9 +1075,10 @@ Content-Length: {}\r\n\
     }
 
     fn restart_backend(&self, app: &AppHandle, auth_token: Option<&str>) -> Result<(), String> {
-        append_desktop_log("backend restart requested");
+        append_restart_log("backend restart requested");
 
-        let _restart_guard = AtomicFlagGuard::set(&self.is_restarting);
+        let _restart_guard = AtomicFlagGuard::try_set(&self.is_restarting)
+            .ok_or_else(|| "Backend action already in progress.".to_string())?;
         let plan = self.resolve_launch_plan(app)?;
         let has_managed_child = self.has_managed_child()?;
         let strategy = self.restart_strategy(&plan, has_managed_child);
@@ -1070,7 +1089,7 @@ Content-Length: {}\r\n\
         let restart_auth_token = normalized_param.or_else(|| self.get_restart_auth_token());
         let previous_start_time = self.fetch_backend_start_time();
         match strategy {
-            RestartStrategy::ManagedSkipGraceful => append_desktop_log(
+            RestartStrategy::ManagedSkipGraceful => append_restart_log(
                 "skip graceful restart for packaged windows managed backend; using managed restart",
             ),
             RestartStrategy::ManagedWithGracefulFallback => {
@@ -1080,13 +1099,13 @@ Content-Length: {}\r\n\
                     plan.packaged_mode,
                 ) {
                     GracefulRestartOutcome::Completed => {
-                        append_desktop_log("graceful restart completed via backend api");
+                        append_restart_log("graceful restart completed via backend api");
                         return Ok(());
                     }
-                    GracefulRestartOutcome::WaitFailed(error) => append_desktop_log(&format!(
+                    GracefulRestartOutcome::WaitFailed(error) => append_restart_log(&format!(
                         "graceful restart did not complete, fallback to managed restart: {error}"
                     )),
-                    GracefulRestartOutcome::RequestRejected => append_desktop_log(
+                    GracefulRestartOutcome::RequestRejected => append_restart_log(
                         "graceful restart request was rejected, fallback to managed restart",
                     ),
                 }
@@ -1098,10 +1117,10 @@ Content-Length: {}\r\n\
                     plan.packaged_mode,
                 ) {
                     GracefulRestartOutcome::Completed => {
-                        append_desktop_log("graceful restart completed via backend api");
+                        append_restart_log("graceful restart completed via backend api");
                         return Ok(());
                     }
-                    GracefulRestartOutcome::WaitFailed(error) => append_desktop_log(&format!(
+                    GracefulRestartOutcome::WaitFailed(error) => append_restart_log(&format!(
                         "graceful restart did not complete for unmanaged backend, bootstrap managed restart: {error}"
                     )),
                     GracefulRestartOutcome::RequestRejected => {
@@ -1141,25 +1160,63 @@ Content-Length: {}\r\n\
     }
 
     fn mark_quitting(&self) {
-        self.is_quitting.store(true, Ordering::Relaxed);
+        match self.exit_state.lock() {
+            Ok(mut guard) => guard.mark_quitting(),
+            Err(error) => {
+                append_desktop_log(&format!(
+                    "exit state lock poisoned when marking quitting: {error}"
+                ));
+                error.into_inner().mark_quitting();
+            }
+        }
     }
 
     fn is_quitting(&self) -> bool {
-        self.is_quitting.load(Ordering::Relaxed)
+        match self.exit_state.lock() {
+            Ok(guard) => guard.is_quitting(),
+            Err(error) => {
+                append_desktop_log(&format!(
+                    "exit state lock poisoned when reading quitting state: {error}"
+                ));
+                error.into_inner().is_quitting()
+            }
+        }
     }
 
     fn try_begin_exit_cleanup(&self) -> bool {
-        self.exit_cleanup_started
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_ok()
+        match self.exit_state.lock() {
+            Ok(mut guard) => guard.try_begin_cleanup(),
+            Err(error) => {
+                append_desktop_log(&format!(
+                    "exit state lock poisoned when beginning cleanup: {error}"
+                ));
+                error.into_inner().try_begin_cleanup()
+            }
+        }
     }
 
     fn allow_next_exit_request(&self) {
-        self.allow_next_exit_request.store(true, Ordering::Release);
+        match self.exit_state.lock() {
+            Ok(mut guard) => guard.allow_next_exit_request(),
+            Err(error) => {
+                append_desktop_log(&format!(
+                    "exit state lock poisoned when allowing next exit request: {error}"
+                ));
+                error.into_inner().allow_next_exit_request();
+            }
+        }
     }
 
     fn take_exit_request_allowance(&self) -> bool {
-        self.allow_next_exit_request.swap(false, Ordering::AcqRel)
+        match self.exit_state.lock() {
+            Ok(mut guard) => guard.take_exit_request_allowance(),
+            Err(error) => {
+                append_desktop_log(&format!(
+                    "exit state lock poisoned when taking exit request allowance: {error}"
+                ));
+                error.into_inner().take_exit_request_allowance()
+            }
+        }
     }
 }
 
@@ -1193,38 +1250,20 @@ async fn desktop_bridge_restart_backend(
     auth_token: Option<String>,
 ) -> BackendBridgeResult {
     let state = app_handle.state::<BackendState>();
-    if state.is_spawning.load(Ordering::Relaxed) || state.is_restarting.load(Ordering::Relaxed) {
+    if is_backend_action_in_progress(&state) {
         return BackendBridgeResult {
             ok: false,
             reason: Some("Backend action already in progress.".to_string()),
         };
     }
 
-    let app_handle_cloned = app_handle.clone();
-    match tauri::async_runtime::spawn_blocking(move || {
-        do_restart_backend(&app_handle_cloned, auth_token.as_deref())
-    })
-    .await
-    {
-        Ok(Ok(())) => BackendBridgeResult {
-            ok: true,
-            reason: None,
-        },
-        Ok(Err(error)) => BackendBridgeResult {
-            ok: false,
-            reason: Some(error),
-        },
-        Err(error) => BackendBridgeResult {
-            ok: false,
-            reason: Some(format!("Backend restart task failed: {error}")),
-        },
-    }
+    run_restart_backend_task(app_handle, auth_token).await
 }
 
 #[tauri::command]
 fn desktop_bridge_stop_backend(app_handle: AppHandle) -> BackendBridgeResult {
     let state = app_handle.state::<BackendState>();
-    if state.is_spawning.load(Ordering::Relaxed) || state.is_restarting.load(Ordering::Relaxed) {
+    if is_backend_action_in_progress(&state) {
         return BackendBridgeResult {
             ok: false,
             reason: Some("Backend action already in progress.".to_string()),
@@ -1244,10 +1283,10 @@ fn desktop_bridge_stop_backend(app_handle: AppHandle) -> BackendBridgeResult {
 }
 
 fn main() {
-    append_desktop_log("desktop process starting");
-    append_desktop_log(&format!(
+    append_startup_log("desktop process starting");
+    append_startup_log(&format!(
         "desktop log path: {}",
-        desktop_log_path().display()
+        logging::resolve_desktop_log_path(default_packaged_root_dir(), DESKTOP_LOG_FILE).display()
     ));
     tauri::Builder::default()
         .manage(BackendState::default())
@@ -1305,7 +1344,7 @@ fn main() {
         .setup(|app| {
             let app_handle = app.handle().clone();
             if let Err(error) = setup_tray(&app_handle) {
-                append_desktop_log(&format!("failed to initialize tray: {error}"));
+                append_startup_log(&format!("failed to initialize tray: {error}"));
             }
 
             let startup_app_handle = app_handle.clone();
@@ -1347,7 +1386,7 @@ fn main() {
             RunEvent::ExitRequested { api, .. } => {
                 let state = app_handle.state::<BackendState>();
                 if state.take_exit_request_allowance() {
-                    append_desktop_log(
+                    append_shutdown_log(
                         "exit request allowed to pass through after backend cleanup",
                     );
                     return;
@@ -1355,38 +1394,27 @@ fn main() {
                 // Prevent immediate process exit so backend shutdown can run in the runtime's
                 // blocking pool; we exit explicitly after stop_backend() finishes.
                 api.prevent_exit();
-                state.mark_quitting();
-                if !state.try_begin_exit_cleanup() {
-                    append_desktop_log("exit requested while backend cleanup is already running");
+                if !try_begin_exit_cleanup(&state, ExitTrigger::ExitRequested) {
                     return;
                 }
 
-                append_desktop_log("exit requested, stopping backend asynchronously");
+                append_shutdown_log("exit requested, stopping backend asynchronously");
                 let app_handle_cloned = app_handle.clone();
                 tauri::async_runtime::spawn_blocking(move || {
                     let state = app_handle_cloned.state::<BackendState>();
-                    if let Err(error) = state.stop_backend() {
-                        append_desktop_log(&format!(
-                            "backend graceful stop on ExitRequested failed: {error}"
-                        ));
-                    }
-
-                    append_desktop_log("backend stop finished, exiting desktop process");
+                    stop_backend_for_exit(&state, ExitTrigger::ExitRequested);
                     state.allow_next_exit_request();
                     app_handle_cloned.exit(0);
                 });
             }
             RunEvent::Exit => {
                 let state = app_handle.state::<BackendState>();
-                state.mark_quitting();
-                if !state.try_begin_exit_cleanup() {
+                if !try_begin_exit_cleanup(&state, ExitTrigger::ExitFallback) {
                     return;
                 }
 
-                append_desktop_log("exit event triggered fallback backend cleanup");
-                if let Err(error) = state.stop_backend() {
-                    append_desktop_log(&format!("backend fallback stop on Exit failed: {error}"));
-                }
+                append_shutdown_log("exit event triggered fallback backend cleanup");
+                stop_backend_for_exit(&state, ExitTrigger::ExitFallback);
             }
             _ => {}
         });
@@ -1497,24 +1525,41 @@ fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
         TRAY_MENU_TOGGLE_WINDOW => toggle_main_window(app_handle),
         TRAY_MENU_RELOAD_WINDOW => reload_main_window(app_handle),
         TRAY_MENU_RESTART_BACKEND => {
-            append_desktop_log("tray requested backend restart");
+            let state = app_handle.state::<BackendState>();
+            if is_backend_action_in_progress(&state) {
+                append_restart_log("tray restart ignored: backend action already in progress");
+                return;
+            }
+            append_restart_log("tray requested backend restart");
             show_main_window(app_handle);
             emit_tray_restart_backend_event(app_handle);
 
             let app_handle_cloned = app_handle.clone();
-            thread::spawn(move || match do_restart_backend(&app_handle_cloned, None) {
-                Ok(()) => {
-                    append_desktop_log("backend restarted from tray menu");
-                    reload_main_window(&app_handle_cloned);
-                }
-                Err(error) => {
-                    append_desktop_log(&format!("backend restart from tray menu failed: {error}"))
+            tauri::async_runtime::spawn(async move {
+                let result = run_restart_backend_task(app_handle_cloned.clone(), None).await;
+                if result.ok {
+                    append_restart_log("backend restarted from tray menu");
+                    if let Err(error) = run_on_main_thread_dispatch(
+                        &app_handle_cloned,
+                        "reload main window after tray restart",
+                        move |main_app| {
+                            reload_main_window(main_app);
+                        },
+                    ) {
+                        append_restart_log(&format!(
+                            "failed to schedule main window reload after tray restart: {error}"
+                        ));
+                    }
+                } else {
+                    let reason = result.reason.unwrap_or_else(|| "unknown error".to_string());
+                    append_restart_log(&format!("backend restart from tray menu failed: {reason}"));
                 }
             });
         }
         TRAY_MENU_QUIT => {
             let state = app_handle.state::<BackendState>();
             state.mark_quitting();
+            append_shutdown_log("tray quit requested, exiting desktop process");
             app_handle.exit(0);
         }
         _ => {}
@@ -1523,13 +1568,13 @@ fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
 
 fn emit_tray_restart_backend_event(app_handle: &AppHandle) {
     let Some(window) = app_handle.get_webview_window("main") else {
-        append_desktop_log("tray restart event skipped: main window not found");
+        append_restart_log("tray restart event skipped: main window not found");
         return;
     };
     let token = TRAY_RESTART_SIGNAL_TOKEN.fetch_add(1, Ordering::Relaxed) + 1;
 
     if let Err(error) = window.emit(TRAY_RESTART_BACKEND_EVENT, token) {
-        append_desktop_log(&format!(
+        append_restart_log(&format!(
             "failed to emit tray restart backend event: {error}"
         ));
     }
@@ -1538,6 +1583,35 @@ fn emit_tray_restart_backend_event(app_handle: &AppHandle) {
 fn do_restart_backend(app_handle: &AppHandle, auth_token: Option<&str>) -> Result<(), String> {
     let state = app_handle.state::<BackendState>();
     state.restart_backend(app_handle, auth_token)
+}
+
+fn is_backend_action_in_progress(state: &BackendState) -> bool {
+    state.is_spawning.load(Ordering::Relaxed) || state.is_restarting.load(Ordering::Relaxed)
+}
+
+async fn run_restart_backend_task(
+    app_handle: AppHandle,
+    auth_token: Option<String>,
+) -> BackendBridgeResult {
+    let app_handle_for_worker = app_handle.clone();
+    match tauri::async_runtime::spawn_blocking(move || {
+        do_restart_backend(&app_handle_for_worker, auth_token.as_deref())
+    })
+    .await
+    {
+        Ok(Ok(())) => BackendBridgeResult {
+            ok: true,
+            reason: None,
+        },
+        Ok(Err(error)) => BackendBridgeResult {
+            ok: false,
+            reason: Some(error),
+        },
+        Err(error) => BackendBridgeResult {
+            ok: false,
+            reason: Some(format!("Backend restart task failed: {error}")),
+        },
+    }
 }
 
 fn show_main_window(app_handle: &AppHandle) {
@@ -1730,421 +1804,7 @@ fn update_tray_menu_labels(app_handle: &AppHandle) {
     set_menu_text_safe(&tray_state.quit_item, shell_texts.tray_quit, TRAY_MENU_QUIT);
 }
 
-const DESKTOP_BRIDGE_BOOTSTRAP_TEMPLATE: &str = r#"
-(() => {
-  const existingTrayRestartState = window.__astrbotDesktopTrayRestartState;
-  if (
-    window.astrbotDesktop &&
-    window.astrbotDesktop.__tauriBridge === true &&
-    typeof window.astrbotDesktop.onTrayRestartBackend === 'function' &&
-    typeof existingTrayRestartState?.unlistenTrayRestartBackendEvent === 'function'
-  ) {
-    return;
-  }
-
-  const invoke = window.__TAURI_INTERNALS__?.invoke;
-  const transformCallback = window.__TAURI_INTERNALS__?.transformCallback;
-  const tauriEvent = window.__TAURI_INTERNALS__?.event ?? window.__TAURI__?.event;
-  if (typeof invoke !== 'function') return;
-
-  const BRIDGE_COMMANDS = Object.freeze({
-    IS_DESKTOP_RUNTIME: 'desktop_bridge_is_desktop_runtime',
-    GET_BACKEND_STATE: 'desktop_bridge_get_backend_state',
-    SET_AUTH_TOKEN: 'desktop_bridge_set_auth_token',
-    RESTART_BACKEND: 'desktop_bridge_restart_backend',
-    STOP_BACKEND: 'desktop_bridge_stop_backend',
-  });
-  const TRAY_RESTART_BACKEND_EVENT = '{TRAY_RESTART_BACKEND_EVENT}';
-
-  const invokeBridge = async (command, payload = {}) => {
-    try {
-      return await invoke(command, payload);
-    } catch (error) {
-      return { ok: false, reason: String(error) };
-    }
-  };
-
-  const createLegacyEventListener = async (eventName, handler) => {
-    if (typeof transformCallback !== 'function') {
-      throw new Error(
-        'No supported Tauri event listener API: expected tauriEvent.listen or __TAURI_INTERNALS__.invoke + transformCallback'
-      );
-    }
-
-    let eventId;
-    try {
-      eventId = await invoke('plugin:event|listen', {
-        event: eventName,
-        target: { kind: 'Any' },
-        handler: transformCallback(handler),
-      });
-    } catch (error) {
-      throw new Error(`plugin:event|listen failed: ${String(error)}`);
-    }
-
-    return async () => {
-      try {
-        window.__TAURI_EVENT_PLUGIN_INTERNALS__?.unregisterListener?.(eventName, eventId);
-      } catch {}
-      try {
-        await invoke('plugin:event|unlisten', {
-          event: eventName,
-          eventId,
-        });
-      } catch {}
-    };
-  };
-
-  const createEventListener = async (eventName, handler) => {
-    if (typeof tauriEvent?.listen === 'function') {
-      return tauriEvent.listen(eventName, handler);
-    }
-    return createLegacyEventListener(eventName, handler);
-  };
-
-  const trayRestartState =
-    window.__astrbotDesktopTrayRestartState ||
-    (window.__astrbotDesktopTrayRestartState = {
-      handlers: new Set(),
-      pending: 0,
-      lastToken: 0,
-      unlistenTrayRestartBackendEvent: null
-    });
-  if (
-    typeof trayRestartState.lastToken !== 'number' ||
-    !Number.isFinite(trayRestartState.lastToken)
-  ) {
-    trayRestartState.lastToken = 0;
-  }
-  if (typeof trayRestartState.unlistenTrayRestartBackendEvent === 'undefined') {
-    trayRestartState.unlistenTrayRestartBackendEvent = null;
-  }
-
-  const shouldEmitForToken = (token) => {
-    const numericToken = Number(token);
-    if (Number.isFinite(numericToken) && numericToken > 0) {
-      if (numericToken <= trayRestartState.lastToken) return false;
-      trayRestartState.lastToken = numericToken;
-      return true;
-    } else {
-      trayRestartState.lastToken += 1;
-      return true;
-    }
-  };
-
-  const emitTrayRestart = (token = null) => {
-    if (!shouldEmitForToken(token)) return;
-
-    if (trayRestartState.handlers.size === 0) {
-      trayRestartState.pending = Number(trayRestartState.pending || 0) + 1;
-      return;
-    }
-    for (const handler of trayRestartState.handlers) {
-      try {
-        handler();
-      } catch {}
-    }
-  };
-
-  const onTrayRestartBackend = (callback) => {
-    if (typeof callback !== 'function') return () => {};
-    const handler = () => callback();
-    trayRestartState.handlers.add(handler);
-    while (trayRestartState.pending > 0) {
-      trayRestartState.pending -= 1;
-      handler();
-    }
-    return () => {
-      trayRestartState.handlers.delete(handler);
-    };
-  };
-
-  const listenToTrayRestartBackendEvent = async () => {
-    if (typeof trayRestartState.unlistenTrayRestartBackendEvent === 'function') return;
-    try {
-      const unlisten = await createEventListener(TRAY_RESTART_BACKEND_EVENT, (event) => {
-        emitTrayRestart(event?.payload);
-      });
-      if (typeof unlisten === 'function') {
-        trayRestartState.unlistenTrayRestartBackendEvent = unlisten;
-      }
-    } catch (error) {
-      console.warn('Failed to listen for tray restart backend event', error);
-    }
-  };
-
-  const getStoredAuthToken = () => {
-    try {
-      const token = window.localStorage?.getItem('token');
-      return typeof token === 'string' && token ? token : null;
-    } catch {
-      return null;
-    }
-  };
-
-  const syncAuthToken = (token = getStoredAuthToken()) =>
-    invokeBridge(BRIDGE_COMMANDS.SET_AUTH_TOKEN, {
-      authToken: typeof token === 'string' && token ? token : null
-    });
-
-  const RUNTIME_BRIDGE_DETAIL_MAX_LENGTH = 240;
-  const RUNTIME_BRIDGE_DETAIL_MAX_ITEMS = 8;
-  const RUNTIME_BRIDGE_TRUE_STRINGS = new Set(['1', 'true', 'yes', 'on']);
-  const RUNTIME_BRIDGE_FALSE_STRINGS = new Set(['0', 'false', 'no', 'off']);
-  const RUNTIME_BRIDGE_SENSITIVE_KEY_PATTERN =
-    /(token|secret|password|passwd|authorization|cookie|api[_-]?key|access[_-]?key|refresh[_-]?token|credential)/i;
-
-  const truncateRuntimeBridgeDetail = (value) => {
-    if (typeof value !== 'string') {
-      return value;
-    }
-    if (value.length <= RUNTIME_BRIDGE_DETAIL_MAX_LENGTH) {
-      return value;
-    }
-    return `${value.slice(0, RUNTIME_BRIDGE_DETAIL_MAX_LENGTH)}...`;
-  };
-
-  const isSensitiveRuntimeBridgeKey = (key) =>
-    typeof key === 'string' && RUNTIME_BRIDGE_SENSITIVE_KEY_PATTERN.test(key);
-
-  const summarizeRuntimeBridgeValue = (value, depth = 0) => {
-    if (
-      value === null ||
-      typeof value === 'string' ||
-      typeof value === 'number' ||
-      typeof value === 'boolean'
-    ) {
-      return value;
-    }
-
-    if (value instanceof Error) {
-      return truncateRuntimeBridgeDetail(`${value.name}: ${value.message}`);
-    }
-
-    if (typeof value === 'undefined') {
-      return '[undefined]';
-    }
-
-    if (typeof value === 'function') {
-      return '[function]';
-    }
-
-    if (typeof value !== 'object') {
-      return `[${typeof value}]`;
-    }
-
-    if (depth >= 1) {
-      return Array.isArray(value) ? `[array:${value.length}]` : '[object]';
-    }
-
-    if (Array.isArray(value)) {
-      const sample = value
-        .slice(0, RUNTIME_BRIDGE_DETAIL_MAX_ITEMS)
-        .map((item) => summarizeRuntimeBridgeValue(item, depth + 1));
-      if (value.length > sample.length) {
-        sample.push(`[+${value.length - sample.length} items]`);
-      }
-      return sample;
-    }
-
-    const keys = Object.keys(value);
-    const sampledKeys = keys.slice(0, RUNTIME_BRIDGE_DETAIL_MAX_ITEMS);
-    const sampled = {};
-    for (const key of sampledKeys) {
-      if (isSensitiveRuntimeBridgeKey(key)) {
-        sampled[key] = '[redacted]';
-        continue;
-      }
-      sampled[key] = summarizeRuntimeBridgeValue(value[key], depth + 1);
-    }
-    if (keys.length > sampledKeys.length) {
-      sampled.__omittedKeys = keys.length - sampledKeys.length;
-    }
-    return sampled;
-  };
-
-  const stringifyRuntimeBridgeDetail = (value) => {
-    if (!value || typeof value !== 'object') {
-      return `type=${Object.prototype.toString.call(value)}`;
-    }
-
-    try {
-      return truncateRuntimeBridgeDetail(
-        JSON.stringify(summarizeRuntimeBridgeValue(value)),
-      );
-    } catch {
-      return `type=${Object.prototype.toString.call(value)}`;
-    }
-  };
-
-  const sanitizeRuntimeBridgeDetail = (detail) => {
-    if (detail instanceof Error) {
-      return truncateRuntimeBridgeDetail(`${detail.name}: ${detail.message}`);
-    }
-
-    if (typeof detail === 'string') {
-      return truncateRuntimeBridgeDetail(detail);
-    }
-
-    if (typeof detail === 'number' || typeof detail === 'boolean') {
-      return String(detail);
-    }
-
-    if (detail && typeof detail === 'object') {
-      const hasReason = typeof detail.reason === 'string' && detail.reason;
-      const hasOk = typeof detail.ok === 'boolean';
-      if (hasReason || hasOk) {
-        const summary = [];
-        if (hasOk) {
-          summary.push(`ok=${detail.ok}`);
-        }
-        if (hasReason) {
-          summary.push(`reason=${detail.reason}`);
-        }
-        return truncateRuntimeBridgeDetail(summary.join(' '));
-      }
-      return stringifyRuntimeBridgeDetail(detail);
-    }
-
-    return String(detail);
-  };
-
-  const logRuntimeBridgeFallback = (command, fallbackValue, detail) => {
-    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
-      const sanitizedDetail = sanitizeRuntimeBridgeDetail(detail);
-      console.warn(
-        `[astrbotDesktop] ${command} fallback to ${fallbackValue}`,
-        sanitizedDetail,
-      );
-    }
-  };
-
-  const getStrictBooleanFallback = (command, fallbackValue) => {
-    if (typeof fallbackValue === 'boolean') {
-      return fallbackValue;
-    }
-    if (typeof fallbackValue === 'undefined') {
-      return false;
-    }
-    if (fallbackValue === null) {
-      return false;
-    }
-    if (typeof fallbackValue === 'number') {
-      if (fallbackValue === 1) {
-        return true;
-      }
-      if (fallbackValue === 0) {
-        return false;
-      }
-      logRuntimeBridgeFallback(
-        command,
-        false,
-        `invalid numeric fallback (${fallbackValue}), force false`,
-      );
-      return false;
-    }
-    if (typeof fallbackValue === 'string') {
-      const normalized = fallbackValue.trim().toLowerCase();
-      if (RUNTIME_BRIDGE_TRUE_STRINGS.has(normalized)) {
-        return true;
-      }
-      if (RUNTIME_BRIDGE_FALSE_STRINGS.has(normalized)) {
-        return false;
-      }
-      logRuntimeBridgeFallback(
-        command,
-        false,
-        `invalid string fallback (${truncateRuntimeBridgeDetail(fallbackValue)}), force false`,
-      );
-      return false;
-    }
-
-    logRuntimeBridgeFallback(
-      command,
-      false,
-      `invalid fallback type (${typeof fallbackValue}), force false`,
-    );
-    return false;
-  };
-
-  const isRuntimeBridgeEnabled = async (command, fallbackValue) => {
-    const normalizedFallback = getStrictBooleanFallback(command, fallbackValue);
-
-    try {
-      const result = await invokeBridge(command);
-      if (typeof result === 'boolean') {
-        return result;
-      }
-      logRuntimeBridgeFallback(
-        command,
-        normalizedFallback,
-        `non-boolean result: ${String(result)}`,
-      );
-    } catch (error) {
-      logRuntimeBridgeFallback(command, normalizedFallback, error);
-    }
-
-    return normalizedFallback;
-  };
-
-  const patchLocalStorageTokenSync = () => {
-    try {
-      const storage = window.localStorage;
-      if (!storage || window.__astrbotDesktopTokenSyncPatched) return;
-      window.__astrbotDesktopTokenSyncPatched = true;
-
-      const rawSetItem = storage.setItem?.bind(storage);
-      const rawRemoveItem = storage.removeItem?.bind(storage);
-      const rawClear = storage.clear?.bind(storage);
-
-      if (typeof rawSetItem === 'function') {
-        storage.setItem = (key, value) => {
-          rawSetItem(key, value);
-          if (key === 'token') {
-            void syncAuthToken(value);
-          }
-        };
-      }
-      if (typeof rawRemoveItem === 'function') {
-        storage.removeItem = (key) => {
-          rawRemoveItem(key);
-          if (key === 'token') {
-            void syncAuthToken(null);
-          }
-        };
-      }
-      if (typeof rawClear === 'function') {
-        storage.clear = () => {
-          rawClear();
-          void syncAuthToken(null);
-        };
-      }
-    } catch {}
-  };
-
-  window.astrbotDesktop = {
-    __tauriBridge: true,
-    isDesktop: true,
-    isDesktopRuntime: () =>
-      isRuntimeBridgeEnabled(BRIDGE_COMMANDS.IS_DESKTOP_RUNTIME, true),
-    getBackendState: () => invokeBridge(BRIDGE_COMMANDS.GET_BACKEND_STATE),
-    restartBackend: async (authToken = null) => {
-      const normalizedToken =
-        typeof authToken === 'string' && authToken ? authToken : getStoredAuthToken();
-      await syncAuthToken(normalizedToken);
-      return invokeBridge(BRIDGE_COMMANDS.RESTART_BACKEND, {
-        authToken: normalizedToken
-      });
-    },
-    stopBackend: () => invokeBridge(BRIDGE_COMMANDS.STOP_BACKEND),
-    onTrayRestartBackend,
-  };
-
-  void listenToTrayRestartBackendEvent();
-  patchLocalStorageTokenSync();
-  void syncAuthToken();
-})();
-"#;
+const DESKTOP_BRIDGE_BOOTSTRAP_TEMPLATE: &str = include_str!("bridge_bootstrap.js");
 
 static DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: OnceLock<String> = OnceLock::new();
 
@@ -2234,7 +1894,7 @@ fn apply_startup_loading_mode(webview: &tauri::Webview<tauri::Wry>) {
         "if (typeof window !== 'undefined' && typeof window.__astrbotSetStartupMode === 'function') {{ window.__astrbotSetStartupMode({mode_js}); }}"
     );
     if let Err(error) = webview.eval(&script) {
-        append_desktop_log(&format!("failed to apply startup loading mode: {error}"));
+        append_startup_log(&format!("failed to apply startup loading mode: {error}"));
     }
 }
 
@@ -2247,7 +1907,7 @@ fn resolve_startup_loading_mode(app_handle: &AppHandle) -> &'static str {
             }
         }
         Err(error) => {
-            append_desktop_log(&format!(
+            append_startup_log(&format!(
                 "startup loading mode cache lock poisoned (read), recomputing mode: {error}"
             ));
         }
@@ -2259,7 +1919,7 @@ fn resolve_startup_loading_mode(app_handle: &AppHandle) -> &'static str {
             *guard = Some(mode);
         }
         Err(error) => {
-            append_desktop_log(&format!(
+            append_startup_log(&format!(
                 "startup loading mode cache lock poisoned (write), skip cache update: {error}"
             ));
         }
@@ -2272,44 +1932,27 @@ fn resolve_startup_loading_mode_uncached(
     app_handle: &AppHandle,
 ) -> &'static str {
     if let Ok(raw_mode) = env::var(STARTUP_MODE_ENV) {
-        let normalized = raw_mode.trim();
-        if normalized.eq_ignore_ascii_case(STARTUP_MODE_PANEL_UPDATE) {
-            append_desktop_log("startup mode forced to panel-update by env");
-            return STARTUP_MODE_PANEL_UPDATE;
+        let (mode, message) = startup_mode::resolve_mode_from_env(&raw_mode, STARTUP_MODE_ENV);
+        if let Some(message) = message {
+            append_startup_log(&message);
         }
-        if !normalized.is_empty() && !normalized.eq_ignore_ascii_case(STARTUP_MODE_LOADING) {
-            append_desktop_log(&format!(
-                "invalid startup mode in {STARTUP_MODE_ENV}: {normalized}, fallback to loading"
-            ));
-        }
-        return STARTUP_MODE_LOADING;
+        return mode.as_str();
     }
 
     match state.resolve_launch_plan(app_handle) {
-        Ok(plan) => match plan.webui_dir {
-            Some(webui_dir) => {
-                if !webui_dir.join("index.html").is_file() {
-                    append_desktop_log(&format!(
-                        "startup mode set to panel-update: webui index is unavailable at {}",
-                        webui_dir.display()
-                    ));
-                    STARTUP_MODE_PANEL_UPDATE
-                } else {
-                    STARTUP_MODE_LOADING
-                }
+        Ok(plan) => {
+            let (mode, message) =
+                startup_mode::resolve_mode_from_webui_dir(plan.webui_dir.as_deref());
+            if let Some(message) = message {
+                append_startup_log(&message);
             }
-            None => {
-                append_desktop_log(
-                    "startup mode set to panel-update: launch plan does not provide webui_dir",
-                );
-                STARTUP_MODE_PANEL_UPDATE
-            }
-        },
+            mode.as_str()
+        }
         Err(error) => {
-            append_desktop_log(&format!(
+            append_startup_log(&format!(
                 "failed to resolve startup mode from launch plan, fallback to loading: {error}"
             ));
-            STARTUP_MODE_LOADING
+            startup_mode::STARTUP_MODE_LOADING
         }
     }
 }
@@ -2331,66 +1974,25 @@ fn normalize_backend_url(raw: &str) -> String {
     }
 }
 
-fn resolve_backend_ready_http_path() -> String {
-    match env::var_os(BACKEND_READY_HTTP_PATH_ENV) {
-        Some(raw) => match raw.to_str() {
-            Some(raw_utf8) => {
-                let trimmed = raw_utf8.trim();
-                if trimmed.is_empty() {
-                    append_desktop_log(&format!(
-                        "{BACKEND_READY_HTTP_PATH_ENV} is empty/whitespace, fallback to default '{}'",
-                        DEFAULT_BACKEND_READY_HTTP_PATH
-                    ));
-                    DEFAULT_BACKEND_READY_HTTP_PATH.to_string()
-                } else if trimmed.starts_with('/') {
-                    trimmed.to_string()
-                } else {
-                    let normalized = format!("/{trimmed}");
-                    append_desktop_log(&format!(
-                        "{BACKEND_READY_HTTP_PATH_ENV} is missing leading '/': '{trimmed}', normalized to '{normalized}'"
-                    ));
-                    normalized
-                }
-            }
-            None => {
-                append_desktop_log(&format!(
-                    "{BACKEND_READY_HTTP_PATH_ENV} contains non-UTF-8 value '{}', fallback to default '{}'",
-                    raw.to_string_lossy(),
-                    DEFAULT_BACKEND_READY_HTTP_PATH
-                ));
-                DEFAULT_BACKEND_READY_HTTP_PATH.to_string()
-            }
-        },
-        None => DEFAULT_BACKEND_READY_HTTP_PATH.to_string(),
-    }
-}
-
 fn backend_readiness_config() -> BackendReadinessConfig {
     let probe_timeout_fallback = backend_ping_timeout_ms();
-    let probe_timeout_ms = match env::var(BACKEND_READY_PROBE_TIMEOUT_ENV) {
-        Ok(raw) => parse_clamped_timeout_env(
-            &raw,
+    let (path, probe_timeout_ms, poll_interval_ms) =
+        backend_config::resolve_backend_readiness_config(
+            BACKEND_READY_HTTP_PATH_ENV,
+            DEFAULT_BACKEND_READY_HTTP_PATH,
             BACKEND_READY_PROBE_TIMEOUT_ENV,
             probe_timeout_fallback,
             BACKEND_READY_PROBE_TIMEOUT_MIN_MS,
             BACKEND_READY_PROBE_TIMEOUT_MAX_MS,
-        ),
-        Err(_) => probe_timeout_fallback,
-    };
-    let poll_interval_fallback = DEFAULT_BACKEND_READY_POLL_INTERVAL_MS;
-    let poll_interval_ms = match env::var(BACKEND_READY_POLL_INTERVAL_ENV) {
-        Ok(raw) => parse_clamped_timeout_env(
-            &raw,
             BACKEND_READY_POLL_INTERVAL_ENV,
-            poll_interval_fallback,
+            DEFAULT_BACKEND_READY_POLL_INTERVAL_MS,
             BACKEND_READY_POLL_INTERVAL_MIN_MS,
             BACKEND_READY_POLL_INTERVAL_MAX_MS,
-        ),
-        Err(_) => poll_interval_fallback,
-    };
+            |message| append_desktop_log(&message),
+        );
 
     BackendReadinessConfig {
-        path: resolve_backend_ready_http_path(),
+        path,
         probe_timeout_ms,
         poll_interval_ms,
     }
@@ -2431,163 +2033,12 @@ fn default_packaged_root_dir() -> Option<PathBuf> {
     home::home_dir().map(|home| home.join(".astrbot"))
 }
 
-// Path keys are intentionally component-normalized, so entries like `/a/../b`
-// and `/b` deduplicate to the same key.
-// On Windows we apply ASCII case folding as a best-effort for case-insensitive PATHs.
-fn path_key(path: &Path) -> Option<OsString> {
-    if path.as_os_str().is_empty() {
-        return None;
-    }
-    let normalized: PathBuf = path.components().collect();
-    #[cfg(target_os = "windows")]
-    {
-        Some(OsString::from(
-            normalized.to_string_lossy().to_ascii_lowercase(),
-        ))
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        Some(normalized.into_os_string())
-    }
-}
-
-fn add_path_candidate(
-    candidate: PathBuf,
-    seen_keys: &mut HashSet<OsString>,
-    prepend_entries: &mut Vec<PathBuf>,
-) {
-    if !candidate.is_dir() {
-        return;
-    }
-    if let Some(key) = path_key(&candidate) {
-        if seen_keys.insert(key) {
-            prepend_entries.push(candidate);
-        }
-    }
-}
-
-fn platform_extra_paths() -> Vec<PathBuf> {
-    let mut result = Vec::new();
-
-    if let Some(home_dir) = home::home_dir() {
-        result.push(home_dir.join(".local").join("bin"));
-        #[cfg(target_os = "macos")]
-        {
-            result.push(home_dir.join(".nvm").join("current").join("bin"));
-        }
-    }
-
-    if let Some(nvm_bin) = env::var_os("NVM_BIN") {
-        result.push(PathBuf::from(nvm_bin));
-    }
-    if let Some(volta_home) = env::var_os("VOLTA_HOME") {
-        result.push(PathBuf::from(volta_home).join("bin"));
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        for raw in [
-            "/opt/homebrew/bin",
-            "/opt/homebrew/sbin",
-            "/usr/local/bin",
-            "/usr/local/sbin",
-        ] {
-            result.push(PathBuf::from(raw));
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        if let Some(app_data) = env::var_os("APPDATA") {
-            result.push(PathBuf::from(app_data).join("npm"));
-        }
-        if let Some(local_app_data) = env::var_os("LOCALAPPDATA") {
-            let local_app_data = PathBuf::from(local_app_data);
-            result.push(local_app_data.join("Programs").join("nodejs"));
-            result.push(local_app_data.join("nvm"));
-        }
-    }
-
-    result
-}
-
-fn log_backend_path_augmentation(prepend_entries: &[PathBuf]) {
-    if prepend_entries.is_empty() {
-        return;
-    }
-    let preview = prepend_entries
-        .iter()
-        .map(|entry| entry.display().to_string())
-        .collect::<Vec<_>>()
-        .join(", ");
-    append_desktop_log(&format!(
-        "backend PATH augmented with {} prepended directories: {preview}",
-        prepend_entries.len()
-    ));
-}
-
 fn backend_path_override() -> Option<OsString> {
     BACKEND_PATH_OVERRIDE
-        .get_or_init(build_backend_path_override)
+        .get_or_init(|| {
+            backend_path::build_backend_path_override(|message| append_desktop_log(&message))
+        })
         .clone()
-}
-
-fn build_backend_path_override() -> Option<OsString> {
-    let existing_path = env::var_os("PATH").unwrap_or_default();
-    let existing_entries: Vec<PathBuf> = env::split_paths(&existing_path).collect();
-    let mut seen_keys: HashSet<OsString> = existing_entries
-        .iter()
-        .filter_map(|path| path_key(path))
-        .collect();
-
-    let mut prepend_entries: Vec<PathBuf> = Vec::new();
-
-    if let Some(extra_path_raw) = env::var_os("ASTRBOT_DESKTOP_EXTRA_PATH") {
-        for path in env::split_paths(&extra_path_raw) {
-            add_path_candidate(path, &mut seen_keys, &mut prepend_entries);
-        }
-    }
-
-    for path in platform_extra_paths() {
-        add_path_candidate(path, &mut seen_keys, &mut prepend_entries);
-    }
-
-    if prepend_entries.is_empty() {
-        return None;
-    }
-
-    match env::join_paths(prepend_entries.iter().chain(existing_entries.iter())) {
-        Ok(path_override) => {
-            log_backend_path_augmentation(&prepend_entries);
-            Some(path_override)
-        }
-        Err(error) => {
-            append_desktop_log(&format!("failed to build backend PATH override: {error}"));
-            None
-        }
-    }
-}
-
-fn packaged_fallback_webui_probe_dir(root_dir: Option<&Path>) -> Option<PathBuf> {
-    match root_dir {
-        Some(root) => Some(root.join("data").join("dist")),
-        None => default_packaged_root_dir().map(|root| root.join("data").join("dist")),
-    }
-}
-
-fn packaged_fallback_webui_dir(root_dir: Option<&Path>) -> Option<PathBuf> {
-    let candidate = packaged_fallback_webui_probe_dir(root_dir)?;
-    if candidate.join("index.html").is_file() {
-        Some(candidate)
-    } else {
-        None
-    }
-}
-
-fn packaged_fallback_webui_index_display(root_dir: Option<&Path>) -> String {
-    packaged_fallback_webui_probe_dir(root_dir)
-        .map(|path| path.join("index.html").display().to_string())
-        .unwrap_or_else(|| "<unresolved>".to_string())
 }
 
 fn packaged_webui_unavailable_error(locale: &str, embedded_index: Option<&Path>) -> String {
@@ -2617,7 +2068,8 @@ fn resolve_packaged_webui_dir(
     root_dir: Option<&Path>,
 ) -> Result<PathBuf, String> {
     let locale = resolve_shell_locale();
-    let fallback_webui_dir = packaged_fallback_webui_dir(root_dir);
+    let fallback_webui_dir =
+        webui_paths::packaged_fallback_webui_dir(root_dir, default_packaged_root_dir());
 
     match embedded_webui_dir {
         Some(candidate) => {
@@ -2639,7 +2091,10 @@ fn resolve_packaged_webui_dir(
                 return Ok(fallback);
             }
 
-            let fallback_index = packaged_fallback_webui_index_display(root_dir);
+            let fallback_index = webui_paths::packaged_fallback_webui_index_display(
+                root_dir,
+                default_packaged_root_dir(),
+            );
             append_desktop_log(&format!(
                 "packaged webui resolution failed: embedded index missing at {}, fallback index missing at {}",
                 embedded_index.display(),
@@ -2660,7 +2115,10 @@ fn resolve_packaged_webui_dir(
                 return Ok(fallback);
             }
 
-            let fallback_index = packaged_fallback_webui_index_display(root_dir);
+            let fallback_index = webui_paths::packaged_fallback_webui_index_display(
+                root_dir,
+                default_packaged_root_dir(),
+            );
             append_desktop_log(&format!(
                 "packaged webui resolution failed: embedded webui directory is missing, fallback index missing at {}",
                 fallback_index
@@ -2671,45 +2129,14 @@ fn resolve_packaged_webui_dir(
     }
 }
 
-fn resolve_backend_timeout_ms(packaged_mode: bool) -> Option<Duration> {
-    let default_timeout_ms = if packaged_mode { 0_u64 } else { 20_000_u64 };
-    let parsed_timeout_ms = env::var("ASTRBOT_BACKEND_TIMEOUT_MS")
-        .ok()
-        .and_then(|value| value.trim().parse::<u64>().ok())
-        .unwrap_or(default_timeout_ms);
-
-    if parsed_timeout_ms > 0 {
-        return Some(Duration::from_millis(parsed_timeout_ms));
-    }
-    if packaged_mode {
-        return Some(Duration::from_millis(PACKAGED_BACKEND_TIMEOUT_FALLBACK_MS));
-    }
-    None
-}
-
 fn backend_wait_timeout(packaged_mode: bool) -> Duration {
-    resolve_backend_timeout_ms(packaged_mode).unwrap_or(Duration::from_millis(20_000))
-}
-
-fn backend_log_path(root_dir: Option<&Path>) -> Option<PathBuf> {
-    if let Some(root) = root_dir {
-        return Some(root.join("logs").join("backend.log"));
-    }
-    if let Ok(root) = env::var("ASTRBOT_ROOT") {
-        let path = PathBuf::from(root.trim());
-        if !path.as_os_str().is_empty() {
-            return Some(path.join("logs").join("backend.log"));
-        }
-    }
-    if let Some(root) = default_packaged_root_dir() {
-        return Some(root.join("logs").join("backend.log"));
-    }
-    Some(
-        env::temp_dir()
-            .join("astrbot")
-            .join("logs")
-            .join("backend.log"),
+    backend_config::resolve_backend_timeout_ms(
+        packaged_mode,
+        BACKEND_TIMEOUT_ENV,
+        20_000,
+        PACKAGED_BACKEND_TIMEOUT_FALLBACK_MS,
     )
+    .unwrap_or(Duration::from_millis(20_000))
 }
 
 fn parse_http_json_response(raw: &[u8]) -> Option<serde_json::Value> {
@@ -2974,57 +2401,15 @@ fn resolve_resource_path(app: &AppHandle, relative_path: &str) -> Option<PathBuf
     None
 }
 
-fn parse_clamped_timeout_env(
-    raw: &str,
-    env_name: &str,
-    fallback_ms: u64,
-    min_ms: u64,
-    max_ms: u64,
-) -> u64 {
-    match raw.trim().parse::<u128>() {
-        Ok(parsed) if parsed > 0 => {
-            if parsed < min_ms as u128 {
-                append_desktop_log(&format!(
-                    "{}='{}' is below minimum {}ms, clamped to {}ms",
-                    env_name, raw, min_ms, min_ms
-                ));
-                min_ms
-            } else if parsed > max_ms as u128 {
-                append_desktop_log(&format!(
-                    "{}='{}' is above maximum {}ms, clamped to {}ms",
-                    env_name, raw, max_ms, max_ms
-                ));
-                max_ms
-            } else {
-                parsed as u64
-            }
-        }
-        _ => {
-            append_desktop_log(&format!(
-                "invalid {}='{}', fallback to {}ms",
-                env_name, raw, fallback_ms
-            ));
-            fallback_ms
-        }
-    }
-}
-
-fn parse_ping_timeout_env(raw: &str, env_name: &str, fallback_ms: u64) -> u64 {
-    parse_clamped_timeout_env(
-        raw,
-        env_name,
-        fallback_ms,
-        BACKEND_PING_TIMEOUT_MIN_MS,
-        BACKEND_PING_TIMEOUT_MAX_MS,
-    )
-}
-
 fn backend_ping_timeout_ms() -> u64 {
     *BACKEND_PING_TIMEOUT_MS.get_or_init(|| match env::var(BACKEND_PING_TIMEOUT_ENV) {
-        Ok(raw) => parse_ping_timeout_env(
+        Ok(raw) => backend_config::parse_ping_timeout_env(
             &raw,
             BACKEND_PING_TIMEOUT_ENV,
             DEFAULT_BACKEND_PING_TIMEOUT_MS,
+            BACKEND_PING_TIMEOUT_MIN_MS,
+            BACKEND_PING_TIMEOUT_MAX_MS,
+            |message| append_desktop_log(&message),
         ),
         Err(_) => DEFAULT_BACKEND_PING_TIMEOUT_MS,
     })
@@ -3034,177 +2419,49 @@ fn bridge_backend_ping_timeout_ms() -> u64 {
     *BRIDGE_BACKEND_PING_TIMEOUT_MS.get_or_init(|| {
         let fallback = backend_ping_timeout_ms();
         match env::var(BRIDGE_BACKEND_PING_TIMEOUT_ENV) {
-            Ok(raw) => parse_ping_timeout_env(&raw, BRIDGE_BACKEND_PING_TIMEOUT_ENV, fallback),
+            Ok(raw) => backend_config::parse_ping_timeout_env(
+                &raw,
+                BRIDGE_BACKEND_PING_TIMEOUT_ENV,
+                fallback,
+                BACKEND_PING_TIMEOUT_MIN_MS,
+                BACKEND_PING_TIMEOUT_MAX_MS,
+                |message| append_desktop_log(&message),
+            ),
             Err(_) => fallback,
         }
     })
 }
 
-fn desktop_log_path() -> PathBuf {
-    if let Ok(custom) = env::var("ASTRBOT_DESKTOP_LOG_PATH") {
-        let candidate = PathBuf::from(custom.trim());
-        if !candidate.as_os_str().is_empty() {
-            return candidate;
-        }
-    }
-
-    if let Ok(root) = env::var("ASTRBOT_ROOT") {
-        let root = PathBuf::from(root.trim());
-        if !root.as_os_str().is_empty() {
-            return root.join("logs").join(DESKTOP_LOG_FILE);
-        }
-    }
-
-    if let Some(root) = default_packaged_root_dir() {
-        return root.join("logs").join(DESKTOP_LOG_FILE);
-    }
-
-    env::temp_dir()
-        .join("astrbot")
-        .join("logs")
-        .join(DESKTOP_LOG_FILE)
+fn append_desktop_log(message: &str) {
+    append_desktop_log_with_category(logging::DesktopLogCategory::Runtime, message);
 }
 
-fn append_desktop_log(message: &str) {
-    let path = desktop_log_path();
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    let _guard = match DESKTOP_LOG_WRITE_LOCK.get_or_init(|| Mutex::new(())).lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-    rotate_log_if_needed(
-        &path,
+fn append_startup_log(message: &str) {
+    append_desktop_log_with_category(logging::DesktopLogCategory::Startup, message);
+}
+
+fn append_restart_log(message: &str) {
+    append_desktop_log_with_category(logging::DesktopLogCategory::Restart, message);
+}
+
+fn append_shutdown_log(message: &str) {
+    append_desktop_log_with_category(logging::DesktopLogCategory::Shutdown, message);
+}
+
+fn append_desktop_log_with_category(category: logging::DesktopLogCategory, message: &str) {
+    logging::append_desktop_log(
+        category,
+        message,
+        default_packaged_root_dir(),
+        DESKTOP_LOG_FILE,
         DESKTOP_LOG_MAX_BYTES,
         LOG_BACKUP_COUNT,
-        "desktop",
-        false,
-    );
-    let timestamp = chrono::Local::now()
-        .format("%Y-%m-%d %H:%M:%S%.3f %z")
-        .to_string();
-    let line = format!("[{}] {}\n", timestamp, message);
-    let _ = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .and_then(|mut file| std::io::Write::write_all(&mut file, line.as_bytes()));
-}
-
-fn rotate_log_if_needed(
-    path: &Path,
-    max_bytes: u64,
-    backup_count: usize,
-    log_scope: &str,
-    copy_and_truncate: bool,
-) {
-    if max_bytes == 0 || backup_count == 0 {
-        return;
-    }
-
-    let metadata = match fs::metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) => {
-            if error.kind() != std::io::ErrorKind::NotFound {
-                eprintln!(
-                    "[log rotation:{log_scope}] failed to read metadata for {}: {}",
-                    path.display(),
-                    error
-                );
-            }
-            return;
-        }
-    };
-    if metadata.len() < max_bytes {
-        return;
-    }
-
-    let oldest = rotated_log_path(path, backup_count);
-    if let Err(error) = fs::remove_file(&oldest) {
-        if error.kind() != std::io::ErrorKind::NotFound {
-            eprintln!(
-                "[log rotation:{log_scope}] failed to remove oldest backup {}: {}",
-                oldest.display(),
-                error
-            );
-        }
-    }
-
-    for index in (1..backup_count).rev() {
-        let source = rotated_log_path(path, index);
-        if !source.exists() {
-            continue;
-        }
-        let target = rotated_log_path(path, index + 1);
-        if let Err(error) = fs::remove_file(&target) {
-            if error.kind() != std::io::ErrorKind::NotFound {
-                eprintln!(
-                    "[log rotation:{log_scope}] failed to remove backup {}: {}",
-                    target.display(),
-                    error
-                );
-            }
-        }
-        if let Err(error) = fs::rename(&source, &target) {
-            eprintln!(
-                "[log rotation:{log_scope}] failed to rename {} to {}: {}",
-                source.display(),
-                target.display(),
-                error
-            );
-        }
-    }
-
-    let rotated = rotated_log_path(path, 1);
-    if let Err(error) = fs::remove_file(&rotated) {
-        if error.kind() != std::io::ErrorKind::NotFound {
-            eprintln!(
-                "[log rotation:{log_scope}] failed to remove first backup {}: {}",
-                rotated.display(),
-                error
-            );
-        }
-    }
-
-    if copy_and_truncate {
-        match fs::copy(path, &rotated) {
-            Ok(_) => {
-                if let Err(error) = OpenOptions::new().write(true).truncate(true).open(path) {
-                    eprintln!(
-                        "[log rotation:{log_scope}] failed to truncate active log {}: {}",
-                        path.display(),
-                        error
-                    );
-                }
-            }
-            Err(error) => {
-                eprintln!(
-                    "[log rotation:{log_scope}] failed to copy {} to {}: {}",
-                    path.display(),
-                    rotated.display(),
-                    error
-                );
-            }
-        }
-    } else if let Err(error) = fs::rename(path, &rotated) {
-        eprintln!(
-            "[log rotation:{log_scope}] failed to rotate {} to {}: {}",
-            path.display(),
-            rotated.display(),
-            error
-        );
-    }
-}
-
-fn rotated_log_path(path: &Path, index: usize) -> PathBuf {
-    let mut value = OsString::from(path.as_os_str());
-    value.push(format!(".{index}"));
-    PathBuf::from(value)
+        &DESKTOP_LOG_WRITE_LOCK,
+    )
 }
 
 fn show_startup_error(app_handle: &AppHandle, message: &str) {
-    append_desktop_log(&format!("startup error: {}", message));
+    append_startup_log(&format!("startup error: {}", message));
     eprintln!("AstrBot startup failed: {message}");
     app_handle.exit(1);
 }
@@ -3216,7 +2473,7 @@ fn show_startup_error_on_main_thread(app_handle: &AppHandle, message: &str) {
             show_startup_error(main_app, &message_owned);
         })
     {
-        append_desktop_log(&format!(
+        append_startup_log(&format!(
             "failed to dispatch startup error handling to main thread: {error}"
         ));
         show_startup_error(app_handle, message);
@@ -3237,4 +2494,33 @@ where
             action(&app_handle_for_main);
         })
         .map_err(|error| format!("failed to schedule '{action_name}' on main thread: {error}"))
+}
+
+fn try_begin_exit_cleanup(state: &BackendState, trigger: ExitTrigger) -> bool {
+    if state.try_begin_exit_cleanup() {
+        return true;
+    }
+
+    let message = match trigger {
+        ExitTrigger::ExitRequested => "exit requested while backend cleanup is already running",
+        ExitTrigger::ExitFallback => {
+            "exit fallback cleanup skipped: backend cleanup already running"
+        }
+    };
+    append_shutdown_log(message);
+    false
+}
+
+fn stop_backend_for_exit(state: &BackendState, trigger: ExitTrigger) {
+    let stop_failure_prefix = match trigger {
+        ExitTrigger::ExitRequested => "backend graceful stop on ExitRequested failed",
+        ExitTrigger::ExitFallback => "backend fallback stop on Exit failed",
+    };
+    if let Err(error) = state.stop_backend() {
+        append_shutdown_log(&format!("{stop_failure_prefix}: {error}"));
+    }
+
+    if matches!(trigger, ExitTrigger::ExitRequested) {
+        append_shutdown_log("backend stop finished, exiting desktop process");
+    }
 }

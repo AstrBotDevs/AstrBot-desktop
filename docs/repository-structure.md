@@ -1,0 +1,88 @@
+# AstrBot Desktop 文件组织说明
+
+本文档用于快速定位仓库目录职责，作为日常维护与新代码落位参考。
+
+## 1. 顶层目录
+
+- `src-tauri/`
+  - 桌面壳层核心（Rust + Tauri 配置）。
+- `scripts/`
+  - 构建、资源准备、CI 辅助脚本。
+- `resources/`
+  - 构建产物资源目录（WebUI/Backend 运行时）。
+- `ui/`
+  - 启动壳层静态资源。
+- `.github/`
+  - GitHub Actions workflows 与复用 actions。
+- `docs/`
+  - 架构、重构归档、环境变量清单等文档。
+
+## 2. Rust 侧组织（`src-tauri/src`）
+
+- `main.rs`
+  - 应用入口与流程编排。
+- `backend_config.rs`
+  - 后端配置与 timeout/readiness 解析。
+- `logging.rs`
+  - 日志路径、日志轮转、日志写入与分类。
+- `startup_mode.rs`
+  - 启动模式纯逻辑。
+- `backend_path.rs`
+  - 后端 PATH 覆盖构建。
+- `webui_paths.rs`
+  - 打包 WebUI fallback 路径逻辑。
+- `exit_state.rs`
+  - 退出状态机。
+- `bridge_bootstrap.js`
+  - 注入到 WebView 的 desktop bridge 脚本模板。
+
+## 3. 脚本侧组织（`scripts/prepare-resources`）
+
+- `prepare-resources.mjs`
+  - 编排入口。
+- `source-repo.mjs`
+  - 上游仓库 URL/ref 处理与同步。
+- `version-sync.mjs`
+  - 版本读取与写回。
+- `backend-runtime.mjs`
+  - CPython runtime 解析与准备。
+- `mode-tasks.mjs`
+  - `webui/backend/all` 任务实现。
+- `desktop-bridge-checks.mjs`
+  - bridge 相关校验。
+- `*.test.mjs`
+  - Node 行为测试。
+
+## 4. 文档组织（`docs/`）
+
+- `architecture.md`
+  - 架构与流程说明。
+- `repository-structure.md`
+  - 文件组织说明（本文档）。
+- `environment-variables.md`
+  - 环境变量单一来源文档。
+- `refactor-plan.md`
+  - 重构归档文档（阅读/存档用途）。
+
+## 5. 新增代码落位规则
+
+1. 入口文件只做编排：
+   - `main.rs` 与 `prepare-resources.mjs` 不承载复杂纯逻辑。
+2. 纯逻辑优先模块化：
+   - 路径、配置、状态机、策略函数落到独立模块。
+3. 每个新模块至少满足：
+   - 清晰职责。
+   - 最小公开 API。
+   - 对应单测或行为测试。
+4. 变更同步文档：
+   - 新增 `ASTRBOT_*` 变量时更新 `environment-variables.md`。
+   - 目录职责变化时更新本文档与 `architecture.md`。
+
+## 6. 测试入口约定
+
+- 本地统一入口：`make test`
+  - 全量 Rust 单测
+  - `prepare-resources` Node 行为测试
+- CI 同步门禁：
+  - `check-rust.yml`
+  - `check-scripts.yml`

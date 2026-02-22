@@ -45,6 +45,13 @@ make help
 
 构建产物默认在 `src-tauri/target/release/bundle/`。
 
+## 文档索引
+
+- 架构说明：`docs/architecture.md`
+- 文件组织：`docs/repository-structure.md`
+- 环境变量清单：`docs/environment-variables.md`
+- 重构归档：`docs/refactor-plan.md`
+
 ## 常用维护命令
 
 ```bash
@@ -54,6 +61,11 @@ make doctor
 make clean
 make prune
 ```
+
+`make test` 会执行：
+
+- Rust 全量单元测试（`cargo test --locked`）
+- 资源准备脚本行为测试（`pnpm run test:prepare-resources`）
 
 ## 版本维护（重要）
 
