@@ -171,6 +171,7 @@ desktop bridge 模块：
 - bridge bootstrap 模板装配
 - bridge script 缓存
 - bridge script 注入执行
+- bridge 注入判定（backend/page URL）
 
 ### 2.20 `src-tauri/src/tray_labels.rs`
 

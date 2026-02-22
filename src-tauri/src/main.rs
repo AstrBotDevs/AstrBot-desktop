@@ -1329,13 +1329,15 @@ fn main() {
         .on_page_load(|webview, payload| match payload.event() {
             PageLoadEvent::Started => {
                 append_desktop_log(&format!("page-load started: {}", payload.url()));
-                if should_inject_desktop_bridge(webview.app_handle(), payload.url()) {
+                let state = webview.app_handle().state::<BackendState>();
+                if desktop_bridge::should_inject_desktop_bridge(&state.backend_url, payload.url()) {
                     inject_desktop_bridge(webview);
                 }
             }
             PageLoadEvent::Finished => {
                 append_desktop_log(&format!("page-load finished: {}", payload.url()));
-                if should_inject_desktop_bridge(webview.app_handle(), payload.url()) {
+                let state = webview.app_handle().state::<BackendState>();
+                if desktop_bridge::should_inject_desktop_bridge(&state.backend_url, payload.url()) {
                     inject_desktop_bridge(webview);
                 } else if startup_loading::should_apply_startup_loading_mode(
                     webview.window().label(),
@@ -1573,14 +1575,6 @@ fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
 fn navigate_main_window_to_backend(app_handle: &AppHandle) -> Result<(), String> {
     let state = app_handle.state::<BackendState>();
     main_window::navigate_main_window_to_backend(app_handle, &state.backend_url)
-}
-
-fn should_inject_desktop_bridge(app_handle: &AppHandle, page_url: &Url) -> bool {
-    let state = app_handle.state::<BackendState>();
-    let Ok(backend_url) = Url::parse(&state.backend_url) else {
-        return false;
-    };
-    origin_policy::tray_origin_decision(&backend_url, page_url).uses_backend_origin
 }
 
 fn inject_desktop_bridge(webview: &tauri::Webview<tauri::Wry>) {
