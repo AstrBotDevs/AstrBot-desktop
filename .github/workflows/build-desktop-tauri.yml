@@ -378,6 +378,7 @@ jobs:
     name: windows-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     env:
+      ASTRBOT_WINDOWS_BUNDLES: nsis,nsis-web
       WINDOWS_INSTALLER_EXE_GLOBS: |
         src-tauri/target/release/bundle/nsis-web/*.exe
         src-tauri/target/release/bundle/nsis/*.exe
@@ -415,7 +416,12 @@ jobs:
           ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS: ${{ vars.ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS || '' }}
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
-        run: pnpm run build
+        shell: bash
+        run: bash scripts/ci/build-windows-installers.sh
+
+      - name: Verify Windows installer outputs
+        shell: bash
+        run: bash scripts/ci/verify-windows-installer-outputs.sh
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6.0.0
@@ -425,7 +431,6 @@ jobs:
           # Only upload Windows installer executables.
           # A broad **/*.exe pattern also matches bundled Python runtime helpers.
           path: |
-            src-tauri/target/release/bundle/**/*.msi
             ${{ env.WINDOWS_INSTALLER_EXE_GLOBS }}
 
   release:
