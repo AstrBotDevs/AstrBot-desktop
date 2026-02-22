@@ -22,6 +22,7 @@ mod tray_labels;
 mod tray_menu_handler;
 mod ui_dispatch;
 mod webui_paths;
+mod window_actions;
 
 use serde::Deserialize;
 #[cfg(target_os = "windows")]
@@ -1303,14 +1304,22 @@ fn main() {
                     }
 
                     api.prevent_close();
-                    hide_main_window(app_handle);
+                    window_actions::hide_main_window(
+                        app_handle,
+                        DEFAULT_SHELL_LOCALE,
+                        append_desktop_log,
+                    );
                 }
                 WindowEvent::Focused(false) => {
                     if let Ok(true) = window.is_minimized() {
                         let app_handle = window.app_handle();
                         let state = app_handle.state::<BackendState>();
                         if !state.is_quitting() {
-                            hide_main_window(app_handle);
+                            window_actions::hide_main_window(
+                                app_handle,
+                                DEFAULT_SHELL_LOCALE,
+                                append_desktop_log,
+                            );
                         }
                     }
                 }
@@ -1541,7 +1550,11 @@ fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
                     append_desktop_log,
                 );
                 if button == MouseButton::Left {
-                    toggle_main_window(tray.app_handle());
+                    window_actions::toggle_main_window(
+                        tray.app_handle(),
+                        DEFAULT_SHELL_LOCALE,
+                        append_desktop_log,
+                    );
                 }
             }
         });
@@ -1555,35 +1568,6 @@ fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
 
     tray_labels::update_tray_menu_labels(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log);
     Ok(())
-}
-
-fn show_main_window(app_handle: &AppHandle) {
-    main_window::show_main_window(app_handle, append_desktop_log);
-    tray_labels::update_tray_menu_labels(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log);
-}
-
-fn hide_main_window(app_handle: &AppHandle) {
-    main_window::hide_main_window(app_handle, append_desktop_log);
-    tray_labels::update_tray_menu_labels(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log);
-}
-
-fn toggle_main_window(app_handle: &AppHandle) {
-    let Some(window) = app_handle.get_webview_window("main") else {
-        append_desktop_log("toggle_main_window skipped: main window not found");
-        return;
-    };
-
-    match window.is_visible() {
-        Ok(true) => hide_main_window(app_handle),
-        Ok(false) => show_main_window(app_handle),
-        Err(error) => append_desktop_log(&format!(
-            "failed to read main window visibility in toggle_main_window: {error}"
-        )),
-    }
-}
-
-fn reload_main_window(app_handle: &AppHandle) {
-    main_window::reload_main_window(app_handle, append_desktop_log);
 }
 
 fn navigate_main_window_to_backend(app_handle: &AppHandle) -> Result<(), String> {

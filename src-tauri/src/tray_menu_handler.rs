@@ -1,15 +1,19 @@
 use tauri::{AppHandle, Manager};
 
 use crate::{
-    append_restart_log, append_shutdown_log, reload_main_window, restart_backend_flow,
-    show_main_window, toggle_main_window, tray_actions, tray_bridge_event, ui_dispatch,
-    BackendState, TRAY_RESTART_BACKEND_EVENT,
+    append_desktop_log, append_restart_log, append_shutdown_log, restart_backend_flow,
+    tray_actions, tray_bridge_event, ui_dispatch, window_actions, BackendState,
+    DEFAULT_SHELL_LOCALE, TRAY_RESTART_BACKEND_EVENT,
 };
 
 pub fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
     match tray_actions::action_from_menu_id(menu_id) {
-        Some(tray_actions::TrayMenuAction::ToggleWindow) => toggle_main_window(app_handle),
-        Some(tray_actions::TrayMenuAction::ReloadWindow) => reload_main_window(app_handle),
+        Some(tray_actions::TrayMenuAction::ToggleWindow) => {
+            window_actions::toggle_main_window(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log)
+        }
+        Some(tray_actions::TrayMenuAction::ReloadWindow) => {
+            window_actions::reload_main_window(app_handle, append_desktop_log)
+        }
         Some(tray_actions::TrayMenuAction::RestartBackend) => {
             let state = app_handle.state::<BackendState>();
             if restart_backend_flow::is_backend_action_in_progress(&state) {
@@ -17,7 +21,7 @@ pub fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
                 return;
             }
             append_restart_log("tray requested backend restart");
-            show_main_window(app_handle);
+            window_actions::show_main_window(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log);
             tray_bridge_event::emit_tray_restart_backend_event(
                 app_handle,
                 TRAY_RESTART_BACKEND_EVENT,
@@ -35,7 +39,7 @@ pub fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
                         &app_handle_cloned,
                         "reload main window after tray restart",
                         move |main_app| {
-                            reload_main_window(main_app);
+                            window_actions::reload_main_window(main_app, append_desktop_log);
                         },
                     ) {
                         append_restart_log(&format!(

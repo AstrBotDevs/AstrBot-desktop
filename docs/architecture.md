@@ -204,6 +204,14 @@ desktop bridge 模块：
 - tray 触发重启链路编排
 - tray quit 退出路径收敛
 
+### 2.24 `src-tauri/src/window_actions.rs`
+
+窗口动作模块：
+
+- 主窗口 show/hide/toggle/reload 统一封装
+- 主窗口动作与 tray label 刷新联动
+- 主窗口可见性判定日志收敛
+
 ## 3. 关键流程
 
 ### 3.1 启动流程
