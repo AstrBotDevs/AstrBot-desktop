@@ -94,10 +94,21 @@ fn read_cached_shell_locale(packaged_root_dir: Option<&Path>) -> Option<&'static
     normalize_shell_locale(locale)
 }
 
+fn ensure_object(value: &mut Value) -> &mut Map<String, Value> {
+    if !value.is_object() {
+        *value = Value::Object(Map::new());
+    }
+    value
+        .as_object_mut()
+        .expect("value was just set to an object")
+}
+
 pub(crate) fn write_cached_shell_locale(
     locale: Option<&str>,
     packaged_root_dir: Option<&Path>,
 ) -> Result<(), String> {
+    let normalized_locale = locale.and_then(normalize_shell_locale);
+
     let Some(state_path) = desktop_state_path_for_locale(packaged_root_dir) else {
         crate::append_desktop_log(
             "shell locale state path is unavailable; skipping locale persistence",
@@ -132,16 +143,15 @@ pub(crate) fn write_cached_shell_locale(
             ));
         }
     };
-    let object = if let Some(object) = parsed.as_object_mut() {
-        object
-    } else {
-        parsed = Value::Object(Map::new());
-        parsed
-            .as_object_mut()
-            .expect("JSON object was just initialized")
-    };
+    if !parsed.is_object() {
+        crate::append_desktop_log(&format!(
+            "shell locale state {} has non-object root; resetting state file",
+            state_path.display()
+        ));
+    }
+    let object = ensure_object(&mut parsed);
 
-    if let Some(normalized_locale) = locale.and_then(normalize_shell_locale) {
+    if let Some(normalized_locale) = normalized_locale {
         object.insert(
             "locale".to_string(),
             Value::String(normalized_locale.to_string()),

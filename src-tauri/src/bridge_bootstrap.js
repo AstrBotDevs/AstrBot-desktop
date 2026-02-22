@@ -144,10 +144,6 @@
 
   const TOKEN_STORAGE_KEY = 'token';
   const SHELL_LOCALE_STORAGE_KEY = 'astrbot-locale';
-  const SYNCED_STORAGE_KEYS = Object.freeze([
-    TOKEN_STORAGE_KEY,
-    SHELL_LOCALE_STORAGE_KEY,
-  ]);
 
   const normalizeStoredValue = (value) =>
     typeof value === 'string' && value ? value : null;
@@ -170,20 +166,6 @@
     invokeBridge(BRIDGE_COMMANDS.SET_SHELL_LOCALE, {
       locale: normalizeStoredValue(value),
     });
-
-  const syncKnownStorageKey = (key, value) => {
-    if (key === TOKEN_STORAGE_KEY) {
-      void syncAuthToken(value);
-    } else if (key === SHELL_LOCALE_STORAGE_KEY) {
-      void syncShellLocale(value);
-    }
-  };
-
-  const clearSyncedStorageKeys = () => {
-    SYNCED_STORAGE_KEYS.forEach((storageKey) => {
-      syncKnownStorageKey(storageKey, null);
-    });
-  };
 
   const IS_DEV =
     (typeof process !== 'undefined' &&
@@ -674,19 +656,28 @@
       if (typeof rawSetItem === 'function') {
         storage.setItem = (key, value) => {
           rawSetItem(key, value);
-          syncKnownStorageKey(key, value);
+          if (key === TOKEN_STORAGE_KEY) {
+            void syncAuthToken(value);
+          } else if (key === SHELL_LOCALE_STORAGE_KEY) {
+            void syncShellLocale(value);
+          }
         };
       }
       if (typeof rawRemoveItem === 'function') {
         storage.removeItem = (key) => {
           rawRemoveItem(key);
-          syncKnownStorageKey(key, null);
+          if (key === TOKEN_STORAGE_KEY) {
+            void syncAuthToken(null);
+          } else if (key === SHELL_LOCALE_STORAGE_KEY) {
+            void syncShellLocale(null);
+          }
         };
       }
       if (typeof rawClear === 'function') {
         storage.clear = () => {
           rawClear();
-          clearSyncedStorageKeys();
+          void syncAuthToken(null);
+          void syncShellLocale(null);
         };
       }
     } catch {}
@@ -725,7 +716,6 @@
   installNavigationBridges();
   void listenToTrayRestartBackendEvent();
   patchLocalStorageTokenSync();
-  SYNCED_STORAGE_KEYS.forEach((storageKey) => {
-    syncKnownStorageKey(storageKey);
-  });
+  void syncAuthToken();
+  void syncShellLocale();
 })();
