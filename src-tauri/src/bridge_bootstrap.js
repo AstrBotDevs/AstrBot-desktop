@@ -163,6 +163,12 @@
 
   const EXTERNAL_HTTP_PROTOCOLS = new Set(['http:', 'https:']);
 
+  const hasDesktopExternalUrlBridge = () =>
+    typeof window.astrbotDesktop?.openExternalUrl === 'function';
+
+  const getDesktopExternalUrlBridge = () =>
+    hasDesktopExternalUrlBridge() ? window.astrbotDesktop.openExternalUrl.bind(window.astrbotDesktop) : null;
+
   const resolveExternalHttpUrl = (rawHref, allowSameOrigin = false) => {
     const normalizedRaw =
       typeof rawHref === 'string' ? rawHref.trim() : String(rawHref ?? '').trim();
@@ -189,8 +195,21 @@
     if (!externalUrl) {
       return false;
     }
-    void window.astrbotDesktop?.openExternalUrl?.(externalUrl);
-    return true;
+
+    const bridgeOpenExternalUrl = getDesktopExternalUrlBridge();
+    if (!bridgeOpenExternalUrl) {
+      return false;
+    }
+
+    try {
+      const bridgeResult = bridgeOpenExternalUrl(externalUrl);
+      if (bridgeResult && typeof bridgeResult.catch === 'function') {
+        bridgeResult.catch(() => {});
+      }
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const openExternalUrlForAnchor = (anchor) => {
@@ -202,17 +221,15 @@
   const openExternalUrlForNavigation = (url) => openExternalHttpUrl(url, true);
 
   const findAnchorFromEvent = (event) => {
-    if (event.target instanceof Element) {
-      const direct = event.target.closest('a[href]');
-      if (direct instanceof HTMLAnchorElement) {
-        return direct;
-      }
-    }
+    const eventPath =
+      typeof event.composedPath === 'function'
+        ? event.composedPath()
+        : event.target
+        ? [event.target]
+        : [];
 
-    // Fallback path: composedPath handles shadow DOM and portaled nodes.
-    const eventPath = typeof event.composedPath === 'function' ? event.composedPath() : [];
     for (const node of eventPath) {
-      if (node instanceof HTMLAnchorElement) {
+      if (node instanceof HTMLAnchorElement && node.hasAttribute('href')) {
         return node;
       }
       if (node instanceof Element) {
@@ -228,20 +245,11 @@
   const safeMethod = (obj, name) =>
     typeof obj?.[name] === 'function' ? obj[name].bind(obj) : null;
 
-  const getPropertyDescriptor = (obj, propName) => {
-    let cursor = obj;
-    while (cursor) {
-      const descriptor = Object.getOwnPropertyDescriptor(cursor, propName);
-      if (descriptor) {
-        return descriptor;
-      }
-      cursor = Object.getPrototypeOf(cursor);
-    }
-    return null;
-  };
-
   const installExternalAnchorInterceptor = () => {
     if (bridgeRuntimeState.externalAnchorInterceptorInstalled) {
+      return;
+    }
+    if (!hasDesktopExternalUrlBridge()) {
       return;
     }
     bridgeRuntimeState.externalAnchorInterceptorInstalled = true;
@@ -278,9 +286,37 @@
     if (bridgeRuntimeState.windowOpenPatched) {
       return;
     }
+    if (!hasDesktopExternalUrlBridge()) {
+      return;
+    }
     bridgeRuntimeState.windowOpenPatched = true;
 
     const nativeWindowOpen = safeMethod(window, 'open');
+
+    const createWindowOpenHandle = (url) => {
+      let closed = false;
+      const locationProxy = {
+        href: String(url ?? ''),
+        assign: () => {},
+        replace: () => {},
+      };
+      return {
+        get closed() {
+          return closed;
+        },
+        set closed(value) {
+          closed = !!value;
+        },
+        close: () => {
+          closed = true;
+        },
+        focus: () => {},
+        blur: () => {},
+        postMessage: () => {},
+        location: locationProxy,
+        opener: null,
+      };
+    };
 
     const bridgeWindowOpen = (url, target, features) => {
       if (target === '_self' || target === '_top' || target === '_parent') {
@@ -291,14 +327,8 @@
       }
 
       if (openExternalUrlForNavigation(url)) {
-        // Return a truthy window-like object so callers that treat null as blocked
-        // do not trigger extra fallback navigation.
-        return {
-          closed: false,
-          close: () => {},
-          focus: () => {},
-          postMessage: () => {},
-        };
+        // Return a window-like handle so callers that introspect result do not break.
+        return createWindowOpenHandle(url);
       }
 
       if (nativeWindowOpen) {
@@ -314,6 +344,9 @@
 
   const installLocationNavigationBridge = () => {
     if (bridgeRuntimeState.locationNavigationBridgeInstalled) {
+      return;
+    }
+    if (!hasDesktopExternalUrlBridge()) {
       return;
     }
     bridgeRuntimeState.locationNavigationBridgeInstalled = true;
@@ -344,7 +377,9 @@
       } catch {}
     }
 
-    const hrefDescriptor = getPropertyDescriptor(locationObject, 'href');
+    const hrefDescriptor =
+      Object.getOwnPropertyDescriptor(locationObject, 'href') ||
+      Object.getOwnPropertyDescriptor(window.Location?.prototype ?? {}, 'href');
     const nativeHrefGetter =
       hrefDescriptor && typeof hrefDescriptor.get === 'function'
         ? hrefDescriptor.get.bind(locationObject)
