@@ -34,7 +34,7 @@
 
 - ready path 解析
 - timeout clamp 与默认值策略
-- readiness config 聚合
+- readiness config 聚合（含 `BackendReadinessConfig`）
 
 ### 2.3 `src-tauri/src/logging.rs`
 

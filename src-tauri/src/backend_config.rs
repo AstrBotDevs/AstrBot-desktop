@@ -1,6 +1,13 @@
 use std::env;
 use std::time::Duration;
 
+#[derive(Debug, Clone)]
+pub struct BackendReadinessConfig {
+    pub path: String,
+    pub probe_timeout_ms: u64,
+    pub poll_interval_ms: u64,
+}
+
 pub fn resolve_backend_ready_http_path<F>(env_name: &str, default_path: &str, mut log: F) -> String
 where
     F: FnMut(String),
@@ -160,6 +167,43 @@ pub fn resolve_backend_timeout_ms(
         return Some(Duration::from_millis(packaged_timeout_fallback_ms));
     }
     None
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn backend_readiness_config<F>(
+    ready_http_path_env: &str,
+    default_ready_http_path: &str,
+    ready_probe_timeout_env: &str,
+    ready_probe_timeout_fallback_ms: u64,
+    ready_probe_timeout_min_ms: u64,
+    ready_probe_timeout_max_ms: u64,
+    ready_poll_interval_env: &str,
+    ready_poll_interval_fallback_ms: u64,
+    ready_poll_interval_min_ms: u64,
+    ready_poll_interval_max_ms: u64,
+    mut log: F,
+) -> BackendReadinessConfig
+where
+    F: FnMut(String),
+{
+    let (path, probe_timeout_ms, poll_interval_ms) = resolve_backend_readiness_config(
+        ready_http_path_env,
+        default_ready_http_path,
+        ready_probe_timeout_env,
+        ready_probe_timeout_fallback_ms,
+        ready_probe_timeout_min_ms,
+        ready_probe_timeout_max_ms,
+        ready_poll_interval_env,
+        ready_poll_interval_fallback_ms,
+        ready_poll_interval_min_ms,
+        ready_poll_interval_max_ms,
+        &mut log,
+    );
+    BackendReadinessConfig {
+        path,
+        probe_timeout_ms,
+        poll_interval_ms,
+    }
 }
 
 #[cfg(test)]

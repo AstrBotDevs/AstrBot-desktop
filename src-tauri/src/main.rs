@@ -151,13 +151,6 @@ enum GracefulRestartOutcome {
     RequestRejected,
 }
 
-#[derive(Debug, Clone)]
-struct BackendReadinessConfig {
-    path: String,
-    probe_timeout_ms: u64,
-    poll_interval_ms: u64,
-}
-
 struct AtomicFlagGuard<'a> {
     flag: &'a AtomicBool,
 }
@@ -1844,28 +1837,21 @@ fn normalize_backend_url(raw: &str) -> String {
     }
 }
 
-fn backend_readiness_config() -> BackendReadinessConfig {
+fn backend_readiness_config() -> backend_config::BackendReadinessConfig {
     let probe_timeout_fallback = backend_ping_timeout_ms();
-    let (path, probe_timeout_ms, poll_interval_ms) =
-        backend_config::resolve_backend_readiness_config(
-            BACKEND_READY_HTTP_PATH_ENV,
-            DEFAULT_BACKEND_READY_HTTP_PATH,
-            BACKEND_READY_PROBE_TIMEOUT_ENV,
-            probe_timeout_fallback,
-            BACKEND_READY_PROBE_TIMEOUT_MIN_MS,
-            BACKEND_READY_PROBE_TIMEOUT_MAX_MS,
-            BACKEND_READY_POLL_INTERVAL_ENV,
-            DEFAULT_BACKEND_READY_POLL_INTERVAL_MS,
-            BACKEND_READY_POLL_INTERVAL_MIN_MS,
-            BACKEND_READY_POLL_INTERVAL_MAX_MS,
-            |message| append_desktop_log(&message),
-        );
-
-    BackendReadinessConfig {
-        path,
-        probe_timeout_ms,
-        poll_interval_ms,
-    }
+    backend_config::backend_readiness_config(
+        BACKEND_READY_HTTP_PATH_ENV,
+        DEFAULT_BACKEND_READY_HTTP_PATH,
+        BACKEND_READY_PROBE_TIMEOUT_ENV,
+        probe_timeout_fallback,
+        BACKEND_READY_PROBE_TIMEOUT_MIN_MS,
+        BACKEND_READY_PROBE_TIMEOUT_MAX_MS,
+        BACKEND_READY_POLL_INTERVAL_ENV,
+        DEFAULT_BACKEND_READY_POLL_INTERVAL_MS,
+        BACKEND_READY_POLL_INTERVAL_MIN_MS,
+        BACKEND_READY_POLL_INTERVAL_MAX_MS,
+        |message| append_desktop_log(&message),
+    )
 }
 
 fn workspace_root_dir() -> PathBuf {
