@@ -18,6 +18,7 @@
     IS_DESKTOP_RUNTIME: 'desktop_bridge_is_desktop_runtime',
     GET_BACKEND_STATE: 'desktop_bridge_get_backend_state',
     SET_AUTH_TOKEN: 'desktop_bridge_set_auth_token',
+    SET_SHELL_LOCALE: 'desktop_bridge_set_shell_locale',
     RESTART_BACKEND: 'desktop_bridge_restart_backend',
     STOP_BACKEND: 'desktop_bridge_stop_backend',
     OPEN_EXTERNAL_URL: 'desktop_bridge_open_external_url',
@@ -153,6 +154,20 @@
   const syncAuthToken = (token = getStoredAuthToken()) =>
     invokeBridge(BRIDGE_COMMANDS.SET_AUTH_TOKEN, {
       authToken: typeof token === 'string' && token ? token : null
+    });
+
+  const getStoredShellLocale = () => {
+    try {
+      const locale = window.localStorage?.getItem('astrbot-locale');
+      return typeof locale === 'string' && locale ? locale : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const syncShellLocale = (locale = getStoredShellLocale()) =>
+    invokeBridge(BRIDGE_COMMANDS.SET_SHELL_LOCALE, {
+      locale: typeof locale === 'string' && locale ? locale : null,
     });
 
   const IS_DEV =
@@ -647,6 +662,9 @@
           if (key === 'token') {
             void syncAuthToken(value);
           }
+          if (key === 'astrbot-locale') {
+            void syncShellLocale(value);
+          }
         };
       }
       if (typeof rawRemoveItem === 'function') {
@@ -655,12 +673,16 @@
           if (key === 'token') {
             void syncAuthToken(null);
           }
+          if (key === 'astrbot-locale') {
+            void syncShellLocale(null);
+          }
         };
       }
       if (typeof rawClear === 'function') {
         storage.clear = () => {
           rawClear();
           void syncAuthToken(null);
+          void syncShellLocale(null);
         };
       }
     } catch {}
@@ -700,4 +722,5 @@
   void listenToTrayRestartBackendEvent();
   patchLocalStorageTokenSync();
   void syncAuthToken();
+  void syncShellLocale();
 })();

@@ -7,7 +7,12 @@ where
     F: Fn(&str),
 {
     main_window::show_main_window(app_handle, &log);
-    tray_labels::update_tray_menu_labels(app_handle, default_shell_locale, log);
+    tray_labels::update_tray_menu_labels_with_visibility(
+        app_handle,
+        default_shell_locale,
+        Some(true),
+        log,
+    );
 }
 
 pub fn hide_main_window<F>(app_handle: &AppHandle, default_shell_locale: &'static str, log: F)
@@ -15,7 +20,12 @@ where
     F: Fn(&str),
 {
     main_window::hide_main_window(app_handle, &log);
-    tray_labels::update_tray_menu_labels(app_handle, default_shell_locale, log);
+    tray_labels::update_tray_menu_labels_with_visibility(
+        app_handle,
+        default_shell_locale,
+        Some(false),
+        log,
+    );
 }
 
 pub fn toggle_main_window<F>(app_handle: &AppHandle, default_shell_locale: &'static str, log: F)

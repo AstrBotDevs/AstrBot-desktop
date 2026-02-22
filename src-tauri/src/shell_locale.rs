@@ -3,6 +3,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use serde_json::{Map, Value};
+
 #[derive(Debug, Clone, Copy)]
 pub struct ShellTexts {
     pub tray_hide: &'static str,
@@ -51,7 +53,7 @@ pub fn resolve_shell_locale(
     default_shell_locale
 }
 
-fn normalize_shell_locale(raw: &str) -> Option<&'static str> {
+pub(crate) fn normalize_shell_locale(raw: &str) -> Option<&'static str> {
     let raw = raw.trim();
     if raw.is_empty() {
         return None;
@@ -90,6 +92,56 @@ fn read_cached_shell_locale(packaged_root_dir: Option<&Path>) -> Option<&'static
     let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
     let locale = parsed.get("locale")?.as_str()?;
     normalize_shell_locale(locale)
+}
+
+pub(crate) fn write_cached_shell_locale(
+    locale: Option<&str>,
+    packaged_root_dir: Option<PathBuf>,
+) -> Result<(), String> {
+    let Some(state_path) = desktop_state_path_for_locale(packaged_root_dir.as_deref()) else {
+        return Ok(());
+    };
+
+    if let Some(parent_dir) = state_path.parent() {
+        fs::create_dir_all(parent_dir).map_err(|error| {
+            format!(
+                "Failed to create shell locale directory {}: {}",
+                parent_dir.display(),
+                error
+            )
+        })?;
+    }
+
+    let mut parsed = match fs::read_to_string(&state_path) {
+        Ok(raw) => serde_json::from_str::<Value>(&raw).unwrap_or(Value::Object(Map::new())),
+        Err(_) => Value::Object(Map::new()),
+    };
+    if !parsed.is_object() {
+        parsed = Value::Object(Map::new());
+    }
+
+    if let Some(object) = parsed.as_object_mut() {
+        if let Some(normalized_locale) = locale.and_then(normalize_shell_locale) {
+            object.insert(
+                "locale".to_string(),
+                Value::String(normalized_locale.to_string()),
+            );
+        } else {
+            object.remove("locale");
+        }
+    }
+
+    let serialized = serde_json::to_string_pretty(&parsed)
+        .map_err(|error| format!("Failed to serialize shell locale state: {error}"))?;
+    fs::write(&state_path, serialized).map_err(|error| {
+        format!(
+            "Failed to write shell locale state {}: {}",
+            state_path.display(),
+            error
+        )
+    })?;
+
+    Ok(())
 }
 
 #[cfg(test)]
