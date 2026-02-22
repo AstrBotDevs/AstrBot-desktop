@@ -172,6 +172,13 @@
     }
     devWarn(`astrbotDesktop: failed to patch ${label}`, error);
   };
+  const safePatch = (label, patchFn) => {
+    try {
+      patchFn();
+    } catch (error) {
+      warnPatchTypeError(label, error);
+    }
+  };
   const warnExternalUrlBridgeError = (phase, url, error) => {
     devWarn('[astrbotDesktop] openExternalUrl bridge failure', {
       phase,
@@ -276,7 +283,7 @@
         : null;
     if (!nativeHrefSetter) return;
 
-    try {
+    safePatch('location.href', () => {
       Object.defineProperty(locationObject, 'href', {
         configurable: true,
         enumerable: descriptor?.enumerable ?? true,
@@ -293,9 +300,7 @@
           nativeHrefSetter(url);
         },
       });
-    } catch (error) {
-      warnPatchTypeError('location.href', error);
-    }
+    });
   };
 
   // Best-effort fake Window-like handle for callers that only check `closed` and `location.href`.
@@ -371,23 +376,19 @@
     };
 
     if (nativeWindowOpen) {
-      try {
+      safePatch('window.__astrbotNativeWindowOpen', () => {
         Object.defineProperty(window, '__astrbotNativeWindowOpen', {
           configurable: true,
           writable: false,
           enumerable: false,
           value: nativeWindowOpen,
         });
-      } catch (error) {
-        warnPatchTypeError('window.__astrbotNativeWindowOpen', error);
-      }
+      });
     }
 
-    try {
+    safePatch('window.open', () => {
       window.open = bridgeWindowOpen;
-    } catch (error) {
-      warnPatchTypeError('window.open', error);
-    }
+    });
   };
 
   const installLocationNavigationBridge = () => {
@@ -402,29 +403,25 @@
         : null;
 
     if (nativeAssign) {
-      try {
+      safePatch('location.assign', () => {
         locationObject.assign = (url) => {
           if (openStrictExternalUrl(url)) {
             return;
           }
           nativeAssign(url);
         };
-      } catch (error) {
-        warnPatchTypeError('location.assign', error);
-      }
+      });
     }
 
     if (nativeReplace) {
-      try {
+      safePatch('location.replace', () => {
         locationObject.replace = (url) => {
           if (openStrictExternalUrl(url)) {
             return;
           }
           nativeReplace(url);
         };
-      } catch (error) {
-        warnPatchTypeError('location.replace', error);
-      }
+      });
     }
 
     patchLocationHref(locationObject);
