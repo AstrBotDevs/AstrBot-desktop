@@ -13,6 +13,7 @@ mod runtime_paths;
 mod shell_locale;
 mod startup_mode;
 mod tray_actions;
+mod ui_dispatch;
 mod webui_paths;
 
 use serde::Deserialize;
@@ -1351,21 +1352,33 @@ fn main() {
 
                 match startup_result {
                     Ok(()) => {
-                        if let Err(error) = run_on_main_thread_dispatch(
+                        if let Err(error) = ui_dispatch::run_on_main_thread_dispatch(
                             &startup_app_handle,
                             "navigate backend",
                             move |main_app| match navigate_main_window_to_backend(main_app) {
                                 Ok(()) => {}
                                 Err(navigate_error) => {
-                                    show_startup_error(main_app, &navigate_error);
+                                    ui_dispatch::show_startup_error(
+                                        main_app,
+                                        &navigate_error,
+                                        append_startup_log,
+                                    );
                                 }
                             },
                         ) {
-                            show_startup_error_on_main_thread(&startup_app_handle, &error);
+                            ui_dispatch::show_startup_error_on_main_thread(
+                                &startup_app_handle,
+                                &error,
+                                append_startup_log,
+                            );
                         }
                     }
                     Err(error) => {
-                        show_startup_error_on_main_thread(&startup_app_handle, &error);
+                        ui_dispatch::show_startup_error_on_main_thread(
+                            &startup_app_handle,
+                            &error,
+                            append_startup_log,
+                        );
                     }
                 }
             });
@@ -1533,7 +1546,7 @@ fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
                 let result = run_restart_backend_task(app_handle_cloned.clone(), None).await;
                 if result.ok {
                     append_restart_log("backend restarted from tray menu");
-                    if let Err(error) = run_on_main_thread_dispatch(
+                    if let Err(error) = ui_dispatch::run_on_main_thread_dispatch(
                         &app_handle_cloned,
                         "reload main window after tray restart",
                         move |main_app| {
@@ -1919,42 +1932,6 @@ fn append_desktop_log_with_category(category: logging::DesktopLogCategory, messa
         LOG_BACKUP_COUNT,
         &DESKTOP_LOG_WRITE_LOCK,
     )
-}
-
-fn show_startup_error(app_handle: &AppHandle, message: &str) {
-    append_startup_log(&format!("startup error: {}", message));
-    eprintln!("AstrBot startup failed: {message}");
-    app_handle.exit(1);
-}
-
-fn show_startup_error_on_main_thread(app_handle: &AppHandle, message: &str) {
-    let message_owned = message.to_string();
-    if let Err(error) =
-        run_on_main_thread_dispatch(app_handle, "show startup error", move |main_app| {
-            show_startup_error(main_app, &message_owned);
-        })
-    {
-        append_startup_log(&format!(
-            "failed to dispatch startup error handling to main thread: {error}"
-        ));
-        show_startup_error(app_handle, message);
-    }
-}
-
-fn run_on_main_thread_dispatch<F>(
-    app_handle: &AppHandle,
-    action_name: &str,
-    action: F,
-) -> Result<(), String>
-where
-    F: FnOnce(&AppHandle) + Send + 'static,
-{
-    let app_handle_for_main = app_handle.clone();
-    app_handle
-        .run_on_main_thread(move || {
-            action(&app_handle_for_main);
-        })
-        .map_err(|error| format!("failed to schedule '{action_name}' on main thread: {error}"))
 }
 
 fn try_begin_exit_cleanup(state: &BackendState, trigger: ExitTrigger) -> bool {

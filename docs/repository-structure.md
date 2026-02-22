@@ -49,6 +49,8 @@
   - source root / packaged root / 资源路径探测逻辑。
 - `packaged_webui.rs`
   - 打包 WebUI fallback 决策与错误文案组装。
+- `ui_dispatch.rs`
+  - 主线程任务调度与 startup error 分发封装。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 

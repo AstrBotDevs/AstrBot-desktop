@@ -140,6 +140,14 @@ HTTP 响应解析模块：
 - fallback index 诊断路径组装
 - 多语言不可用错误文案生成
 
+### 2.16 `src-tauri/src/ui_dispatch.rs`
+
+UI 分发模块：
+
+- 主线程任务调度包装
+- startup error 日志与退出流程
+- startup error 主线程派发兜底
+
 ## 3. 关键流程
 
 ### 3.1 启动流程
