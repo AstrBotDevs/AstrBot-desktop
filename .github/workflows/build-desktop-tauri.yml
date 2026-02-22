@@ -415,7 +415,16 @@ jobs:
           ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS: ${{ vars.ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS || '' }}
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
-        run: pnpm run build
+        shell: bash
+        run: |
+          set -euo pipefail
+          desktop_version="${{ steps.desktop_version.outputs.normalized }}"
+          bundles="msi,nsis,nsis-web"
+          if [[ "${desktop_version}" == *-* ]]; then
+            echo "::warning::Detected pre-release desktop version '${desktop_version}'; skipping MSI bundle due to Windows MSI version constraints."
+            bundles="nsis,nsis-web"
+          fi
+          cargo tauri build --bundles "${bundles}"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6.0.0
