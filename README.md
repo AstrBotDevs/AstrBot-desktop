@@ -55,23 +55,6 @@ make help
 
 构建产物默认在 `src-tauri/target/release/bundle/`。
 
-## 文档索引
-
-- 架构说明：`docs/architecture.md`
-- 文件组织：`docs/repository-structure.md`
-- 环境变量清单：`docs/environment-variables.md`
-- 重构归档目录：`docs/refactor/`
-- 重构总计划：`docs/refactor/refactor-plan.md`
-- Phase 2 计划：`docs/refactor/refactor-phase2-plan.md`
-- Phase 3 计划：`docs/refactor/refactor-phase3-plan.md`
-- Phase 4 计划：`docs/refactor/refactor-phase4-plan.md`
-- Phase 5 计划：`docs/refactor/refactor-phase5-plan.md`
-- Phase 6 计划：`docs/refactor/refactor-phase6-plan.md`
-- Phase 7 计划：`docs/refactor/refactor-phase7-plan.md`
-- Phase 8 计划：`docs/refactor/refactor-phase8-plan.md`
-- Phase 9 计划：`docs/refactor/refactor-phase9-plan.md`
-- Phase 10 计划：`docs/refactor/refactor-phase10-plan.md`
-
 ## 常用维护命令
 
 ```bash
