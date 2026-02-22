@@ -642,11 +642,18 @@
     return normalizedFallback;
   };
 
-  const patchLocalStorageTokenSync = () => {
-    if (window.__astrbotDesktopTokenSyncPatched) return;
+  const patchLocalStorageBridgeSync = () => {
+    if (
+      window.__astrbotDesktopStorageSyncPatched ||
+      window.__astrbotDesktopTokenSyncPatched
+    ) {
+      return;
+    }
     try {
       const storage = window.localStorage;
       if (!storage) return;
+      window.__astrbotDesktopStorageSyncPatched = true;
+      // Keep backward compatibility with previous guard key.
       window.__astrbotDesktopTokenSyncPatched = true;
 
       const rawSetItem = storage.setItem?.bind(storage);
@@ -657,9 +664,9 @@
         storage.setItem = (key, value) => {
           rawSetItem(key, value);
           if (key === TOKEN_STORAGE_KEY) {
-            void syncAuthToken(normalizeStoredValue(value));
+            void syncAuthToken(getStoredValue(TOKEN_STORAGE_KEY));
           } else if (key === SHELL_LOCALE_STORAGE_KEY) {
-            void syncShellLocale(normalizeStoredValue(value));
+            void syncShellLocale(getStoredValue(SHELL_LOCALE_STORAGE_KEY));
           }
         };
       }
@@ -715,7 +722,7 @@
 
   installNavigationBridges();
   void listenToTrayRestartBackendEvent();
-  patchLocalStorageTokenSync();
+  patchLocalStorageBridgeSync();
   void syncAuthToken();
   void syncShellLocale();
 })();

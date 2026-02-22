@@ -108,6 +108,14 @@ pub(crate) fn write_cached_shell_locale(
     packaged_root_dir: Option<&Path>,
 ) -> Result<(), String> {
     let normalized_locale = locale.and_then(normalize_shell_locale);
+    if let Some(raw_locale) = locale {
+        if normalized_locale.is_none() {
+            crate::append_desktop_log(&format!(
+                "unsupported shell locale '{}'; clearing cached locale",
+                raw_locale
+            ));
+        }
+    }
 
     let Some(state_path) = desktop_state_path_for_locale(packaged_root_dir) else {
         crate::append_desktop_log(
