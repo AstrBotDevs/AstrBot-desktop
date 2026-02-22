@@ -212,14 +212,6 @@
     }
   };
 
-  const openExternalUrlForAnchor = (anchor) => {
-    const rawHref = anchor.getAttribute('href') || anchor.href || '';
-    return openExternalUrl(rawHref, { allowSameOrigin: false });
-  };
-
-  const openExternalUrlForNavigation = (rawUrl) =>
-    openExternalUrl(rawUrl, { allowSameOrigin: false });
-
   const findAnchorFromEvent = (event) => {
     const target = event.target;
     if (target instanceof Element && typeof target.closest === 'function') {
@@ -255,37 +247,6 @@
     }
   };
 
-  const installLocationHrefBridge = (wrapLocationMutator) => {
-    const locationObject = window.location;
-    const descriptor =
-      Object.getOwnPropertyDescriptor(locationObject, 'href') ||
-      Object.getOwnPropertyDescriptor(window.Location?.prototype ?? {}, 'href');
-    const nativeHrefGetter =
-      descriptor && typeof descriptor.get === 'function'
-        ? descriptor.get.bind(locationObject)
-        : null;
-    const nativeHrefSetter =
-      descriptor && typeof descriptor.set === 'function'
-        ? descriptor.set.bind(locationObject)
-        : null;
-
-    if (!nativeHrefSetter) return;
-
-    patchWithDevTypeErrorWarn('location.href', () => {
-      Object.defineProperty(locationObject, 'href', {
-        configurable: true,
-        enumerable: descriptor?.enumerable ?? true,
-        get() {
-          if (nativeHrefGetter) {
-            return nativeHrefGetter();
-          }
-          return locationObject.toString();
-        },
-        set: wrapLocationMutator(nativeHrefSetter),
-      });
-    });
-  };
-
   let externalAnchorInterceptorInstalled = false;
   const installExternalAnchorInterceptor = () => {
     if (externalAnchorInterceptorInstalled) return;
@@ -308,7 +269,8 @@
           return;
         }
 
-        if (!openExternalUrlForAnchor(anchor)) {
+        const rawHref = anchor.getAttribute('href') || anchor.href || '';
+        if (!openExternalUrl(rawHref, { allowSameOrigin: false })) {
           return;
         }
 
@@ -363,7 +325,7 @@
         return null;
       }
 
-      if (openExternalUrlForNavigation(url)) {
+      if (openExternalUrl(url, { allowSameOrigin: false })) {
         // Lightweight window-like handle for callers that only check basic fields.
         return createWindowOpenHandle(url);
       }
@@ -404,8 +366,8 @@
         ? locationObject.replace.bind(locationObject)
         : null;
 
-    const wrapLocationMutator = (nativeFn) => (url) => {
-      if (openExternalUrlForNavigation(url)) {
+    const wrapMutator = (nativeFn) => (url) => {
+      if (openExternalUrl(url, { allowSameOrigin: false })) {
         return;
       }
       nativeFn(url);
@@ -413,17 +375,43 @@
 
     if (nativeAssign) {
       patchWithDevTypeErrorWarn('location.assign', () => {
-        locationObject.assign = wrapLocationMutator(nativeAssign);
+        locationObject.assign = wrapMutator(nativeAssign);
       });
     }
 
     if (nativeReplace) {
       patchWithDevTypeErrorWarn('location.replace', () => {
-        locationObject.replace = wrapLocationMutator(nativeReplace);
+        locationObject.replace = wrapMutator(nativeReplace);
       });
     }
 
-    installLocationHrefBridge(wrapLocationMutator);
+    const descriptor =
+      Object.getOwnPropertyDescriptor(locationObject, 'href') ||
+      Object.getOwnPropertyDescriptor(window.Location?.prototype ?? {}, 'href');
+    const nativeHrefGetter =
+      descriptor && typeof descriptor.get === 'function'
+        ? descriptor.get.bind(locationObject)
+        : null;
+    const nativeHrefSetter =
+      descriptor && typeof descriptor.set === 'function'
+        ? descriptor.set.bind(locationObject)
+        : null;
+
+    if (nativeHrefSetter) {
+      patchWithDevTypeErrorWarn('location.href', () => {
+        Object.defineProperty(locationObject, 'href', {
+          configurable: true,
+          enumerable: descriptor?.enumerable ?? true,
+          get() {
+            if (nativeHrefGetter) {
+              return nativeHrefGetter();
+            }
+            return locationObject.toString();
+          },
+          set: wrapMutator(nativeHrefSetter),
+        });
+      });
+    }
   };
 
   const RUNTIME_BRIDGE_DETAIL_MAX_LENGTH = 240;
