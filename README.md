@@ -26,6 +26,16 @@ AstrBot 桌面应用（Tauri）。
 
 [`Releases`](https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest)
 
+Release 版本说明（简要）：
+
+- 稳定版（正式版）：标签通常为 `vX.Y.Z`，适合大多数用户日常使用。
+- Nightly 预发布版：标签通常为 `vX.Y.Z-nightly.YYYYMMDD.<short_sha>`，基于上游最新提交自动构建，适合提前体验新改动。
+- 下载时请按操作系统与 CPU 架构选择对应安装包。
+
+## 开源协议
+
+本项目采用 `AGPL-3.0` 开源协议，协议全文见：[`LICENSE`](./LICENSE)。
+
 ## 手动构建
 
 推荐直接使用 Makefile：
