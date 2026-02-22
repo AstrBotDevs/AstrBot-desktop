@@ -406,15 +406,9 @@
     },
     stopBackend: () => invokeBridge(BRIDGE_COMMANDS.STOP_BACKEND),
     openExternalUrl: (url) => {
-      const normalizedUrl = typeof url === 'string' ? url.trim() : '';
-      if (!normalizedUrl) {
-        return Promise.resolve({
-          ok: false,
-          reason: 'Missing external URL.',
-        });
-      }
+      const rawUrl = typeof url === 'string' ? url : String(url ?? '');
       return invokeBridge(BRIDGE_COMMANDS.OPEN_EXTERNAL_URL, {
-        url: normalizedUrl,
+        url: rawUrl,
       });
     },
     onTrayRestartBackend,

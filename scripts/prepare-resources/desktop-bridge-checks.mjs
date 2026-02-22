@@ -138,14 +138,37 @@ export const patchDesktopReleaseRedirectBehavior = async ({ dashboardDir, projec
   const source = await readFile(headerFile, 'utf8');
   let patched = source;
 
-  patched = patched.replace(
-    /const fallbackReleaseUrl = desktopReleaseBaseUrl;/,
-    "const fallbackReleaseUrl = `${desktopReleaseBaseUrl}/latest`;",
-  );
+  const applyReplacement = (contents, patchRule) => {
+    const {
+      description,
+      patterns,
+      replacement,
+      skipIfPatterns = [],
+    } = patchRule;
 
-  patched = patched.replace(
-    /const open = \(link: string\) => \{[\s\S]*?\n\};/m,
-    `const open = (link: string) => {
+    const skipped = skipIfPatterns.some((pattern) => pattern.test(contents));
+    if (skipped) {
+      return contents;
+    }
+
+    for (const pattern of patterns) {
+      if (!pattern.test(contents)) {
+        continue;
+      }
+      return contents.replace(pattern, replacement);
+    }
+
+    throw new Error(
+      `[prepare-resources] Failed to patch VerticalHeader.vue: pattern not found for ${description}`,
+    );
+  };
+
+  const desktopRedirectSnippet = `pendingRedirectUrl.value = getReleaseUrlForDesktop();
+    resolvingReleaseTarget.value = false;
+    requestExternalRedirect(pendingRedirectUrl.value);
+    return;`;
+
+  const openFunctionReplacement = `const open = (link: string) => {
   if (!link) return;
   const bridgeOpenExternalUrl = (window as any).astrbotDesktop?.openExternalUrl;
   if (typeof bridgeOpenExternalUrl === 'function') {
@@ -156,33 +179,42 @@ export const patchDesktopReleaseRedirectBehavior = async ({ dashboardDir, projec
   if (!opened) {
     window.location.assign(link);
   }
-};`,
-  );
+};`;
 
-  patched = patched.replace(
-    /if \(isDesktopReleaseMode\.value\) \{\s*requestExternalRedirect\(''\);\s*resolvingReleaseTarget\.value = true;\s*checkUpdate\(\);\s*void getReleases\(\)\.finally\(\(\) => \{\s*pendingRedirectUrl\.value = getReleaseUrlForDesktop\(\) \|\| fallbackReleaseUrl;\s*resolvingReleaseTarget\.value = false;\s*\}\);\s*return;\s*\}/m,
-    `if (isDesktopReleaseMode.value) {
-    pendingRedirectUrl.value = fallbackReleaseUrl;
-    resolvingReleaseTarget.value = false;
-    requestExternalRedirect(pendingRedirectUrl.value);
-    return;
-  }`,
-  );
-
-  patched = patched.replace(
-    /function handleUpdateClick\(\)\s*\{[\s\S]*?\n\}(?=\n\n\/\/ 检测是否为预发布版本)/m,
-    `function handleUpdateClick() {
+  const patchRules = [
+    {
+      description: 'legacy fallbackReleaseUrl default',
+      patterns: [/const fallbackReleaseUrl = desktopReleaseBaseUrl;/],
+      replacement: "const fallbackReleaseUrl = `${desktopReleaseBaseUrl}/latest`;",
+      skipIfPatterns: [
+        /const fallbackReleaseUrl = `\$\{desktopReleaseBaseUrl\}\/latest`;/,
+        /const getReleaseUrlByTag\s*=\s*\(/,
+      ],
+    },
+    {
+      description: 'open() implementation',
+      patterns: [/const open = \(link: string\) => \{[\s\S]*?\n\};/m],
+      replacement: openFunctionReplacement,
+    },
+    {
+      description: 'handleUpdateClick desktop redirect flow',
+      patterns: [
+        /function handleUpdateClick\(\)\s*\{[\s\S]*?\n\}(?=\n\n\/\/ 检测是否为预发布版本)/m,
+      ],
+      replacement: `function handleUpdateClick() {
   if (isDesktopReleaseMode.value) {
-    pendingRedirectUrl.value = fallbackReleaseUrl;
-    resolvingReleaseTarget.value = false;
-    requestExternalRedirect(pendingRedirectUrl.value);
-    return;
+    ${desktopRedirectSnippet}
   }
   checkUpdate();
   getReleases();
   updateStatusDialog.value = true;
 }`,
-  );
+    },
+  ];
+
+  for (const patchRule of patchRules) {
+    patched = applyReplacement(patched, patchRule);
+  }
 
   if (patched !== source) {
     await writeFile(headerFile, patched, 'utf8');
