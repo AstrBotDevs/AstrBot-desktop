@@ -55,6 +55,8 @@
   - 托盘重启 bridge 事件发射与 token 管理。
 - `startup_loading.rs`
   - 启动页 loading mode 判定与注入逻辑。
+- `desktop_bridge.rs`
+  - desktop bridge bootstrap 组装与注入执行。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 

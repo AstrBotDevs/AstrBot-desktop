@@ -2,6 +2,7 @@
 
 mod backend_config;
 mod backend_path;
+mod desktop_bridge;
 mod exit_state;
 mod http_response;
 mod logging;
@@ -1705,19 +1706,6 @@ fn update_tray_menu_labels(app_handle: &AppHandle) {
     );
 }
 
-const DESKTOP_BRIDGE_BOOTSTRAP_TEMPLATE: &str = include_str!("bridge_bootstrap.js");
-
-static DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: OnceLock<String> = OnceLock::new();
-
-fn desktop_bridge_bootstrap_script() -> &'static str {
-    DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT
-        .get_or_init(|| {
-            DESKTOP_BRIDGE_BOOTSTRAP_TEMPLATE
-                .replace("{TRAY_RESTART_BACKEND_EVENT}", TRAY_RESTART_BACKEND_EVENT)
-        })
-        .as_str()
-}
-
 fn should_inject_desktop_bridge(app_handle: &AppHandle, page_url: &Url) -> bool {
     let state = app_handle.state::<BackendState>();
     let Ok(backend_url) = Url::parse(&state.backend_url) else {
@@ -1727,9 +1715,7 @@ fn should_inject_desktop_bridge(app_handle: &AppHandle, page_url: &Url) -> bool 
 }
 
 fn inject_desktop_bridge(webview: &tauri::Webview<tauri::Wry>) {
-    if let Err(error) = webview.eval(desktop_bridge_bootstrap_script()) {
-        append_desktop_log(&format!("failed to inject desktop bridge script: {error}"));
-    }
+    desktop_bridge::inject_desktop_bridge(webview, TRAY_RESTART_BACKEND_EVENT, append_desktop_log);
 }
 
 fn normalize_backend_url(raw: &str) -> String {

@@ -164,6 +164,14 @@ UI 分发模块：
 - startup mode 解析与缓存读写
 - startup mode 前端注入脚本执行
 
+### 2.19 `src-tauri/src/desktop_bridge.rs`
+
+desktop bridge 模块：
+
+- bridge bootstrap 模板装配
+- bridge script 缓存
+- bridge script 注入执行
+
 ## 3. 关键流程
 
 ### 3.1 启动流程
