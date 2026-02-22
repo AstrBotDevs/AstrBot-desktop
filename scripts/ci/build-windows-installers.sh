@@ -5,8 +5,8 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root_dir="$(cd "${script_dir}/../.." && pwd)"
 
-if ! command -v pnpm >/dev/null 2>&1; then
-  echo "pnpm is required to build Windows installers." >&2
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "cargo is required to build Windows installers." >&2
   exit 1
 fi
 
@@ -19,5 +19,5 @@ fi
 echo "Building Windows installers with bundles: ${bundles}"
 (
   cd "${root_dir}"
-  pnpm run build -- --bundles "${bundles}"
+  cargo tauri build --bundles "${bundles}"
 )
