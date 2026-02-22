@@ -155,10 +155,7 @@ pub(crate) fn desktop_bridge_set_shell_locale(
     locale: Option<String>,
 ) -> BackendBridgeResult {
     let packaged_root_dir = runtime_paths::default_packaged_root_dir();
-    match shell_locale::write_cached_shell_locale(
-        locale.as_deref(),
-        packaged_root_dir.as_deref(),
-    ) {
+    match shell_locale::write_cached_shell_locale(locale.as_deref(), packaged_root_dir.as_deref()) {
         Ok(()) => {
             tray_labels::update_tray_menu_labels(
                 &app_handle,

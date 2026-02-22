@@ -142,35 +142,42 @@
     }
   };
 
-  const getStoredAuthToken = () => {
-    try {
-      const token = window.localStorage?.getItem('token');
-      return typeof token === 'string' && token ? token : null;
-    } catch {
-      return null;
-    }
-  };
-
-  const syncAuthToken = (token = getStoredAuthToken()) =>
-    invokeBridge(BRIDGE_COMMANDS.SET_AUTH_TOKEN, {
-      authToken: typeof token === 'string' && token ? token : null
-    });
-
+  const TOKEN_STORAGE_KEY = 'token';
   const SHELL_LOCALE_STORAGE_KEY = 'astrbot-locale';
 
-  const getStoredShellLocale = () => {
+  const normalizeStoredValue = (value) =>
+    typeof value === 'string' && value ? value : null;
+
+  const getStoredValue = (storageKey) => {
     try {
-      const locale = window.localStorage?.getItem(SHELL_LOCALE_STORAGE_KEY);
-      return typeof locale === 'string' && locale ? locale : null;
+      return normalizeStoredValue(window.localStorage?.getItem(storageKey));
     } catch {
       return null;
     }
   };
 
-  const syncShellLocale = (locale = getStoredShellLocale()) =>
-    invokeBridge(BRIDGE_COMMANDS.SET_SHELL_LOCALE, {
-      locale: typeof locale === 'string' && locale ? locale : null,
-    });
+  const getStoredAuthToken = () => getStoredValue(TOKEN_STORAGE_KEY);
+
+  const makeSyncFn = (storageKey, command, payloadKey) =>
+    (value = getStoredValue(storageKey)) =>
+      invokeBridge(command, {
+        [payloadKey]: normalizeStoredValue(value),
+      });
+
+  const syncAuthToken = makeSyncFn(
+    TOKEN_STORAGE_KEY,
+    BRIDGE_COMMANDS.SET_AUTH_TOKEN,
+    'authToken',
+  );
+  const syncShellLocale = makeSyncFn(
+    SHELL_LOCALE_STORAGE_KEY,
+    BRIDGE_COMMANDS.SET_SHELL_LOCALE,
+    'locale',
+  );
+  const SYNCED_STORAGE_KEYS = Object.freeze({
+    [TOKEN_STORAGE_KEY]: syncAuthToken,
+    [SHELL_LOCALE_STORAGE_KEY]: syncShellLocale,
+  });
 
   const IS_DEV =
     (typeof process !== 'undefined' &&
@@ -661,30 +668,27 @@
       if (typeof rawSetItem === 'function') {
         storage.setItem = (key, value) => {
           rawSetItem(key, value);
-          if (key === 'token') {
-            void syncAuthToken(value);
-          }
-          if (key === SHELL_LOCALE_STORAGE_KEY) {
-            void syncShellLocale(value);
+          const sync = SYNCED_STORAGE_KEYS[key];
+          if (sync) {
+            void sync(value);
           }
         };
       }
       if (typeof rawRemoveItem === 'function') {
         storage.removeItem = (key) => {
           rawRemoveItem(key);
-          if (key === 'token') {
-            void syncAuthToken(null);
-          }
-          if (key === SHELL_LOCALE_STORAGE_KEY) {
-            void syncShellLocale(null);
+          const sync = SYNCED_STORAGE_KEYS[key];
+          if (sync) {
+            void sync(null);
           }
         };
       }
       if (typeof rawClear === 'function') {
         storage.clear = () => {
           rawClear();
-          void syncAuthToken(null);
-          void syncShellLocale(null);
+          Object.values(SYNCED_STORAGE_KEYS).forEach((sync) => {
+            void sync(null);
+          });
         };
       }
     } catch {}
@@ -723,6 +727,7 @@
   installNavigationBridges();
   void listenToTrayRestartBackendEvent();
   patchLocalStorageTokenSync();
-  void syncAuthToken();
-  void syncShellLocale();
+  Object.values(SYNCED_STORAGE_KEYS).forEach((sync) => {
+    void sync();
+  });
 })();
