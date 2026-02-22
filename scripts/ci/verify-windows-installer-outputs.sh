@@ -10,7 +10,6 @@ if [ -z "${WINDOWS_INSTALLER_EXE_GLOBS:-}" ]; then
   exit 1
 fi
 
-shopt -s nullglob
 missing_patterns=0
 
 (
@@ -20,7 +19,8 @@ missing_patterns=0
     pattern="$(printf '%s' "${raw_pattern}" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
     [ -n "${pattern}" ] || continue
 
-    matches=( ${pattern} )
+    # Use compgen + mapfile to preserve spaces in matched paths.
+    mapfile -t matches < <(compgen -G "${pattern}" || true)
     if [ "${#matches[@]}" -eq 0 ]; then
       echo "Missing Windows installer output for pattern: ${pattern}" >&2
       missing_patterns=1
