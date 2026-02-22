@@ -66,18 +66,18 @@ impl BackendState {
         let payload = body.unwrap_or("");
         let authorization_header = auth_token
             .and_then(sanitize_authorization_token)
-            .map(|token| format!("Authorization: Bearer {token}\\r\\n"))
+            .map(|token| format!("Authorization: Bearer {token}\r\n"))
             .unwrap_or_default();
         let request = format!(
-            "{method} {request_target} HTTP/1.1\\r\\n\
-Host: {host}\\r\\n\
-Accept: application/json\\r\\n\
-Accept-Encoding: identity\\r\\n\
-Connection: close\\r\\n\
+            "{method} {request_target} HTTP/1.1\r\n\
+Host: {host}\r\n\
+Accept: application/json\r\n\
+Accept-Encoding: identity\r\n\
+Connection: close\r\n\
 {authorization_header}\
-Content-Type: application/json\\r\\n\
-Content-Length: {}\\r\\n\
-\\r\\n\
+Content-Type: application/json\r\n\
+Content-Length: {}\r\n\
+\r\n\
 {}",
             payload.len(),
             payload
