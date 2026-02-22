@@ -5,8 +5,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-// Path keys are intentionally component-normalized, so entries like `/a/../b`
-// and `/b` deduplicate to the same key.
+// Path keys are intentionally component-normalized with `components()`, so
+// redundant separators and `.` segments are folded (for example `/a//b` and
+// `/a/./b` deduplicate). `..` segments are preserved.
 // On Windows we apply ASCII case folding as a best-effort for case-insensitive PATHs.
 fn path_key(path: &Path) -> Option<OsString> {
     if path.as_os_str().is_empty() {
