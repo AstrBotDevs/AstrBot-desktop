@@ -9,6 +9,10 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Assert version normalization parity
+      shell: bash
+      run: bash scripts/ci/assert-version-normalization-equivalence.sh
+
     - name: Sync desktop version
       shell: bash
       run: bash scripts/ci/sync-desktop-version.sh "${{ inputs.astrbot_version }}"

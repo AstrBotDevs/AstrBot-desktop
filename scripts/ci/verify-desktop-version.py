@@ -10,6 +10,9 @@ from typing import Any
 
 
 def normalize_version(raw: str) -> str:
+    # NOTE: Keep this logic equivalent to normalize_version() in
+    # scripts/ci/lib/version-utils.sh.
+    # Run scripts/ci/assert-version-normalization-equivalence.sh after edits.
     trimmed = raw.strip()
     if not trimmed:
         return ""
@@ -59,13 +62,29 @@ def extract_string_field(mapping: Any, key: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Verify synced desktop version files.")
-    parser.add_argument("expected_version", help="Expected AstrBot desktop version.")
+    parser.add_argument(
+        "expected_version",
+        nargs="?",
+        help="Expected AstrBot desktop version.",
+    )
+    parser.add_argument(
+        "--print-normalized",
+        metavar="RAW_VERSION",
+        help="Print normalized version and exit (used by CI parity checks).",
+    )
     parser.add_argument(
         "--root",
         default=str(pathlib.Path(__file__).resolve().parents[2]),
         help="Repository root path. Defaults to two levels above this script.",
     )
     args = parser.parse_args()
+
+    if args.print_normalized is not None:
+        print(normalize_version(args.print_normalized))
+        return 0
+
+    if args.expected_version is None:
+        parser.error("expected_version is required unless --print-normalized is used")
 
     expected = normalize_version(args.expected_version)
     if not expected:
