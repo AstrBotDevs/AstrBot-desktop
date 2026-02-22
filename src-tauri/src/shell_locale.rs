@@ -94,13 +94,13 @@ fn read_cached_shell_locale(packaged_root_dir: Option<&Path>) -> Option<&'static
     normalize_shell_locale(locale)
 }
 
-fn ensure_object(value: &mut Value) -> &mut Map<String, Value> {
+fn ensure_object(value: &mut Value) -> Result<&mut Map<String, Value>, String> {
     if !value.is_object() {
         *value = Value::Object(Map::new());
     }
     value
         .as_object_mut()
-        .expect("value was just set to an object")
+        .ok_or_else(|| "failed to normalize value into JSON object".to_string())
 }
 
 pub(crate) fn write_cached_shell_locale(
@@ -153,7 +153,13 @@ pub(crate) fn write_cached_shell_locale(
             state_path.display()
         ));
     }
-    let object = ensure_object(&mut parsed);
+    let object = ensure_object(&mut parsed).map_err(|error| {
+        format!(
+            "Failed to normalize shell locale state {}: {}",
+            state_path.display(),
+            error
+        )
+    })?;
 
     if let Some(normalized_locale) = normalized_locale {
         object.insert(

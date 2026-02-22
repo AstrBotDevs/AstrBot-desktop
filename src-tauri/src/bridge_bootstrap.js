@@ -160,11 +160,11 @@
 
   const syncAuthToken = (value = getStoredAuthToken()) =>
     invokeBridge(BRIDGE_COMMANDS.SET_AUTH_TOKEN, {
-      authToken: normalizeStoredValue(value),
+      authToken: value,
     });
   const syncShellLocale = (value = getStoredValue(SHELL_LOCALE_STORAGE_KEY)) =>
     invokeBridge(BRIDGE_COMMANDS.SET_SHELL_LOCALE, {
-      locale: normalizeStoredValue(value),
+      locale: value,
     });
 
   const IS_DEV =
@@ -657,9 +657,9 @@
         storage.setItem = (key, value) => {
           rawSetItem(key, value);
           if (key === TOKEN_STORAGE_KEY) {
-            void syncAuthToken(value);
+            void syncAuthToken(normalizeStoredValue(value));
           } else if (key === SHELL_LOCALE_STORAGE_KEY) {
-            void syncShellLocale(value);
+            void syncShellLocale(normalizeStoredValue(value));
           }
         };
       }
