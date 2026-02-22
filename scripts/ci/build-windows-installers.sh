@@ -18,7 +18,7 @@ if ! (
   exit 1
 fi
 
-bundles="${ASTRBOT_WINDOWS_BUNDLES:-nsis,nsis-web}"
+bundles="${ASTRBOT_WINDOWS_BUNDLES:-nsis}"
 if [ -z "${bundles}" ]; then
   echo "ASTRBOT_WINDOWS_BUNDLES is empty. Expected a comma-separated bundle list." >&2
   exit 1

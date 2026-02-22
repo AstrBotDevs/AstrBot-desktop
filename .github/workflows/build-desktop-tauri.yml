@@ -378,9 +378,8 @@ jobs:
     name: windows-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     env:
-      ASTRBOT_WINDOWS_BUNDLES: nsis,nsis-web
+      ASTRBOT_WINDOWS_BUNDLES: nsis
       WINDOWS_INSTALLER_EXE_GLOBS: |
-        src-tauri/target/release/bundle/nsis-web/*.exe
         src-tauri/target/release/bundle/nsis/*.exe
     strategy:
       fail-fast: false
@@ -505,7 +504,7 @@ jobs:
             - Source: `${{ needs.resolve_build_context.outputs.source_git_url }}`
             - Ref: `${{ needs.resolve_build_context.outputs.source_git_ref }}`
             - Mode: `${{ needs.resolve_build_context.outputs.build_mode }}`
-            - Windows tip: prefer `nsis-web` installer for smaller downloads and faster install startup.
+            - Windows installer format: `nsis`.
           generate_release_notes: true
           prerelease: ${{ needs.resolve_build_context.outputs.release_prerelease == 'true' }}
           make_latest: ${{ needs.resolve_build_context.outputs.release_prerelease != 'true' }}
