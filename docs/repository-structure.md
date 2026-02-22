@@ -91,6 +91,8 @@
   - desktop bridge IPC 命令定义与返回结构收敛。
 - `app_runtime.rs`
   - Tauri builder/run 编排与窗口/页面事件挂载。
+- `app_types.rs`
+  - 共享核心类型定义（状态、启动计划、bridge 返回结构、原子 guard）。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 
@@ -131,6 +133,8 @@
   - Phase 5 重构计划文档（执行参考 + 归档记录）。
 - `refactor-phase6-plan.md`
   - Phase 6 重构计划文档（执行参考 + 归档记录）。
+- `refactor-phase7-plan.md`
+  - Phase 7 重构计划文档（执行参考 + 归档记录）。
 
 ## 5. 新增代码落位规则
 

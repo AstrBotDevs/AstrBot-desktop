@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app_runtime;
+mod app_types;
 mod backend_config;
 mod backend_exit_state;
 mod backend_http;
@@ -36,19 +37,17 @@ mod ui_dispatch;
 mod webui_paths;
 mod window_actions;
 
-use serde::Deserialize;
 use std::{
-    env,
     ffi::OsString,
-    path::PathBuf,
-    process::Child,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Mutex, OnceLock,
-    },
+    sync::{Mutex, OnceLock},
     time::Duration,
 };
-use tauri::{menu::MenuItem, AppHandle, Manager};
+use tauri::{AppHandle, Manager};
+
+pub(crate) use app_types::{
+    AtomicFlagGuard, BackendBridgeResult, BackendBridgeState, BackendState, LaunchPlan,
+    RuntimeManifest, TrayMenuState,
+};
 
 const DEFAULT_BACKEND_URL: &str = "http://127.0.0.1:6185/";
 const BACKEND_TIMEOUT_ENV: &str = "ASTRBOT_BACKEND_TIMEOUT_MS";
@@ -87,99 +86,6 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 static DESKTOP_LOG_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static BACKEND_PATH_OVERRIDE: OnceLock<Option<OsString>> = OnceLock::new();
-
-#[derive(Clone)]
-struct TrayMenuState {
-    toggle_item: MenuItem<tauri::Wry>,
-    reload_item: MenuItem<tauri::Wry>,
-    restart_backend_item: MenuItem<tauri::Wry>,
-    quit_item: MenuItem<tauri::Wry>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RuntimeManifest {
-    python: Option<String>,
-    entrypoint: Option<String>,
-}
-
-#[derive(Debug)]
-struct LaunchPlan {
-    cmd: String,
-    args: Vec<String>,
-    cwd: PathBuf,
-    root_dir: Option<PathBuf>,
-    webui_dir: Option<PathBuf>,
-    packaged_mode: bool,
-}
-
-#[derive(Debug)]
-struct BackendState {
-    child: Mutex<Option<Child>>,
-    backend_url: String,
-    restart_auth_token: Mutex<Option<String>>,
-    startup_loading_mode: Mutex<Option<&'static str>>,
-    log_rotator_stop: Mutex<Option<Arc<AtomicBool>>>,
-    exit_state: Mutex<exit_state::ExitStateMachine>,
-    is_spawning: AtomicBool,
-    is_restarting: AtomicBool,
-}
-
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct BackendBridgeState {
-    running: bool,
-    spawning: bool,
-    restarting: bool,
-    can_manage: bool,
-}
-
-#[derive(Debug, serde::Serialize)]
-struct BackendBridgeResult {
-    ok: bool,
-    reason: Option<String>,
-}
-
-struct AtomicFlagGuard<'a> {
-    flag: &'a AtomicBool,
-}
-
-impl<'a> AtomicFlagGuard<'a> {
-    fn set(flag: &'a AtomicBool) -> Self {
-        flag.store(true, Ordering::Relaxed);
-        Self { flag }
-    }
-
-    fn try_set(flag: &'a AtomicBool) -> Option<Self> {
-        flag.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .ok()?;
-        Some(Self { flag })
-    }
-}
-
-impl Drop for AtomicFlagGuard<'_> {
-    fn drop(&mut self) {
-        self.flag.store(false, Ordering::Relaxed);
-    }
-}
-
-impl Default for BackendState {
-    fn default() -> Self {
-        Self {
-            child: Mutex::new(None),
-            backend_url: backend_config::normalize_backend_url(
-                &env::var("ASTRBOT_BACKEND_URL")
-                    .unwrap_or_else(|_| DEFAULT_BACKEND_URL.to_string()),
-                DEFAULT_BACKEND_URL,
-            ),
-            restart_auth_token: Mutex::new(None),
-            startup_loading_mode: Mutex::new(None),
-            log_rotator_stop: Mutex::new(None),
-            exit_state: Mutex::new(exit_state::ExitStateMachine::default()),
-            is_spawning: AtomicBool::new(false),
-            is_restarting: AtomicBool::new(false),
-        }
-    }
-}
 
 fn main() {
     app_runtime::run();
