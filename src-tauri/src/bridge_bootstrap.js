@@ -217,31 +217,34 @@
         ? window.astrbotDesktop.openExternalUrl.bind(window.astrbotDesktop)
         : null;
     if (!bridgeOpenExternalUrl) return false;
+    const href = url.toString();
 
     try {
-      const bridgeResult = bridgeOpenExternalUrl(url.toString());
+      const bridgeResult = bridgeOpenExternalUrl(href);
       if (bridgeResult && typeof bridgeResult.then === 'function') {
-        bridgeResult.then((result) => {
-          if (isBridgeFailureResult(result)) {
-            warnExternalUrlBridgeError('result', url.toString(), result.reason ?? result);
-          }
-        });
-      }
-      if (bridgeResult && typeof bridgeResult.catch === 'function') {
-        bridgeResult.catch((error) => {
-          warnExternalUrlBridgeError('async', url.toString(), error);
-        });
+        Promise.resolve(bridgeResult)
+          .then((result) => {
+            if (isBridgeFailureResult(result)) {
+              warnExternalUrlBridgeError('result', href, result.reason ?? result);
+            }
+          })
+          .catch((error) => {
+            warnExternalUrlBridgeError('async', href, error);
+          });
+        return true;
       }
       if (isBridgeFailureResult(bridgeResult)) {
-        warnExternalUrlBridgeError('result', url.toString(), bridgeResult.reason ?? bridgeResult);
+        warnExternalUrlBridgeError('result', href, bridgeResult.reason ?? bridgeResult);
         return false;
       }
       return true;
     } catch (error) {
-      warnExternalUrlBridgeError('sync', url.toString(), error);
+      warnExternalUrlBridgeError('sync', href, error);
       return false;
     }
   };
+  const openStrictExternalUrl = (rawUrl) =>
+    openExternalUrl(rawUrl, { allowSameOrigin: false });
 
   const findAnchorFromEvent = (event) => {
     const target = event.target;
@@ -284,7 +287,7 @@
           return locationObject.toString();
         },
         set(url) {
-          if (openExternalUrl(url, { allowSameOrigin: false })) {
+          if (openStrictExternalUrl(url)) {
             return;
           }
           nativeHrefSetter(url);
@@ -336,7 +339,7 @@
         if (!anchor) return;
         if (anchor.hasAttribute('download')) return;
         const rawHref = anchor.getAttribute('href') || anchor.href || '';
-        if (!openExternalUrl(rawHref, { allowSameOrigin: false })) return;
+        if (!openStrictExternalUrl(rawHref)) return;
 
         event.preventDefault();
       },
@@ -356,7 +359,7 @@
         return null;
       }
 
-      if (openExternalUrl(url, { allowSameOrigin: false })) {
+      if (openStrictExternalUrl(url)) {
         // Lightweight window-like handle for callers that only check basic fields.
         return createWindowOpenHandle(url);
       }
@@ -401,7 +404,7 @@
     if (nativeAssign) {
       try {
         locationObject.assign = (url) => {
-          if (openExternalUrl(url, { allowSameOrigin: false })) {
+          if (openStrictExternalUrl(url)) {
             return;
           }
           nativeAssign(url);
@@ -414,7 +417,7 @@
     if (nativeReplace) {
       try {
         locationObject.replace = (url) => {
-          if (openExternalUrl(url, { allowSameOrigin: false })) {
+          if (openStrictExternalUrl(url)) {
             return;
           }
           nativeReplace(url);
