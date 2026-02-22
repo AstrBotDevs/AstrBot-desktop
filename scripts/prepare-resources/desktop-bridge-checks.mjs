@@ -122,7 +122,11 @@ export const patchMonacoCssNestingWarnings = async ({ dashboardDir, projectRoot 
   }
 };
 
-export const patchDesktopReleaseRedirectBehavior = async ({ dashboardDir, projectRoot }) => {
+export const patchDesktopReleaseRedirectBehavior = async ({
+  dashboardDir,
+  projectRoot,
+  strictPatternMatch = false,
+}) => {
   const headerFile = path.join(
     dashboardDir,
     'src',
@@ -137,30 +141,13 @@ export const patchDesktopReleaseRedirectBehavior = async ({ dashboardDir, projec
 
   const source = await readFile(headerFile, 'utf8');
   let patched = source;
-
-  const applyReplacement = (contents, patchRule) => {
-    const {
-      description,
-      patterns,
-      replacement,
-      skipIfPatterns = [],
-    } = patchRule;
-
-    const skipped = skipIfPatterns.some((pattern) => pattern.test(contents));
-    if (skipped) {
-      return contents;
+  const reportPatternMiss = (description) => {
+    const message =
+      `[prepare-resources] Failed to patch VerticalHeader.vue: pattern not found for ${description}`;
+    if (strictPatternMatch) {
+      throw new Error(message);
     }
-
-    for (const pattern of patterns) {
-      if (!pattern.test(contents)) {
-        continue;
-      }
-      return contents.replace(pattern, replacement);
-    }
-
-    throw new Error(
-      `[prepare-resources] Failed to patch VerticalHeader.vue: pattern not found for ${description}`,
-    );
+    console.warn(`${message} (compatibility patch skipped)`);
   };
 
   const desktopRedirectSnippet = `pendingRedirectUrl.value = getReleaseUrlForDesktop();
@@ -181,27 +168,42 @@ export const patchDesktopReleaseRedirectBehavior = async ({ dashboardDir, projec
   }
 };`;
 
-  const patchRules = [
-    {
-      description: 'legacy fallbackReleaseUrl default',
-      patterns: [/const fallbackReleaseUrl = desktopReleaseBaseUrl;/],
-      replacement: "const fallbackReleaseUrl = `${desktopReleaseBaseUrl}/latest`;",
-      skipIfPatterns: [
-        /const fallbackReleaseUrl = `\$\{desktopReleaseBaseUrl\}\/latest`;/,
-        /const getReleaseUrlByTag\s*=\s*\(/,
-      ],
-    },
-    {
-      description: 'open() implementation',
-      patterns: [/const open = \(link: string\) => \{[\s\S]*?\n\};/m],
-      replacement: openFunctionReplacement,
-    },
-    {
-      description: 'handleUpdateClick desktop redirect flow',
-      patterns: [
-        /function handleUpdateClick\(\)\s*\{[\s\S]*?\n\}(?=\n\n\/\/ 检测是否为预发布版本)/m,
-      ],
-      replacement: `function handleUpdateClick() {
+  // 1) legacy fallbackReleaseUrl default
+  if (
+    /const fallbackReleaseUrl = `\$\{desktopReleaseBaseUrl\}\/latest`;/.test(patched) ||
+    /const getReleaseUrlByTag\s*=\s*\(/.test(patched)
+  ) {
+    // already patched or new implementation
+  } else if (/const fallbackReleaseUrl = desktopReleaseBaseUrl;/.test(patched)) {
+    patched = patched.replace(
+      /const fallbackReleaseUrl = desktopReleaseBaseUrl;/,
+      "const fallbackReleaseUrl = `${desktopReleaseBaseUrl}/latest`;",
+    );
+  } else {
+    reportPatternMiss('legacy fallbackReleaseUrl default');
+  }
+
+  // 2) open() implementation
+  if (/const open = \(link: string\) => \{[\s\S]*?\n\};/m.test(patched)) {
+    patched = patched.replace(
+      /const open = \(link: string\) => \{[\s\S]*?\n\};/m,
+      openFunctionReplacement,
+    );
+  } else if (/bridgeOpenExternalUrl/.test(patched)) {
+    // already patched with desktop bridge support
+  } else {
+    reportPatternMiss('open() implementation');
+  }
+
+  // 3) handleUpdateClick desktop redirect flow
+  if (
+    /function handleUpdateClick\(\)\s*\{[\s\S]*?\n\}(?=\n\n\/\/ 检测是否为预发布版本)/m.test(
+      patched,
+    )
+  ) {
+    patched = patched.replace(
+      /function handleUpdateClick\(\)\s*\{[\s\S]*?\n\}(?=\n\n\/\/ 检测是否为预发布版本)/m,
+      `function handleUpdateClick() {
   if (isDesktopReleaseMode.value) {
     ${desktopRedirectSnippet}
   }
@@ -209,11 +211,11 @@ export const patchDesktopReleaseRedirectBehavior = async ({ dashboardDir, projec
   getReleases();
   updateStatusDialog.value = true;
 }`,
-    },
-  ];
-
-  for (const patchRule of patchRules) {
-    patched = applyReplacement(patched, patchRule);
+    );
+  } else if (/pendingRedirectUrl\.value = getReleaseUrlForDesktop\(\);/.test(patched)) {
+    // already patched with desktop redirect fallback
+  } else {
+    reportPatternMiss('handleUpdateClick desktop redirect flow');
   }
 
   if (patched !== source) {

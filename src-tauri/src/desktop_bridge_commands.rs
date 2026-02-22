@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::process::{Command, Stdio};
 use tauri::{AppHandle, Manager};
 use url::Url;
 
@@ -21,41 +21,38 @@ fn parse_openable_url(raw_url: &str) -> Result<Url, String> {
 
 #[cfg(target_os = "macos")]
 fn open_url_with_system_browser(url: &str) -> Result<(), String> {
-    let status = Command::new("open")
+    Command::new("open")
         .arg(url)
-        .status()
-        .map_err(|error| format!("Failed to run 'open': {error}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!("'open' exited with status {status}"))
-    }
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Failed to run 'open': {error}"))
 }
 
 #[cfg(target_os = "windows")]
 fn open_url_with_system_browser(url: &str) -> Result<(), String> {
-    let status = Command::new("rundll32")
+    Command::new("rundll32")
         .args(["url.dll,FileProtocolHandler", url])
-        .status()
-        .map_err(|error| format!("Failed to run 'rundll32': {error}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!("'rundll32' exited with status {status}"))
-    }
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Failed to run 'rundll32': {error}"))
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
 fn open_url_with_system_browser(url: &str) -> Result<(), String> {
-    let status = Command::new("xdg-open")
+    Command::new("xdg-open")
         .arg(url)
-        .status()
-        .map_err(|error| format!("Failed to run 'xdg-open': {error}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!("'xdg-open' exited with status {status}"))
-    }
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Failed to run 'xdg-open': {error}"))
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows", unix)))]

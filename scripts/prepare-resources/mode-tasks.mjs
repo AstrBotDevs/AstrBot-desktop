@@ -67,7 +67,11 @@ export const prepareWebui = async ({
   const dashboardDir = path.join(sourceDir, 'dashboard');
   ensurePackageInstall(dashboardDir, 'AstrBot dashboard');
   await patchMonacoCssNestingWarnings({ dashboardDir, projectRoot });
-  await patchDesktopReleaseRedirectBehavior({ dashboardDir, projectRoot });
+  await patchDesktopReleaseRedirectBehavior({
+    dashboardDir,
+    projectRoot,
+    strictPatternMatch: isDesktopBridgeExpectationStrict,
+  });
   await verifyDesktopBridgeArtifacts({
     dashboardDir,
     projectRoot,

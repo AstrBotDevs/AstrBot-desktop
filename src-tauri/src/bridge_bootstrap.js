@@ -407,6 +407,12 @@
     stopBackend: () => invokeBridge(BRIDGE_COMMANDS.STOP_BACKEND),
     openExternalUrl: (url) => {
       const rawUrl = typeof url === 'string' ? url : String(url ?? '');
+      if (!rawUrl.trim()) {
+        return Promise.resolve({
+          ok: true,
+          reason: null,
+        });
+      }
       return invokeBridge(BRIDGE_COMMANDS.OPEN_EXTERNAL_URL, {
         url: rawUrl,
       });
