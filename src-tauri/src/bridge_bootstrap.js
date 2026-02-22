@@ -239,15 +239,6 @@
     }
   };
 
-  const installOnce = (installer) => {
-    let installed = false;
-    return () => {
-      if (installed) return;
-      installed = true;
-      installer();
-    };
-  };
-
   const overrideLocationHref = (locationObject, wrapLocationMutator) => {
     const hrefDescriptor =
       Object.getOwnPropertyDescriptor(locationObject, 'href') ||
@@ -278,7 +269,10 @@
     });
   };
 
-  const installExternalAnchorInterceptor = installOnce(() => {
+  let externalAnchorInterceptorInstalled = false;
+  const installExternalAnchorInterceptor = () => {
+    if (externalAnchorInterceptorInstalled) return;
+    externalAnchorInterceptorInstalled = true;
     document.addEventListener(
       'click',
       (event) => {
@@ -305,9 +299,12 @@
       },
       true,
     );
-  });
+  };
 
-  const installWindowOpenBridge = installOnce(() => {
+  let windowOpenBridgeInstalled = false;
+  const installWindowOpenBridge = () => {
+    if (windowOpenBridgeInstalled) return;
+    windowOpenBridgeInstalled = true;
     const nativeWindowOpen =
       typeof window.open === 'function' ? window.open.bind(window) : null;
 
@@ -369,9 +366,12 @@
     swallowPatchErrors('window.open', () => {
       window.open = bridgeWindowOpen;
     });
-  });
+  };
 
-  const installLocationNavigationBridge = installOnce(() => {
+  let locationNavigationBridgeInstalled = false;
+  const installLocationNavigationBridge = () => {
+    if (locationNavigationBridgeInstalled) return;
+    locationNavigationBridgeInstalled = true;
     const locationObject = window.location;
     const nativeAssign =
       typeof locationObject.assign === 'function'
@@ -402,7 +402,7 @@
     }
 
     overrideLocationHref(locationObject, wrapLocationMutator);
-  });
+  };
 
   const RUNTIME_BRIDGE_DETAIL_MAX_LENGTH = 240;
   const RUNTIME_BRIDGE_DETAIL_MAX_ITEMS = 8;
@@ -604,7 +604,10 @@
     return normalizedFallback;
   };
 
-  const patchLocalStorageTokenSync = installOnce(() => {
+  let localStorageTokenSyncPatched = false;
+  const patchLocalStorageTokenSync = () => {
+    if (localStorageTokenSyncPatched) return;
+    localStorageTokenSyncPatched = true;
     try {
       const storage = window.localStorage;
       if (!storage) return;
@@ -636,7 +639,7 @@
         };
       }
     } catch {}
-  });
+  };
 
   window.astrbotDesktop = {
     __tauriBridge: true,
