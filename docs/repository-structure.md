@@ -71,6 +71,8 @@
   - 托盘初始化、菜单构建与事件绑定。
 - `launch_plan.rs`
   - custom/packaged/dev 启动计划构建与路径解析。
+- `startup_task.rs`
+  - 启动阶段后端就绪等待与主线程导航分发。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 

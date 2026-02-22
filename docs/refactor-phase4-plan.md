@@ -56,3 +56,4 @@ Phase 3 进一步收敛了路径、桥接与托盘文案更新逻辑，`main.rs`
 7. 抽离托盘初始化模块（`src-tauri/src/tray_setup.rs`），下沉托盘菜单构建与事件绑定流程。
 8. 将 backend URL 归一化逻辑下沉到 `backend_config.rs` 并补充行为测试。
 9. 抽离 launch plan 解析模块（`src-tauri/src/launch_plan.rs`），下沉 custom/packaged/dev 三类启动计划构建逻辑。
+10. 抽离 startup 异步任务模块（`src-tauri/src/startup_task.rs`），统一后端就绪等待与启动后导航流程。
