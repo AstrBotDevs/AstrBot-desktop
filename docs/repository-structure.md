@@ -75,6 +75,8 @@
   - 启动阶段后端就绪等待与主线程导航分发。
 - `exit_events.rs`
   - RunEvent 退出分支处理与清理编排。
+- `backend_runtime.rs`
+  - backend 运行时参数（timeout/readiness/ping）解析与缓存。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 

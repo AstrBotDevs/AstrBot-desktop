@@ -58,3 +58,4 @@ Phase 3 进一步收敛了路径、桥接与托盘文案更新逻辑，`main.rs`
 9. 抽离 launch plan 解析模块（`src-tauri/src/launch_plan.rs`），下沉 custom/packaged/dev 三类启动计划构建逻辑。
 10. 抽离 startup 异步任务模块（`src-tauri/src/startup_task.rs`），统一后端就绪等待与启动后导航流程。
 11. 抽离退出事件处理模块（`src-tauri/src/exit_events.rs`），下沉 `RunEvent::ExitRequested/Exit` 分支编排。
+12. 抽离 backend 运行时参数模块（`src-tauri/src/backend_runtime.rs`），集中 timeout/readiness/ping 解析与缓存。

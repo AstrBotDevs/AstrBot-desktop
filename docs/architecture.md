@@ -246,6 +246,14 @@ desktop bridge 模块：
 - Exit fallback 分支编排
 - 退出分支与清理模块解耦
 
+### 2.29 `src-tauri/src/backend_runtime.rs`
+
+后端运行时参数模块：
+
+- backend timeout 解析
+- readiness 配置解析
+- backend/bridge ping timeout 解析与缓存
+
 ## 3. 关键流程
 
 ### 3.1 启动流程

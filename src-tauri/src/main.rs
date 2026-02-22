@@ -2,6 +2,7 @@
 
 mod backend_config;
 mod backend_path;
+mod backend_runtime;
 mod desktop_bridge;
 mod exit_cleanup;
 mod exit_events;
@@ -84,8 +85,6 @@ const STARTUP_MODE_ENV: &str = "ASTRBOT_DESKTOP_STARTUP_MODE";
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 #[cfg(target_os = "windows")]
 const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-static BACKEND_PING_TIMEOUT_MS: OnceLock<u64> = OnceLock::new();
-static BRIDGE_BACKEND_PING_TIMEOUT_MS: OnceLock<u64> = OnceLock::new();
 static DESKTOP_LOG_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static BACKEND_PATH_OVERRIDE: OnceLock<Option<OsString>> = OnceLock::new();
 
@@ -198,7 +197,7 @@ impl Default for BackendState {
 
 impl BackendState {
     fn ensure_backend_ready(&self, app: &AppHandle) -> Result<(), String> {
-        if self.ping_backend(backend_ping_timeout_ms()) {
+        if self.ping_backend(backend_runtime::backend_ping_timeout_ms(append_desktop_log)) {
             append_desktop_log("backend already reachable, skip spawn");
             return Ok(());
         }
@@ -386,7 +385,7 @@ impl BackendState {
             20_000,
             PACKAGED_BACKEND_TIMEOUT_FALLBACK_MS,
         );
-        let readiness = backend_readiness_config();
+        let readiness = backend_runtime::backend_readiness_config(append_desktop_log);
         let start_time = Instant::now();
         let mut tcp_ready_logged = false;
         let mut ever_tcp_reachable = false;
@@ -696,7 +695,7 @@ Content-Length: {}\r\n\
         previous_start_time: Option<i64>,
         packaged_mode: bool,
     ) -> Result<(), String> {
-        let max_wait = backend_wait_timeout(packaged_mode);
+        let max_wait = backend_runtime::backend_wait_timeout(packaged_mode);
         let start = Instant::now();
         let mut saw_backend_down = false;
 
@@ -858,7 +857,7 @@ Content-Length: {}\r\n\
             return self.stop_backend();
         }
 
-        if self.ping_backend(backend_ping_timeout_ms()) {
+        if self.ping_backend(backend_runtime::backend_ping_timeout_ms(append_desktop_log)) {
             return Err("Backend is running but not managed by desktop process.".to_string());
         }
         Ok(())
@@ -981,7 +980,9 @@ Content-Length: {}\r\n\
             });
         let can_manage = has_managed_child || self.resolve_launch_plan(app).is_ok();
         BackendBridgeState {
-            running: self.ping_backend(bridge_backend_ping_timeout_ms()),
+            running: self.ping_backend(backend_runtime::bridge_backend_ping_timeout_ms(
+                append_desktop_log,
+            )),
             spawning: self.is_spawning.load(Ordering::Relaxed),
             restarting: self.is_restarting.load(Ordering::Relaxed),
             can_manage,
@@ -1223,23 +1224,6 @@ fn inject_desktop_bridge(webview: &tauri::Webview<tauri::Wry>) {
     desktop_bridge::inject_desktop_bridge(webview, TRAY_RESTART_BACKEND_EVENT, append_desktop_log);
 }
 
-fn backend_readiness_config() -> backend_config::BackendReadinessConfig {
-    let probe_timeout_fallback = backend_ping_timeout_ms();
-    backend_config::backend_readiness_config(
-        BACKEND_READY_HTTP_PATH_ENV,
-        DEFAULT_BACKEND_READY_HTTP_PATH,
-        BACKEND_READY_PROBE_TIMEOUT_ENV,
-        probe_timeout_fallback,
-        BACKEND_READY_PROBE_TIMEOUT_MIN_MS,
-        BACKEND_READY_PROBE_TIMEOUT_MAX_MS,
-        BACKEND_READY_POLL_INTERVAL_ENV,
-        DEFAULT_BACKEND_READY_POLL_INTERVAL_MS,
-        BACKEND_READY_POLL_INTERVAL_MIN_MS,
-        BACKEND_READY_POLL_INTERVAL_MAX_MS,
-        |message| append_desktop_log(&message),
-    )
-}
-
 fn backend_path_override() -> Option<OsString> {
     BACKEND_PATH_OVERRIDE
         .get_or_init(|| {
@@ -1248,51 +1232,10 @@ fn backend_path_override() -> Option<OsString> {
         .clone()
 }
 
-fn backend_wait_timeout(packaged_mode: bool) -> Duration {
-    backend_config::resolve_backend_timeout_ms(
-        packaged_mode,
-        BACKEND_TIMEOUT_ENV,
-        20_000,
-        PACKAGED_BACKEND_TIMEOUT_FALLBACK_MS,
-    )
-    .unwrap_or(Duration::from_millis(20_000))
-}
-
 fn build_debug_command(plan: &LaunchPlan) -> Vec<String> {
     let mut parts = vec![plan.cmd.clone()];
     parts.extend(plan.args.clone());
     parts
-}
-
-fn backend_ping_timeout_ms() -> u64 {
-    *BACKEND_PING_TIMEOUT_MS.get_or_init(|| match env::var(BACKEND_PING_TIMEOUT_ENV) {
-        Ok(raw) => backend_config::parse_ping_timeout_env(
-            &raw,
-            BACKEND_PING_TIMEOUT_ENV,
-            DEFAULT_BACKEND_PING_TIMEOUT_MS,
-            BACKEND_PING_TIMEOUT_MIN_MS,
-            BACKEND_PING_TIMEOUT_MAX_MS,
-            |message| append_desktop_log(&message),
-        ),
-        Err(_) => DEFAULT_BACKEND_PING_TIMEOUT_MS,
-    })
-}
-
-fn bridge_backend_ping_timeout_ms() -> u64 {
-    *BRIDGE_BACKEND_PING_TIMEOUT_MS.get_or_init(|| {
-        let fallback = backend_ping_timeout_ms();
-        match env::var(BRIDGE_BACKEND_PING_TIMEOUT_ENV) {
-            Ok(raw) => backend_config::parse_ping_timeout_env(
-                &raw,
-                BRIDGE_BACKEND_PING_TIMEOUT_ENV,
-                fallback,
-                BACKEND_PING_TIMEOUT_MIN_MS,
-                BACKEND_PING_TIMEOUT_MAX_MS,
-                |message| append_desktop_log(&message),
-            ),
-            Err(_) => fallback,
-        }
-    })
 }
 
 fn append_desktop_log(message: &str) {
