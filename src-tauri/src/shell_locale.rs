@@ -127,13 +127,17 @@ pub(crate) fn write_cached_shell_locale(
     }
 
     let mut parsed = match fs::read_to_string(&state_path) {
-        Ok(raw) => serde_json::from_str::<Value>(&raw).map_err(|error| {
-            format!(
-                "Failed to parse shell locale state {}: {}",
-                state_path.display(),
-                error
-            )
-        })?,
+        Ok(raw) => match serde_json::from_str::<Value>(&raw) {
+            Ok(value) => value,
+            Err(error) => {
+                crate::append_desktop_log(&format!(
+                    "failed to parse shell locale state {}: {}. resetting state file",
+                    state_path.display(),
+                    error
+                ));
+                Value::Object(Map::new())
+            }
+        },
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Value::Object(Map::new()),
         Err(error) => {
             return Err(format!(
