@@ -161,11 +161,6 @@
       process.env.NODE_ENV !== 'production') ||
     (typeof __DEV__ !== 'undefined' && __DEV__ === true);
 
-  const isDesktopBridgeEnabled = () =>
-    window.astrbotDesktop?.__tauriBridge === true &&
-    window.astrbotDesktop?.isDesktop === true &&
-    typeof window.astrbotDesktop?.openExternalUrl === 'function';
-
   const normalizeExternalHttpUrl = (rawUrl) => {
     if (rawUrl instanceof URL) {
       if (rawUrl.protocol !== 'http:' && rawUrl.protocol !== 'https:') return null;
@@ -246,19 +241,14 @@
     return null;
   };
 
-  const warnPatchError = (label, error) => {
-    if (!IS_DEV || !(error instanceof TypeError)) return;
-    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
-      console.warn(`astrbotDesktop: failed to patch ${label}`, error);
-    }
-  };
-
-  const swallowPatchErrors = (label, fn) => {
+  const patchWithDevTypeErrorWarn = (label, patchFn) => {
     try {
-      fn();
+      patchFn();
     } catch (error) {
       if (error instanceof TypeError) {
-        warnPatchError(label, error);
+        if (IS_DEV && typeof console !== 'undefined' && typeof console.warn === 'function') {
+          console.warn(`astrbotDesktop: failed to patch ${label}`, error);
+        }
         return;
       }
       throw error;
@@ -281,7 +271,7 @@
 
     if (!nativeHrefSetter) return;
 
-    swallowPatchErrors('location.href', () => {
+    patchWithDevTypeErrorWarn('location.href', () => {
       Object.defineProperty(locationObject, 'href', {
         configurable: true,
         enumerable: descriptor?.enumerable ?? true,
@@ -299,7 +289,6 @@
   let externalAnchorInterceptorInstalled = false;
   const installExternalAnchorInterceptor = () => {
     if (externalAnchorInterceptorInstalled) return;
-    if (!isDesktopBridgeEnabled()) return;
     externalAnchorInterceptorInstalled = true;
     document.addEventListener(
       'click',
@@ -332,7 +321,6 @@
   let windowOpenBridgeInstalled = false;
   const installWindowOpenBridge = () => {
     if (windowOpenBridgeInstalled) return;
-    if (!isDesktopBridgeEnabled()) return;
     windowOpenBridgeInstalled = true;
     const nativeWindowOpen =
       typeof window.open === 'function' ? window.open.bind(window) : null;
@@ -376,7 +364,7 @@
       }
 
       if (openExternalUrlForNavigation(url)) {
-        // Return a window-like handle so callers that introspect result do not break.
+        // Lightweight window-like handle for callers that only check basic fields.
         return createWindowOpenHandle(url);
       }
 
@@ -387,7 +375,7 @@
     };
 
     if (nativeWindowOpen) {
-      swallowPatchErrors('window.__astrbotNativeWindowOpen', () => {
+      patchWithDevTypeErrorWarn('window.__astrbotNativeWindowOpen', () => {
         Object.defineProperty(window, '__astrbotNativeWindowOpen', {
           configurable: true,
           writable: false,
@@ -397,7 +385,7 @@
       });
     }
 
-    swallowPatchErrors('window.open', () => {
+    patchWithDevTypeErrorWarn('window.open', () => {
       window.open = bridgeWindowOpen;
     });
   };
@@ -405,7 +393,6 @@
   let locationNavigationBridgeInstalled = false;
   const installLocationNavigationBridge = () => {
     if (locationNavigationBridgeInstalled) return;
-    if (!isDesktopBridgeEnabled()) return;
     locationNavigationBridgeInstalled = true;
     const locationObject = window.location;
     const nativeAssign =
@@ -425,13 +412,13 @@
     };
 
     if (nativeAssign) {
-      swallowPatchErrors('location.assign', () => {
+      patchWithDevTypeErrorWarn('location.assign', () => {
         locationObject.assign = wrapLocationMutator(nativeAssign);
       });
     }
 
     if (nativeReplace) {
-      swallowPatchErrors('location.replace', () => {
+      patchWithDevTypeErrorWarn('location.replace', () => {
         locationObject.replace = wrapLocationMutator(nativeReplace);
       });
     }
@@ -641,8 +628,9 @@
 
   let localStorageTokenSyncPatched = false;
   const patchLocalStorageTokenSync = () => {
-    if (localStorageTokenSyncPatched) return;
+    if (localStorageTokenSyncPatched || window.__astrbotDesktopTokenSyncPatched) return;
     localStorageTokenSyncPatched = true;
+    window.__astrbotDesktopTokenSyncPatched = true;
     try {
       const storage = window.localStorage;
       if (!storage) return;
