@@ -41,6 +41,8 @@
   - bridge 注入来源判定（同源/loopback/端口策略）。
 - `tray_actions.rs`
   - 托盘菜单 ID 与动作映射。
+- `shell_locale.rs`
+  - shell locale 归一化、缓存读取与托盘文案映射。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 

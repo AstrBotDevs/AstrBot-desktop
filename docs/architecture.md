@@ -108,6 +108,14 @@ HTTP 响应解析模块：
 - 菜单 ID 到动作枚举映射
 - 托盘事件分发入口去字符串硬编码
 
+### 2.12 `src-tauri/src/shell_locale.rs`
+
+桌面 locale 模块：
+
+- locale 归一化与兜底
+- `desktop_state.json` 缓存 locale 读取
+- 托盘文案（中英）映射
+
 ## 3. 关键流程
 
 ### 3.1 启动流程

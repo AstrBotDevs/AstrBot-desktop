@@ -7,6 +7,7 @@ mod http_response;
 mod logging;
 mod origin_policy;
 mod process_control;
+mod shell_locale;
 mod startup_mode;
 mod tray_actions;
 mod webui_paths;
@@ -78,15 +79,6 @@ static BRIDGE_BACKEND_PING_TIMEOUT_MS: OnceLock<u64> = OnceLock::new();
 static DESKTOP_LOG_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static TRAY_RESTART_SIGNAL_TOKEN: AtomicU64 = AtomicU64::new(0);
 static BACKEND_PATH_OVERRIDE: OnceLock<Option<OsString>> = OnceLock::new();
-
-#[derive(Debug, Clone, Copy)]
-struct ShellTexts {
-    tray_hide: &'static str,
-    tray_show: &'static str,
-    tray_reload: &'static str,
-    tray_restart_backend: &'static str,
-    tray_quit: &'static str,
-}
 
 #[derive(Clone)]
 struct TrayMenuState {
@@ -1412,8 +1404,9 @@ fn main() {
 }
 
 fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
-    let locale = resolve_shell_locale();
-    let shell_texts = shell_texts_for_locale(locale);
+    let locale =
+        shell_locale::resolve_shell_locale(DEFAULT_SHELL_LOCALE, default_packaged_root_dir());
+    let shell_texts = shell_locale::shell_texts_for_locale(locale);
     let main_window_visible = app_handle
         .get_webview_window("main")
         .and_then(|window| window.is_visible().ok())
@@ -1674,83 +1667,6 @@ fn navigate_main_window_to_backend(app_handle: &AppHandle) -> Result<(), String>
         .map_err(|error| format!("Failed to navigate to backend dashboard: {error}"))
 }
 
-fn shell_texts_for_locale(locale: &str) -> ShellTexts {
-    if locale == "en-US" {
-        return ShellTexts {
-            tray_hide: "Hide AstrBot",
-            tray_show: "Show AstrBot",
-            tray_reload: "Reload",
-            tray_restart_backend: "Restart Backend",
-            tray_quit: "Quit",
-        };
-    }
-
-    ShellTexts {
-        tray_hide: "隐藏 AstrBot",
-        tray_show: "显示 AstrBot",
-        tray_reload: "重新加载",
-        tray_restart_backend: "重启后端",
-        tray_quit: "退出",
-    }
-}
-
-fn normalize_shell_locale(raw: &str) -> Option<&'static str> {
-    let raw = raw.trim();
-    if raw.is_empty() {
-        return None;
-    }
-    if raw == "zh-CN" {
-        return Some("zh-CN");
-    }
-    if raw == "en-US" {
-        return Some("en-US");
-    }
-
-    let lowered = raw.to_ascii_lowercase();
-    if lowered.starts_with("zh") {
-        return Some("zh-CN");
-    }
-    if lowered.starts_with("en") {
-        return Some("en-US");
-    }
-    None
-}
-
-fn desktop_state_path_for_locale() -> Option<PathBuf> {
-    if let Ok(root) = env::var("ASTRBOT_ROOT") {
-        let path = PathBuf::from(root.trim());
-        if !path.as_os_str().is_empty() {
-            return Some(path.join("data").join("desktop_state.json"));
-        }
-    }
-
-    default_packaged_root_dir().map(|root| root.join("data").join("desktop_state.json"))
-}
-
-fn read_cached_shell_locale() -> Option<&'static str> {
-    let state_path = desktop_state_path_for_locale()?;
-    let raw = fs::read_to_string(state_path).ok()?;
-    let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    let locale = parsed.get("locale")?.as_str()?;
-    normalize_shell_locale(locale)
-}
-
-fn resolve_shell_locale() -> &'static str {
-    if let Some(locale) = read_cached_shell_locale() {
-        return locale;
-    }
-
-    for env_key in ["ASTRBOT_DESKTOP_LOCALE", "LC_ALL", "LANG"] {
-        if let Ok(value) = env::var(env_key) {
-            if let Some(locale) = normalize_shell_locale(&value) {
-                return locale;
-            }
-        }
-    }
-
-    DEFAULT_SHELL_LOCALE
-}
-
 fn set_menu_text_safe(item: &MenuItem<tauri::Wry>, text: &str, item_name: &str) {
     if let Err(error) = item.set_text(text) {
         append_desktop_log(&format!(
@@ -1765,8 +1681,9 @@ fn update_tray_menu_labels(app_handle: &AppHandle) {
         return;
     };
 
-    let locale = resolve_shell_locale();
-    let shell_texts = shell_texts_for_locale(locale);
+    let locale =
+        shell_locale::resolve_shell_locale(DEFAULT_SHELL_LOCALE, default_packaged_root_dir());
+    let shell_texts = shell_locale::shell_texts_for_locale(locale);
     let is_visible = app_handle
         .get_webview_window("main")
         .and_then(|window| window.is_visible().ok())
@@ -2020,7 +1937,8 @@ fn resolve_packaged_webui_dir(
     embedded_webui_dir: Option<PathBuf>,
     root_dir: Option<&Path>,
 ) -> Result<PathBuf, String> {
-    let locale = resolve_shell_locale();
+    let locale =
+        shell_locale::resolve_shell_locale(DEFAULT_SHELL_LOCALE, default_packaged_root_dir());
     let fallback_webui_dir =
         webui_paths::packaged_fallback_webui_dir(root_dir, default_packaged_root_dir());
 

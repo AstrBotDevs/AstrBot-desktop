@@ -53,3 +53,4 @@ Phase 1 已完成入口瘦身与基础模块化，但 `src-tauri/src/main.rs` �
 2. 抽离进程停止控制模块（`src-tauri/src/process_control.rs`），统一 graceful/force stop 路径并补充纯逻辑单测。
 3. 抽离桥接注入来源判定模块（`src-tauri/src/origin_policy.rs`），统一同源与 loopback 端口策略并补充单测。
 4. 抽离托盘菜单动作映射模块（`src-tauri/src/tray_actions.rs`），把菜单 ID 解析与动作类型从入口分离。
+5. 抽离 shell locale 模块（`src-tauri/src/shell_locale.rs`），集中 locale 归一化、缓存读取与托盘文案映射。
