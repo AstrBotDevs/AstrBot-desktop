@@ -45,9 +45,7 @@ pub fn update_tray_menu_labels_with_visibility<F>(
         .get_webview_window("main")
         .and_then(|window| window.is_visible().ok());
     let is_visible = window_visibility.unwrap_or(true);
-    let effective_visible = visible_override
-        .filter(|_| window_visibility.is_some())
-        .unwrap_or(is_visible);
+    let effective_visible = visible_override.unwrap_or(is_visible);
 
     let toggle_label = if effective_visible {
         shell_texts.tray_hide

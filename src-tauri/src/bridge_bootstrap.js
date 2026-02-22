@@ -156,9 +156,11 @@
       authToken: typeof token === 'string' && token ? token : null
     });
 
+  const SHELL_LOCALE_STORAGE_KEY = 'astrbot-locale';
+
   const getStoredShellLocale = () => {
     try {
-      const locale = window.localStorage?.getItem('astrbot-locale');
+      const locale = window.localStorage?.getItem(SHELL_LOCALE_STORAGE_KEY);
       return typeof locale === 'string' && locale ? locale : null;
     } catch {
       return null;
@@ -662,7 +664,7 @@
           if (key === 'token') {
             void syncAuthToken(value);
           }
-          if (key === 'astrbot-locale') {
+          if (key === SHELL_LOCALE_STORAGE_KEY) {
             void syncShellLocale(value);
           }
         };
@@ -673,7 +675,7 @@
           if (key === 'token') {
             void syncAuthToken(null);
           }
-          if (key === 'astrbot-locale') {
+          if (key === SHELL_LOCALE_STORAGE_KEY) {
             void syncShellLocale(null);
           }
         };
