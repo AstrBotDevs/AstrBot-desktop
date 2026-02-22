@@ -75,6 +75,15 @@
 - 状态：`Running` / `QuittingRequested` / `CleanupInProgress` / `ReadyToExit` / `Exiting`
 - 能力：开始清理、放行下次退出请求、状态读取
 
+### 2.8 `src-tauri/src/http_response.rs`
+
+HTTP 响应解析模块：
+
+- 状态码提取（status line）
+- chunked body 解码
+- JSON 响应提取（2xx 门禁）
+- 后端 `start_time` 字段解析
+
 ## 3. 关键流程
 
 ### 3.1 启动流程

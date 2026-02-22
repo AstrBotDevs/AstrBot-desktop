@@ -33,6 +33,8 @@
   - 打包 WebUI fallback 路径逻辑。
 - `exit_state.rs`
   - 退出状态机。
+- `http_response.rs`
+  - HTTP 响应解析与后端 start_time 提取。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 
@@ -63,6 +65,8 @@
   - 环境变量单一来源文档。
 - `refactor-plan.md`
   - 重构归档文档（阅读/存档用途）。
+- `refactor-phase2-plan.md`
+  - Phase 2 重构计划文档（执行参考 + 归档记录）。
 
 ## 5. 新增代码落位规则
 

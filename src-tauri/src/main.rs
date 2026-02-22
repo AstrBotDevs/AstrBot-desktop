@@ -3,6 +3,7 @@
 mod backend_config;
 mod backend_path;
 mod exit_state;
+mod http_response;
 mod logging;
 mod startup_mode;
 mod webui_paths;
@@ -11,7 +12,6 @@ use serde::Deserialize;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 use std::{
-    borrow::Cow,
     env,
     ffi::OsString,
     fs::{self, OpenOptions},
@@ -777,7 +777,7 @@ Content-Length: {}\r\n\
             timeout_ms,
             body,
             auth_token,
-            parse_http_json_response,
+            http_response::parse_http_json_response,
         )
     }
 
@@ -795,7 +795,7 @@ Content-Length: {}\r\n\
             timeout_ms,
             body,
             auth_token,
-            parse_http_status_code,
+            http_response::parse_http_status_code,
         )
     }
 
@@ -807,7 +807,7 @@ Content-Length: {}\r\n\
             None,
             None,
         )?;
-        parse_backend_start_time(&payload)
+        http_response::parse_backend_start_time(&payload)
     }
 
     fn sanitize_auth_token(auth_token: Option<&str>) -> Option<String> {
@@ -2137,83 +2137,6 @@ fn backend_wait_timeout(packaged_mode: bool) -> Duration {
         PACKAGED_BACKEND_TIMEOUT_FALLBACK_MS,
     )
     .unwrap_or(Duration::from_millis(20_000))
-}
-
-fn parse_http_json_response(raw: &[u8]) -> Option<serde_json::Value> {
-    let (header_text, body_bytes) = parse_http_response_parts(raw)?;
-    let status_code = parse_http_status_code_from_headers(&header_text)?;
-    if !(200..300).contains(&status_code) {
-        return None;
-    }
-
-    let is_chunked = header_text.lines().any(|line| {
-        let line = line.trim().to_ascii_lowercase();
-        line.starts_with("transfer-encoding:") && line.contains("chunked")
-    });
-    let payload = if is_chunked {
-        decode_chunked_body(body_bytes)?
-    } else {
-        body_bytes.to_vec()
-    };
-
-    serde_json::from_slice(&payload).ok()
-}
-
-fn parse_http_response_parts(raw: &[u8]) -> Option<(Cow<'_, str>, &[u8])> {
-    let header_end = raw.windows(4).position(|window| window == b"\r\n\r\n")?;
-    let (header_bytes, body_bytes) = raw.split_at(header_end + 4);
-    Some((String::from_utf8_lossy(header_bytes), body_bytes))
-}
-
-fn parse_http_status_code_from_headers(header_text: &str) -> Option<u16> {
-    header_text
-        .lines()
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .and_then(|code| code.parse::<u16>().ok())
-}
-
-fn parse_http_status_code(raw: &[u8]) -> Option<u16> {
-    let (header_text, _) = parse_http_response_parts(raw)?;
-    parse_http_status_code_from_headers(&header_text)
-}
-
-fn decode_chunked_body(mut input: &[u8]) -> Option<Vec<u8>> {
-    let mut output = Vec::new();
-
-    loop {
-        let header_end = input.windows(2).position(|window| window == b"\r\n")?;
-        let chunk_size_line = std::str::from_utf8(&input[..header_end]).ok()?;
-        let chunk_size_hex = chunk_size_line.split(';').next()?.trim();
-        let chunk_size = usize::from_str_radix(chunk_size_hex, 16).ok()?;
-        input = &input[header_end + 2..];
-
-        if chunk_size == 0 {
-            return Some(output);
-        }
-        if input.len() < chunk_size + 2 {
-            return None;
-        }
-
-        output.extend_from_slice(&input[..chunk_size]);
-        if &input[chunk_size..chunk_size + 2] != b"\r\n" {
-            return None;
-        }
-        input = &input[chunk_size + 2..];
-    }
-}
-
-fn parse_backend_start_time(payload: &serde_json::Value) -> Option<i64> {
-    if payload.get("status").and_then(|value| value.as_str()) != Some("ok") {
-        return None;
-    }
-    let start_time = payload.get("data")?.get("start_time")?;
-    if let Some(value) = start_time.as_i64() {
-        return Some(value);
-    }
-    start_time
-        .as_u64()
-        .and_then(|value| i64::try_from(value).ok())
 }
 
 fn wait_for_child_exit(child: &mut Child, timeout: Duration) -> bool {
