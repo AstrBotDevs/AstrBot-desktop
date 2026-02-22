@@ -4,6 +4,7 @@ mod backend_config;
 mod backend_path;
 mod desktop_bridge;
 mod exit_cleanup;
+mod exit_events;
 mod exit_state;
 mod http_response;
 mod launch_plan;
@@ -1204,53 +1205,10 @@ fn main() {
         .expect("error while building tauri application")
         .run(|app_handle, event| match event {
             RunEvent::ExitRequested { api, .. } => {
-                let state = app_handle.state::<BackendState>();
-                if state.take_exit_request_allowance() {
-                    append_shutdown_log(
-                        "exit request allowed to pass through after backend cleanup",
-                    );
-                    return;
-                }
-                // Prevent immediate process exit so backend shutdown can run in the runtime's
-                // blocking pool; we exit explicitly after stop_backend() finishes.
-                api.prevent_exit();
-                if !exit_cleanup::try_begin_exit_cleanup(
-                    &state,
-                    exit_cleanup::ExitTrigger::ExitRequested,
-                    append_shutdown_log,
-                ) {
-                    return;
-                }
-
-                append_shutdown_log("exit requested, stopping backend asynchronously");
-                let app_handle_cloned = app_handle.clone();
-                tauri::async_runtime::spawn_blocking(move || {
-                    let state = app_handle_cloned.state::<BackendState>();
-                    exit_cleanup::stop_backend_for_exit(
-                        &state,
-                        exit_cleanup::ExitTrigger::ExitRequested,
-                        append_shutdown_log,
-                    );
-                    state.allow_next_exit_request();
-                    app_handle_cloned.exit(0);
-                });
+                exit_events::handle_exit_requested(app_handle, &api);
             }
             RunEvent::Exit => {
-                let state = app_handle.state::<BackendState>();
-                if !exit_cleanup::try_begin_exit_cleanup(
-                    &state,
-                    exit_cleanup::ExitTrigger::ExitFallback,
-                    append_shutdown_log,
-                ) {
-                    return;
-                }
-
-                append_shutdown_log("exit event triggered fallback backend cleanup");
-                exit_cleanup::stop_backend_for_exit(
-                    &state,
-                    exit_cleanup::ExitTrigger::ExitFallback,
-                    append_shutdown_log,
-                );
+                exit_events::handle_exit_event(app_handle);
             }
             _ => {}
         });

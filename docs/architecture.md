@@ -238,6 +238,14 @@ desktop bridge 模块：
 - 启动完成后主线程导航派发
 - 启动失败错误分发与退出路径
 
+### 2.28 `src-tauri/src/exit_events.rs`
+
+退出事件模块：
+
+- ExitRequested 分支编排
+- Exit fallback 分支编排
+- 退出分支与清理模块解耦
+
 ## 3. 关键流程
 
 ### 3.1 启动流程
