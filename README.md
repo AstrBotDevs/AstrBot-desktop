@@ -55,6 +55,7 @@ make help
 - Phase 3 计划：`docs/refactor-phase3-plan.md`
 - Phase 4 计划：`docs/refactor-phase4-plan.md`
 - Phase 5 计划：`docs/refactor-phase5-plan.md`
+- Phase 6 计划：`docs/refactor-phase6-plan.md`
 
 ## 常用维护命令
 

@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod app_runtime;
 mod backend_config;
+mod backend_exit_state;
 mod backend_http;
 mod backend_path;
 mod backend_process_lifecycle;
@@ -8,6 +10,7 @@ mod backend_restart;
 mod backend_runtime;
 mod backend_startup;
 mod desktop_bridge;
+mod desktop_bridge_commands;
 mod exit_cleanup;
 mod exit_events;
 mod exit_state;
@@ -45,7 +48,7 @@ use std::{
     },
     time::Duration,
 };
-use tauri::{menu::MenuItem, webview::PageLoadEvent, AppHandle, Manager, RunEvent, WindowEvent};
+use tauri::{menu::MenuItem, AppHandle, Manager};
 
 const DEFAULT_BACKEND_URL: &str = "http://127.0.0.1:6185/";
 const BACKEND_TIMEOUT_ENV: &str = "ASTRBOT_BACKEND_TIMEOUT_MS";
@@ -178,231 +181,8 @@ impl Default for BackendState {
     }
 }
 
-impl BackendState {
-    fn mark_quitting(&self) {
-        match self.exit_state.lock() {
-            Ok(mut guard) => guard.mark_quitting(),
-            Err(error) => {
-                append_desktop_log(&format!(
-                    "exit state lock poisoned when marking quitting: {error}"
-                ));
-                error.into_inner().mark_quitting();
-            }
-        }
-    }
-
-    fn is_quitting(&self) -> bool {
-        match self.exit_state.lock() {
-            Ok(guard) => guard.is_quitting(),
-            Err(error) => {
-                append_desktop_log(&format!(
-                    "exit state lock poisoned when reading quitting state: {error}"
-                ));
-                error.into_inner().is_quitting()
-            }
-        }
-    }
-
-    fn try_begin_exit_cleanup(&self) -> bool {
-        match self.exit_state.lock() {
-            Ok(mut guard) => guard.try_begin_cleanup(),
-            Err(error) => {
-                append_desktop_log(&format!(
-                    "exit state lock poisoned when beginning cleanup: {error}"
-                ));
-                error.into_inner().try_begin_cleanup()
-            }
-        }
-    }
-
-    fn allow_next_exit_request(&self) {
-        match self.exit_state.lock() {
-            Ok(mut guard) => guard.allow_next_exit_request(),
-            Err(error) => {
-                append_desktop_log(&format!(
-                    "exit state lock poisoned when allowing next exit request: {error}"
-                ));
-                error.into_inner().allow_next_exit_request();
-            }
-        }
-    }
-
-    fn take_exit_request_allowance(&self) -> bool {
-        match self.exit_state.lock() {
-            Ok(mut guard) => guard.take_exit_request_allowance(),
-            Err(error) => {
-                append_desktop_log(&format!(
-                    "exit state lock poisoned when taking exit request allowance: {error}"
-                ));
-                error.into_inner().take_exit_request_allowance()
-            }
-        }
-    }
-}
-
-#[tauri::command]
-fn desktop_bridge_is_desktop_runtime() -> bool {
-    true
-}
-
-#[tauri::command]
-fn desktop_bridge_get_backend_state(app_handle: AppHandle) -> BackendBridgeState {
-    let state = app_handle.state::<BackendState>();
-    state.bridge_state(&app_handle)
-}
-
-#[tauri::command]
-fn desktop_bridge_set_auth_token(
-    app_handle: AppHandle,
-    auth_token: Option<String>,
-) -> BackendBridgeResult {
-    let state = app_handle.state::<BackendState>();
-    state.set_restart_auth_token(auth_token.as_deref());
-    BackendBridgeResult {
-        ok: true,
-        reason: None,
-    }
-}
-
-#[tauri::command]
-async fn desktop_bridge_restart_backend(
-    app_handle: AppHandle,
-    auth_token: Option<String>,
-) -> BackendBridgeResult {
-    let state = app_handle.state::<BackendState>();
-    if restart_backend_flow::is_backend_action_in_progress(&state) {
-        return BackendBridgeResult {
-            ok: false,
-            reason: Some("Backend action already in progress.".to_string()),
-        };
-    }
-
-    restart_backend_flow::run_restart_backend_task(app_handle, auth_token).await
-}
-
-#[tauri::command]
-fn desktop_bridge_stop_backend(app_handle: AppHandle) -> BackendBridgeResult {
-    let state = app_handle.state::<BackendState>();
-    if restart_backend_flow::is_backend_action_in_progress(&state) {
-        return BackendBridgeResult {
-            ok: false,
-            reason: Some("Backend action already in progress.".to_string()),
-        };
-    }
-
-    match state.stop_backend_for_bridge() {
-        Ok(()) => BackendBridgeResult {
-            ok: true,
-            reason: None,
-        },
-        Err(error) => BackendBridgeResult {
-            ok: false,
-            reason: Some(error),
-        },
-    }
-}
-
 fn main() {
-    append_startup_log("desktop process starting");
-    append_startup_log(&format!(
-        "desktop log path: {}",
-        logging::resolve_desktop_log_path(
-            runtime_paths::default_packaged_root_dir(),
-            DESKTOP_LOG_FILE,
-        )
-        .display()
-    ));
-    tauri::Builder::default()
-        .manage(BackendState::default())
-        .invoke_handler(tauri::generate_handler![
-            desktop_bridge_is_desktop_runtime,
-            desktop_bridge_get_backend_state,
-            desktop_bridge_set_auth_token,
-            desktop_bridge_restart_backend,
-            desktop_bridge_stop_backend
-        ])
-        .on_window_event(|window, event| {
-            if window.label() != "main" {
-                return;
-            }
-
-            match event {
-                WindowEvent::CloseRequested { api, .. } => {
-                    let app_handle = window.app_handle();
-                    let state = app_handle.state::<BackendState>();
-                    if state.is_quitting() {
-                        return;
-                    }
-
-                    api.prevent_close();
-                    window_actions::hide_main_window(
-                        app_handle,
-                        DEFAULT_SHELL_LOCALE,
-                        append_desktop_log,
-                    );
-                }
-                WindowEvent::Focused(false) => {
-                    if let Ok(true) = window.is_minimized() {
-                        let app_handle = window.app_handle();
-                        let state = app_handle.state::<BackendState>();
-                        if !state.is_quitting() {
-                            window_actions::hide_main_window(
-                                app_handle,
-                                DEFAULT_SHELL_LOCALE,
-                                append_desktop_log,
-                            );
-                        }
-                    }
-                }
-                _ => {}
-            }
-        })
-        .on_page_load(|webview, payload| match payload.event() {
-            PageLoadEvent::Started => {
-                append_desktop_log(&format!("page-load started: {}", payload.url()));
-                let state = webview.app_handle().state::<BackendState>();
-                if desktop_bridge::should_inject_desktop_bridge(&state.backend_url, payload.url()) {
-                    inject_desktop_bridge(webview);
-                }
-            }
-            PageLoadEvent::Finished => {
-                append_desktop_log(&format!("page-load finished: {}", payload.url()));
-                let state = webview.app_handle().state::<BackendState>();
-                if desktop_bridge::should_inject_desktop_bridge(&state.backend_url, payload.url()) {
-                    inject_desktop_bridge(webview);
-                } else if startup_loading::should_apply_startup_loading_mode(
-                    webview.window().label(),
-                    payload.url(),
-                ) {
-                    startup_loading::apply_startup_loading_mode(
-                        webview.app_handle(),
-                        webview,
-                        STARTUP_MODE_ENV,
-                        append_startup_log,
-                    );
-                }
-            }
-        })
-        .setup(|app| {
-            let app_handle = app.handle().clone();
-            if let Err(error) = tray_setup::setup_tray(&app_handle) {
-                append_startup_log(&format!("failed to initialize tray: {error}"));
-            }
-
-            startup_task::spawn_startup_task(app_handle.clone(), append_startup_log);
-            Ok(())
-        })
-        .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(|app_handle, event| match event {
-            RunEvent::ExitRequested { api, .. } => {
-                exit_events::handle_exit_requested(app_handle, &api);
-            }
-            RunEvent::Exit => {
-                exit_events::handle_exit_event(app_handle);
-            }
-            _ => {}
-        });
+    app_runtime::run();
 }
 
 fn navigate_main_window_to_backend(app_handle: &AppHandle) -> Result<(), String> {

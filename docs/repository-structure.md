@@ -85,6 +85,12 @@
   - backend 启动计划解析、进程拉起与 readiness 轮询流程。
 - `backend_process_lifecycle.rs`
   - backend 停止、日志轮转 worker 生命周期与进程存活判定。
+- `backend_exit_state.rs`
+  - 退出状态机包装方法与锁异常日志收敛。
+- `desktop_bridge_commands.rs`
+  - desktop bridge IPC 命令定义与返回结构收敛。
+- `app_runtime.rs`
+  - Tauri builder/run 编排与窗口/页面事件挂载。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 
@@ -123,6 +129,8 @@
   - Phase 4 重构计划文档（执行参考 + 归档记录）。
 - `refactor-phase5-plan.md`
   - Phase 5 重构计划文档（执行参考 + 归档记录）。
+- `refactor-phase6-plan.md`
+  - Phase 6 重构计划文档（执行参考 + 归档记录）。
 
 ## 5. 新增代码落位规则
 

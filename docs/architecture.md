@@ -23,10 +23,10 @@
 
 入口与编排层，主要保留：
 
-- Tauri app 构建与事件挂载
-- 托盘菜单事件分发
-- 后端生命周期调度
-- 模块调用编排（不承载重逻辑纯函数）
+- 基础类型定义与共享常量（`BackendState`、`LaunchPlan` 等）
+- 进程入口（`main`）与最小运行委托（`app_runtime::run()`）
+- 跨模块复用 helper（日志写入、bridge 注入、路径覆写）
+- 模块调用编排边界定义（不承载重逻辑流程）
 
 ### 2.2 `src-tauri/src/backend_config.rs`
 
@@ -286,6 +286,30 @@ desktop bridge 模块：
 - backend graceful stop
 - backend 日志轮转 worker 启停
 - child PID 存活判定与轮转退出协同
+
+### 2.34 `src-tauri/src/backend_exit_state.rs`
+
+退出状态包装模块：
+
+- `exit_state` 锁读写包装
+- 退出流程状态方法下沉（mark/is_quitting/cleanup allow）
+- 锁异常日志语义统一
+
+### 2.35 `src-tauri/src/desktop_bridge_commands.rs`
+
+bridge 命令模块：
+
+- `desktop_bridge_*` IPC 命令定义
+- backend action 并发判定与返回结构统一
+- bridge 命令与运行编排解耦
+
+### 2.36 `src-tauri/src/app_runtime.rs`
+
+应用运行编排模块：
+
+- Tauri Builder 构建与 invoke handler 挂载
+- window/page load/setup/run 事件绑定
+- 启动日志与退出事件分支编排
 
 ## 3. 关键流程
 
