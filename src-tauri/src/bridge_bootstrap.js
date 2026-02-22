@@ -155,6 +155,173 @@
       authToken: typeof token === 'string' && token ? token : null
     });
 
+  const EXTERNAL_HTTP_PROTOCOLS = new Set(['http:', 'https:']);
+
+  const resolveExternalHttpUrl = (rawHref, allowSameOrigin = false) => {
+    const normalizedRaw =
+      typeof rawHref === 'string' ? rawHref.trim() : String(rawHref ?? '').trim();
+    if (!normalizedRaw) {
+      return null;
+    }
+
+    try {
+      const resolved = new URL(normalizedRaw, window.location.href);
+      if (!EXTERNAL_HTTP_PROTOCOLS.has(resolved.protocol)) {
+        return null;
+      }
+      if (!allowSameOrigin && resolved.origin === window.location.origin) {
+        return null;
+      }
+      return resolved.toString();
+    } catch {
+      return null;
+    }
+  };
+
+  const openExternalHttpUrl = (rawHref, allowSameOrigin = false) => {
+    const externalUrl = resolveExternalHttpUrl(rawHref, allowSameOrigin);
+    if (!externalUrl) {
+      return false;
+    }
+    void window.astrbotDesktop?.openExternalUrl?.(externalUrl);
+    return true;
+  };
+
+  const installExternalAnchorInterceptor = () => {
+    if (window.__astrbotDesktopExternalAnchorInterceptorInstalled) {
+      return;
+    }
+    window.__astrbotDesktopExternalAnchorInterceptorInstalled = true;
+
+    document.addEventListener(
+      'click',
+      (event) => {
+        if (event.defaultPrevented || event.button !== 0) {
+          return;
+        }
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+          return;
+        }
+
+        const eventPath =
+          typeof event.composedPath === 'function' ? event.composedPath() : [];
+        let anchor = null;
+        for (const node of eventPath) {
+          if (node instanceof HTMLAnchorElement) {
+            anchor = node;
+            break;
+          }
+          if (node instanceof Element) {
+            const candidate = node.closest?.('a[href]');
+            if (candidate instanceof HTMLAnchorElement) {
+              anchor = candidate;
+              break;
+            }
+          }
+        }
+        if (!anchor && event.target instanceof Element) {
+          const candidate = event.target.closest('a[href]');
+          if (candidate instanceof HTMLAnchorElement) {
+            anchor = candidate;
+          }
+        }
+        if (!(anchor instanceof HTMLAnchorElement)) {
+          return;
+        }
+        if (anchor.hasAttribute('download')) {
+          return;
+        }
+
+        const rawHref = anchor.getAttribute('href') || anchor.href || '';
+        const allowSameOrigin = anchor.target === '_blank';
+        if (!openExternalHttpUrl(rawHref, allowSameOrigin)) {
+          return;
+        }
+
+        event.preventDefault();
+      },
+      true,
+    );
+  };
+
+  const installWindowOpenBridge = () => {
+    if (window.__astrbotDesktopWindowOpenPatched) {
+      return;
+    }
+    window.__astrbotDesktopWindowOpenPatched = true;
+
+    const nativeWindowOpen =
+      typeof window.open === 'function' ? window.open.bind(window) : null;
+
+    const bridgeWindowOpen = (url, target, features) => {
+      if (target === '_self' || target === '_top' || target === '_parent') {
+        if (nativeWindowOpen) {
+          return nativeWindowOpen(url, target, features);
+        }
+        return null;
+      }
+
+      if (openExternalHttpUrl(url, true)) {
+        // Return a truthy window-like object so callers that treat null as blocked
+        // do not trigger extra fallback navigation.
+        return {
+          closed: false,
+          close: () => {},
+          focus: () => {},
+          postMessage: () => {},
+        };
+      }
+
+      if (nativeWindowOpen) {
+        return nativeWindowOpen(url, target, features);
+      }
+      return null;
+    };
+
+    try {
+      window.open = bridgeWindowOpen;
+    } catch {}
+  };
+
+  const installLocationNavigationBridge = () => {
+    if (window.__astrbotDesktopLocationBridgeInstalled) {
+      return;
+    }
+    window.__astrbotDesktopLocationBridgeInstalled = true;
+
+    const locationObject = window.location;
+    const nativeAssign =
+      typeof locationObject?.assign === 'function'
+        ? locationObject.assign.bind(locationObject)
+        : null;
+    const nativeReplace =
+      typeof locationObject?.replace === 'function'
+        ? locationObject.replace.bind(locationObject)
+        : null;
+
+    if (nativeAssign) {
+      try {
+        locationObject.assign = (url) => {
+          if (openExternalHttpUrl(url, true)) {
+            return;
+          }
+          nativeAssign(url);
+        };
+      } catch {}
+    }
+
+    if (nativeReplace) {
+      try {
+        locationObject.replace = (url) => {
+          if (openExternalHttpUrl(url, true)) {
+            return;
+          }
+          nativeReplace(url);
+        };
+      } catch {}
+    }
+  };
+
   const RUNTIME_BRIDGE_DETAIL_MAX_LENGTH = 240;
   const RUNTIME_BRIDGE_DETAIL_MAX_ITEMS = 8;
   const RUNTIME_BRIDGE_TRUE_STRINGS = new Set(['1', 'true', 'yes', 'on']);
@@ -420,6 +587,9 @@
     onTrayRestartBackend,
   };
 
+  installWindowOpenBridge();
+  installExternalAnchorInterceptor();
+  installLocationNavigationBridge();
   void listenToTrayRestartBackendEvent();
   patchLocalStorageTokenSync();
   void syncAuthToken();
