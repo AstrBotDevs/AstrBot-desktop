@@ -169,6 +169,16 @@
       console.warn(`astrbotDesktop: failed to patch ${label}`, error);
     }
   };
+  const warnExternalUrlBridgeError = (phase, url, error) => {
+    if (!IS_DEV) return;
+    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+      console.warn('[astrbotDesktop] openExternalUrl bridge failure', {
+        phase,
+        url,
+        error,
+      });
+    }
+  };
 
   const normalizeExternalHttpUrl = (rawUrl) => {
     if (rawUrl instanceof URL) {
@@ -206,10 +216,13 @@
     try {
       const bridgeResult = bridgeOpenExternalUrl(url.toString());
       if (bridgeResult && typeof bridgeResult.catch === 'function') {
-        bridgeResult.catch(() => {});
+        bridgeResult.catch((error) => {
+          warnExternalUrlBridgeError('async', url.toString(), error);
+        });
       }
       return true;
-    } catch {
+    } catch (error) {
+      warnExternalUrlBridgeError('sync', url.toString(), error);
       return false;
     }
   };
