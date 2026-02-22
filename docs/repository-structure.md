@@ -63,6 +63,8 @@
   - ExitRequested/Exit 清理流程与 stop-backend 分支封装。
 - `restart_backend_flow.rs`
   - backend 重启任务与并发判定流程封装。
+- `tray_menu_handler.rs`
+  - 托盘菜单事件动作分发与重启链路处理。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 

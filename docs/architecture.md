@@ -196,6 +196,14 @@ desktop bridge 模块：
 - 重启任务异步执行与结果归一
 - bridge 与 tray 重启入口复用
 
+### 2.23 `src-tauri/src/tray_menu_handler.rs`
+
+托盘菜单处理模块：
+
+- 菜单动作分发执行
+- tray 触发重启链路编排
+- tray quit 退出路径收敛
+
 ## 3. 关键流程
 
 ### 3.1 启动流程

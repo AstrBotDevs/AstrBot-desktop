@@ -50,3 +50,4 @@ Phase 3 进一步收敛了路径、桥接与托盘文案更新逻辑，`main.rs`
 1. 新增 Phase 4 计划文档。
 2. 抽离退出清理流程模块（`src-tauri/src/exit_cleanup.rs`），统一 `ExitRequested/Exit` 清理判定与 stop-backend 分支。
 3. 抽离重启任务流程模块（`src-tauri/src/restart_backend_flow.rs`），统一 backend action 并发判定与重启任务执行路径。
+4. 抽离托盘事件处理模块（`src-tauri/src/tray_menu_handler.rs`），将菜单动作执行流程从入口文件分离。
