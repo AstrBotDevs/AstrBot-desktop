@@ -3,7 +3,7 @@
 normalize_version() {
   local raw="${1-}"
   printf '%s' "${raw}" \
-    | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/^[vV]+//'
+    | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/^[vV]//'
 }
 
 with_version_prefix() {

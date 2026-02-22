@@ -32,10 +32,16 @@ import pathlib
 import sys
 
 try:
-    import tomllib
+    import tomllib as toml_parser
 except ModuleNotFoundError:
-    print("python3 tomllib module is required (Python 3.11+).", file=sys.stderr)
-    raise SystemExit(1)
+    try:
+        import tomli as toml_parser
+    except ModuleNotFoundError:
+        print(
+            "A TOML parser is required: Python 3.11+ (tomllib) or tomli package.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
 
 root = pathlib.Path(".")
 tauri_conf_path = root / "src-tauri" / "tauri.conf.json"
@@ -48,7 +54,7 @@ except Exception as error:
     raise SystemExit(1)
 
 try:
-    cargo_manifest = tomllib.loads(cargo_toml_path.read_text(encoding="utf-8"))
+    cargo_manifest = toml_parser.loads(cargo_toml_path.read_text(encoding="utf-8"))
 except Exception as error:
     print(f"Failed to parse {cargo_toml_path}: {error}", file=sys.stderr)
     raise SystemExit(1)
