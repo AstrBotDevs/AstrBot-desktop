@@ -270,15 +270,23 @@ desktop bridge 模块：
 - managed/unmanaged 重启策略决策
 - bridge backend state 组装
 
-### 2.32 `src-tauri/src/backend_startup.rs`
+### 2.32 `src-tauri/src/backend_launch.rs`
 
-后端启动流程模块：
+后端启动计划与拉起模块：
 
 - 启动计划解析（custom/packaged/dev）
 - 子进程启动参数与环境注入
-- readiness 轮询与超时日志
+- backend 进程拉起与日志输出重定向
 
-### 2.33 `src-tauri/src/backend_process_lifecycle.rs`
+### 2.33 `src-tauri/src/backend_readiness.rs`
+
+后端就绪探测模块：
+
+- 启动前快速探活与 auto-start 判定
+- readiness 轮询与超时控制
+- HTTP/TCP 探测结果日志收敛
+
+### 2.34 `src-tauri/src/backend_process_lifecycle.rs`
 
 后端进程生命周期模块：
 
@@ -286,7 +294,7 @@ desktop bridge 模块：
 - backend 日志轮转 worker 启停
 - child PID 存活判定与轮转退出协同
 
-### 2.34 `src-tauri/src/backend_exit_state.rs`
+### 2.35 `src-tauri/src/backend_exit_state.rs`
 
 退出状态包装模块：
 
@@ -294,7 +302,7 @@ desktop bridge 模块：
 - 退出流程状态方法下沉（mark/is_quitting/cleanup allow）
 - 锁异常日志语义统一
 
-### 2.35 `src-tauri/src/desktop_bridge_commands.rs`
+### 2.36 `src-tauri/src/desktop_bridge_commands.rs`
 
 bridge 命令模块：
 
@@ -302,7 +310,7 @@ bridge 命令模块：
 - backend action 并发判定与返回结构统一
 - bridge 命令与运行编排解耦
 
-### 2.36 `src-tauri/src/app_runtime.rs`
+### 2.37 `src-tauri/src/app_runtime.rs`
 
 应用运行编排模块：
 
@@ -310,7 +318,7 @@ bridge 命令模块：
 - window/page load/setup/run 事件绑定
 - 启动日志与退出事件分支编排
 
-### 2.37 `src-tauri/src/app_types.rs`
+### 2.38 `src-tauri/src/app_types.rs`
 
 共享类型模块：
 
@@ -318,7 +326,7 @@ bridge 命令模块：
 - `BackendBridgeState/Result` 返回结构定义
 - `AtomicFlagGuard` 与 `BackendState::default` 收敛
 
-### 2.38 `src-tauri/src/app_constants.rs`
+### 2.39 `src-tauri/src/app_constants.rs`
 
 共享常量模块：
 
@@ -326,7 +334,7 @@ bridge 命令模块：
 - 日志与托盘常量
 - 平台特定（Windows）进程创建 flags
 
-### 2.39 `src-tauri/src/app_helpers.rs`
+### 2.40 `src-tauri/src/app_helpers.rs`
 
 共享 helper 模块：
 
