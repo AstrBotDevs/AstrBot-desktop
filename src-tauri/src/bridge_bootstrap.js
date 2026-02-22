@@ -164,25 +164,26 @@
     IS_DEV && typeof console !== 'undefined' && typeof console.warn === 'function'
       ? console.warn.bind(console)
       : null;
-  const devWarnPatchError = (label, error) => {
-    if (!(error instanceof TypeError)) {
-      return false;
-    }
-    if (devWarn) devWarn(`astrbotDesktop: failed to patch ${label}`, error);
-    return true;
-  };
   const safeDefine = (obj, key, descriptor, label) => {
     try {
       Object.defineProperty(obj, key, descriptor);
     } catch (error) {
-      if (!devWarnPatchError(label, error)) throw error;
+      if (error instanceof TypeError) {
+        if (devWarn) devWarn(`astrbotDesktop: failed to patch ${label}`, error);
+        return;
+      }
+      throw error;
     }
   };
   const safeAssign = (obj, key, value, label) => {
     try {
       obj[key] = value;
     } catch (error) {
-      if (!devWarnPatchError(label, error)) throw error;
+      if (error instanceof TypeError) {
+        if (devWarn) devWarn(`astrbotDesktop: failed to patch ${label}`, error);
+        return;
+      }
+      throw error;
     }
   };
 
@@ -230,23 +231,22 @@
     }
   };
 
-  const findAnchorViaClosest = (target) => {
-    if (!(target instanceof Element) || typeof target.closest !== 'function') return null;
-    const direct = target.closest('a[href]');
-    return direct instanceof HTMLAnchorElement ? direct : null;
-  };
-  const findAnchorViaComposedPath = (event) => {
+  const findAnchorFromEvent = (event) => {
+    const target = event.target;
+    if (target instanceof Element && typeof target.closest === 'function') {
+      const direct = target.closest('a[href]');
+      if (direct instanceof HTMLAnchorElement) return direct;
+    }
     // Support anchors inside shadow DOM by walking the composed event path.
-    if (typeof event.composedPath !== 'function') return null;
-    for (const node of event.composedPath()) {
-      if (node instanceof HTMLAnchorElement && node.hasAttribute('href')) {
-        return node;
+    if (typeof event.composedPath === 'function') {
+      for (const node of event.composedPath()) {
+        if (node instanceof HTMLAnchorElement && node.hasAttribute('href')) {
+          return node;
+        }
       }
     }
     return null;
   };
-  const findAnchorFromEvent = (event) =>
-    findAnchorViaClosest(event.target) ?? findAnchorViaComposedPath(event);
 
   const patchLocationHref = (locationObject, wrapMutatorFn) => {
     const descriptor =
