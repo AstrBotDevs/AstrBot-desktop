@@ -69,6 +69,8 @@
   - 主窗口动作与托盘文案刷新联动封装。
 - `tray_setup.rs`
   - 托盘初始化、菜单构建与事件绑定。
+- `launch_plan.rs`
+  - custom/packaged/dev 启动计划构建与路径解析。
 - `bridge_bootstrap.js`
   - 注入到 WebView 的 desktop bridge 脚本模板。
 

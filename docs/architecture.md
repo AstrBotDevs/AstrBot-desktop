@@ -222,6 +222,14 @@ desktop bridge 模块：
 - tray icon 事件绑定
 - tray setup 失败错误收敛
 
+### 2.26 `src-tauri/src/launch_plan.rs`
+
+启动计划模块：
+
+- custom/packaged/dev 启动计划构建
+- 打包运行时 manifest 解析
+- 启动目录与 webui 路径策略收敛
+
 ## 3. 关键流程
 
 ### 3.1 启动流程
