@@ -527,16 +527,15 @@ jobs:
                   map(select(type == "array"))
                   | flatten
                   | map(
-                      select(
-                        .prerelease == true
-                        and .draft == false
-                        and .tag_name != $current_tag
-                        and (
-                          (.tag_name | ascii_downcase) == "nightly"
-                          or (.tag_name | ascii_downcase | contains("-nightly"))
-                          or (.tag_name | ascii_downcase | contains(".nightly"))
+                      (.tag_name // "") as $tag
+                      | select(
+                          .prerelease == true
+                          and .draft == false
+                          and .tag_name != $current_tag
+                          # Match nightly-like tags in a case-insensitive way:
+                          # nightly, *-nightly*, *.nightly*, etc.
+                          and ($tag | test("(^|[-.])nightly([-.]|$)"; "i"))
                         )
-                      )
                     )
                   | sort_by(.published_at // .created_at)
                   | reverse
