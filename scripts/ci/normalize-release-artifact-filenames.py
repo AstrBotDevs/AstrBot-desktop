@@ -27,7 +27,11 @@ LOCALE_PATTERN = r"[A-Za-z0-9-]+"
 LINUX_ARTIFACT_STEM_PATTERN = re.compile(
     rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?:linux_)?(?P<arch>{ARCH_PATTERN})$"
 )
-WINDOWS_ARTIFACT_STEM_PATTERN = (
+LINUX_CANONICAL_RULE: tuple[re.Pattern[str], str] = (
+    LINUX_ARTIFACT_STEM_PATTERN,
+    "AstrBot_{version}_linux_{arch}",
+)
+WINDOWS_ARTIFACT_STEM_PATTERN_FRAGMENT = (
     rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?:windows_)?(?P<arch>{ARCH_PATTERN})"
 )
 
@@ -39,21 +43,15 @@ CANONICALIZE_RULES: dict[str, tuple[tuple[re.Pattern[str], str], ...]] = {
             ),
             "AstrBot_{version}_linux_{arch}",
         ),
-        (
-            LINUX_ARTIFACT_STEM_PATTERN,
-            "AstrBot_{version}_linux_{arch}",
-        ),
+        LINUX_CANONICAL_RULE,
     ),
     ".deb": (
-        (
-            LINUX_ARTIFACT_STEM_PATTERN,
-            "AstrBot_{version}_linux_{arch}",
-        ),
+        LINUX_CANONICAL_RULE,
     ),
     ".exe": (
         (
             re.compile(
-                rf"{WINDOWS_ARTIFACT_STEM_PATTERN}(?:-setup|_setup)$"
+                rf"{WINDOWS_ARTIFACT_STEM_PATTERN_FRAGMENT}(?:-setup|_setup)$"
             ),
             "AstrBot_{version}_windows_{arch}_setup",
         ),
@@ -61,7 +59,7 @@ CANONICALIZE_RULES: dict[str, tuple[tuple[re.Pattern[str], str], ...]] = {
     ".msi": (
         (
             re.compile(
-                rf"{WINDOWS_ARTIFACT_STEM_PATTERN}_(?P<locale>{LOCALE_PATTERN})$"
+                rf"{WINDOWS_ARTIFACT_STEM_PATTERN_FRAGMENT}_(?P<locale>{LOCALE_PATTERN})$"
             ),
             "AstrBot_{version}_windows_{arch}_{locale}",
         ),
