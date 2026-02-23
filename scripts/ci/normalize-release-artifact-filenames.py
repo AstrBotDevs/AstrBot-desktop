@@ -22,8 +22,13 @@ VERSION_PATTERN = r"[0-9A-Za-z.+-]+"
 ARCH_PATTERN = r"[A-Za-z0-9_]+"
 LOCALE_PATTERN = r"[A-Za-z0-9-]+"
 
+# Intentionally match both legacy names (`AstrBot_<version>_<arch>`) and
+# canonical names (`AstrBot_<version>_linux_<arch>`).
 LINUX_ARTIFACT_STEM_PATTERN = re.compile(
     rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?:linux_)?(?P<arch>{ARCH_PATTERN})$"
+)
+WINDOWS_ARTIFACT_STEM_PATTERN = (
+    rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?:windows_)?(?P<arch>{ARCH_PATTERN})"
 )
 
 CANONICALIZE_RULES: dict[str, tuple[tuple[re.Pattern[str], str], ...]] = {
@@ -48,7 +53,7 @@ CANONICALIZE_RULES: dict[str, tuple[tuple[re.Pattern[str], str], ...]] = {
     ".exe": (
         (
             re.compile(
-                rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?:windows_)?(?P<arch>{ARCH_PATTERN})(?:-setup|_setup)$"
+                rf"{WINDOWS_ARTIFACT_STEM_PATTERN}(?:-setup|_setup)$"
             ),
             "AstrBot_{version}_windows_{arch}_setup",
         ),
@@ -56,7 +61,7 @@ CANONICALIZE_RULES: dict[str, tuple[tuple[re.Pattern[str], str], ...]] = {
     ".msi": (
         (
             re.compile(
-                rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?:windows_)?(?P<arch>{ARCH_PATTERN})_(?P<locale>{LOCALE_PATTERN})$"
+                rf"{WINDOWS_ARTIFACT_STEM_PATTERN}_(?P<locale>{LOCALE_PATTERN})$"
             ),
             "AstrBot_{version}_windows_{arch}_{locale}",
         ),
