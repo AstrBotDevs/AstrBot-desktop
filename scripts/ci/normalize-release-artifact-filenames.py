@@ -28,33 +28,37 @@ CANONICALIZE_RULES: dict[str, tuple[tuple[re.Pattern[str], str], ...]] = {
             re.compile(
                 rf"^AstrBot-(?P<version>{VERSION_PATTERN})-\d+\.(?P<arch>{ARCH_PATTERN})$"
             ),
-            "AstrBot_{version}_{arch}",
+            "AstrBot_{version}_linux_{arch}",
         ),
         (
-            re.compile(rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?P<arch>{ARCH_PATTERN})$"),
-            "AstrBot_{version}_{arch}",
+            re.compile(
+                rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?:(?:linux)_)?(?P<arch>{ARCH_PATTERN})$"
+            ),
+            "AstrBot_{version}_linux_{arch}",
         ),
     ),
     ".deb": (
         (
-            re.compile(rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?P<arch>{ARCH_PATTERN})$"),
-            "AstrBot_{version}_{arch}",
+            re.compile(
+                rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?:(?:linux)_)?(?P<arch>{ARCH_PATTERN})$"
+            ),
+            "AstrBot_{version}_linux_{arch}",
         ),
     ),
     ".exe": (
         (
             re.compile(
-                rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?P<arch>{ARCH_PATTERN})(?:-setup|_setup)$"
+                rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?:(?:windows)_)?(?P<arch>{ARCH_PATTERN})(?:-setup|_setup)$"
             ),
-            "AstrBot_{version}_{arch}_setup",
+            "AstrBot_{version}_windows_{arch}_setup",
         ),
     ),
     ".msi": (
         (
             re.compile(
-                rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?P<arch>{ARCH_PATTERN})_(?P<locale>{LOCALE_PATTERN})$"
+                rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?:(?:windows)_)?(?P<arch>{ARCH_PATTERN})_(?P<locale>{LOCALE_PATTERN})$"
             ),
-            "AstrBot_{version}_{arch}_{locale}",
+            "AstrBot_{version}_windows_{arch}_{locale}",
         ),
     ),
     ".zip": (
