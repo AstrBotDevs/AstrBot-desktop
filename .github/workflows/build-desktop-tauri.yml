@@ -526,7 +526,18 @@ jobs:
                   # gh --paginate emits one JSON value per page; keep array pages and flatten.
                   map(select(type == "array"))
                   | flatten
-                  | map(select(.prerelease == true and .draft == false and .tag_name != $current_tag))
+                  | map(
+                      select(
+                        .prerelease == true
+                        and .draft == false
+                        and .tag_name != $current_tag
+                        and (
+                          (.tag_name | ascii_downcase) == "nightly"
+                          or (.tag_name | ascii_downcase | contains("-nightly"))
+                          or (.tag_name | ascii_downcase | contains(".nightly"))
+                        )
+                      )
+                    )
                   | sort_by(.published_at // .created_at)
                   | reverse
                   | .[0].id // empty
