@@ -3,8 +3,6 @@
 set -euo pipefail
 
 DEFAULT_NIGHTLY_UTC_HOUR='3'
-# Canonical fallback nightly cron used when workflow/env does not provide one.
-DEFAULT_NIGHTLY_SCHEDULE_CRON='7 3 * * *'
 DEFAULT_LS_REMOTE_RETRY_ATTEMPTS='3'
 DEFAULT_LS_REMOTE_RETRY_SLEEP_SECONDS='2'
 
@@ -53,8 +51,8 @@ normalize_cron_expression() {
   local minute hour dom month dow
   minute="$(normalize_cron_field "${parts[0]}")"
   hour="$(normalize_cron_field "${parts[1]}")"
-  dom="${parts[2]}"
-  month="${parts[3]}"
+  dom="$(normalize_cron_field "${parts[2]}")"
+  month="$(normalize_cron_field "${parts[3]}")"
   dow="${parts[4]}"
   printf '%s %s %s %s %s\n' "${minute}" "${hour}" "${dom}" "${month}" "${dow}"
 }
@@ -128,7 +126,7 @@ git_ls_remote_with_retry() {
 source_git_url="${ASTRBOT_SOURCE_GIT_URL}"
 source_git_ref="${ASTRBOT_SOURCE_GIT_REF}"
 nightly_source_git_ref="${ASTRBOT_NIGHTLY_SOURCE_GIT_REF:-master}"
-nightly_schedule_cron="${ASTRBOT_NIGHTLY_SCHEDULE_CRON:-${DEFAULT_NIGHTLY_SCHEDULE_CRON}}"
+nightly_schedule_cron="${ASTRBOT_NIGHTLY_SCHEDULE_CRON:-}"
 nightly_utc_hour="${ASTRBOT_NIGHTLY_UTC_HOUR:-${DEFAULT_NIGHTLY_UTC_HOUR}}"
 event_schedule_raw="${GITHUB_EVENT_SCHEDULE:-}"
 # When WORKFLOW_BUILD_MODE is unset, we intentionally default to different modes
@@ -215,7 +213,7 @@ case "${GITHUB_EVENT_NAME}" in
   schedule)
     publish_release="true"
     if [ "${requested_build_mode}" = "auto" ]; then
-      if [ -n "${event_schedule_raw}" ]; then
+      if [ -n "${event_schedule_raw}" ] && [ -n "${nightly_schedule_cron}" ]; then
         if cron_expressions_match "${event_schedule_raw}" "${nightly_schedule_cron}"; then
           build_mode="nightly"
           echo "::notice::schedule build_mode=auto resolved to nightly via cron '${event_schedule_raw}' (target nightly cron '${nightly_schedule_cron}')."
@@ -225,7 +223,10 @@ case "${GITHUB_EVENT_NAME}" in
         fi
       else
         # Compatibility fallback for environments where github.event.schedule
-        # is unavailable: keep previous hour-based routing.
+        # or ASTRBOT_NIGHTLY_SCHEDULE_CRON is unset: keep previous hour-based routing.
+        if [ -n "${event_schedule_raw}" ] && [ -z "${nightly_schedule_cron}" ]; then
+          echo "::warning::ASTRBOT_NIGHTLY_SCHEDULE_CRON is empty; falling back to hour-based schedule routing."
+        fi
         current_utc_hour="$(date -u +%H)"
         if [ "${current_utc_hour}" = "${nightly_utc_hour_padded}" ]; then
           build_mode="nightly"
