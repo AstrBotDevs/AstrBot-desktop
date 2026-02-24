@@ -27,7 +27,10 @@ on:
           - tag-poll
           - nightly
   schedule:
-    - cron: '0 * * * *'
+    # Hourly tag-poll (exclude the dedicated nightly window at 03:xx UTC).
+    - cron: '0 0-2,4-23 * * *'
+    # Dedicated daily nightly build.
+    - cron: '7 3 * * *'
 
 permissions:
   contents: read
@@ -36,6 +39,7 @@ env:
   ASTRBOT_SOURCE_GIT_URL: ${{ vars.ASTRBOT_SOURCE_GIT_URL || 'https://github.com/AstrBotDevs/AstrBot.git' }}
   ASTRBOT_SOURCE_GIT_REF: ${{ vars.ASTRBOT_SOURCE_GIT_REF || 'master' }}
   ASTRBOT_NIGHTLY_SOURCE_GIT_REF: ${{ vars.ASTRBOT_NIGHTLY_SOURCE_GIT_REF || 'master' }}
+  ASTRBOT_NIGHTLY_SCHEDULE_CRON: '7 3 * * *'
   ASTRBOT_NIGHTLY_UTC_HOUR: ${{ vars.ASTRBOT_NIGHTLY_UTC_HOUR || '3' }}
 
 jobs:
@@ -74,7 +78,9 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GH_REPOSITORY: ${{ github.repository }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule || '' }}
           ASTRBOT_NIGHTLY_SOURCE_GIT_REF: ${{ env.ASTRBOT_NIGHTLY_SOURCE_GIT_REF }}
+          ASTRBOT_NIGHTLY_SCHEDULE_CRON: ${{ env.ASTRBOT_NIGHTLY_SCHEDULE_CRON }}
           ASTRBOT_NIGHTLY_UTC_HOUR: ${{ env.ASTRBOT_NIGHTLY_UTC_HOUR }}
         run: bash scripts/ci/resolve-build-context.sh
 

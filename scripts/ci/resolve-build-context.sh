@@ -3,6 +3,7 @@
 set -euo pipefail
 
 DEFAULT_NIGHTLY_UTC_HOUR='3'
+DEFAULT_NIGHTLY_SCHEDULE_CRON='7 3 * * *'
 DEFAULT_LS_REMOTE_RETRY_ATTEMPTS='3'
 DEFAULT_LS_REMOTE_RETRY_SLEEP_SECONDS='2'
 
@@ -84,7 +85,9 @@ git_ls_remote_with_retry() {
 source_git_url="${ASTRBOT_SOURCE_GIT_URL}"
 source_git_ref="${ASTRBOT_SOURCE_GIT_REF}"
 nightly_source_git_ref="${ASTRBOT_NIGHTLY_SOURCE_GIT_REF:-master}"
+nightly_schedule_cron="${ASTRBOT_NIGHTLY_SCHEDULE_CRON:-${DEFAULT_NIGHTLY_SCHEDULE_CRON}}"
 nightly_utc_hour="${ASTRBOT_NIGHTLY_UTC_HOUR:-${DEFAULT_NIGHTLY_UTC_HOUR}}"
+event_schedule_raw="${GITHUB_EVENT_SCHEDULE:-}"
 # When WORKFLOW_BUILD_MODE is unset, we intentionally default to different modes
 # based on the triggering event:
 # - "nightly" for workflow_dispatch events (manual nightly intent)
@@ -168,23 +171,35 @@ case "${GITHUB_EVENT_NAME}" in
     ;;
   schedule)
     publish_release="true"
-    current_utc_hour="$(date -u +%H)"
     if [ "${requested_build_mode}" = "auto" ]; then
-      if [ "${current_utc_hour}" = "${nightly_utc_hour_padded}" ]; then
-        build_mode="nightly"
-        echo "::notice::schedule build_mode=auto resolved to nightly at UTC hour ${current_utc_hour}."
+      if [ -n "${event_schedule_raw}" ]; then
+        if [ "${event_schedule_raw}" = "${nightly_schedule_cron}" ]; then
+          build_mode="nightly"
+          echo "::notice::schedule build_mode=auto resolved to nightly via cron '${event_schedule_raw}'."
+        else
+          build_mode="tag-poll"
+          echo "::notice::schedule build_mode=auto resolved to tag-poll via cron '${event_schedule_raw}' (nightly cron '${nightly_schedule_cron}')."
+        fi
       else
-        build_mode="tag-poll"
-        echo "::notice::schedule build_mode=auto resolved to tag-poll at UTC hour ${current_utc_hour} (nightly hour ${nightly_utc_hour_padded})."
+        # Compatibility fallback for environments where github.event.schedule
+        # is unavailable: keep previous hour-based routing.
+        current_utc_hour="$(date -u +%H)"
+        if [ "${current_utc_hour}" = "${nightly_utc_hour_padded}" ]; then
+          build_mode="nightly"
+          echo "::notice::schedule build_mode=auto resolved to nightly at UTC hour ${current_utc_hour} (fallback routing)."
+        else
+          build_mode="tag-poll"
+          echo "::notice::schedule build_mode=auto resolved to tag-poll at UTC hour ${current_utc_hour} (nightly hour ${nightly_utc_hour_padded}, fallback routing)."
+        fi
       fi
     else
       build_mode="${requested_build_mode}"
       echo "::notice::schedule run using explicit WORKFLOW_BUILD_MODE=${build_mode}."
     fi
     if [ "${build_mode}" = "nightly" ]; then
-      echo "Scheduled nightly run at UTC hour ${current_utc_hour}."
+      echo "Scheduled nightly run selected."
     elif [ "${build_mode}" = "tag-poll" ]; then
-      echo "Scheduled tag polling run at UTC hour ${current_utc_hour}."
+      echo "Scheduled tag polling run selected."
     fi
     ;;
   *)
