@@ -3,6 +3,7 @@
 set -euo pipefail
 
 DEFAULT_NIGHTLY_UTC_HOUR='3'
+# Canonical fallback nightly cron used when workflow/env does not provide one.
 DEFAULT_NIGHTLY_SCHEDULE_CRON='7 3 * * *'
 DEFAULT_LS_REMOTE_RETRY_ATTEMPTS='3'
 DEFAULT_LS_REMOTE_RETRY_SLEEP_SECONDS='2'
@@ -21,6 +22,48 @@ is_transient_git_error() {
   local message="$1"
   printf '%s' "${message}" | grep -Eiq \
     '(Could not resolve host|Failed to connect|Connection (timed out|reset|refused)|Operation timed out|Temporary failure|TLS|SSL|HTTP [0-9]*5[0-9]{2}|The requested URL returned error: 5[0-9]{2}|network is unreachable)'
+}
+
+normalize_cron_field() {
+  local field="$1"
+  if printf '%s' "${field}" | grep -Eq '^[0-9]+$'; then
+    printf '%d' "${field}"
+    return 0
+  fi
+  printf '%s' "${field}"
+}
+
+normalize_cron_expression() {
+  local raw="$1"
+  local normalized
+  local -a parts
+  normalized="$(printf '%s' "${raw}" | tr -s '[:space:]' ' ' | sed -e 's/^ *//' -e 's/ *$//')"
+
+  if [ -z "${normalized}" ]; then
+    printf '\n'
+    return 0
+  fi
+
+  IFS=' ' read -r -a parts <<< "${normalized}"
+  if [ "${#parts[@]}" -ne 5 ]; then
+    printf '%s\n' "${normalized}"
+    return 0
+  fi
+
+  local minute hour dom month dow
+  minute="$(normalize_cron_field "${parts[0]}")"
+  hour="$(normalize_cron_field "${parts[1]}")"
+  dom="${parts[2]}"
+  month="${parts[3]}"
+  dow="${parts[4]}"
+  printf '%s %s %s %s %s\n' "${minute}" "${hour}" "${dom}" "${month}" "${dow}"
+}
+
+cron_expressions_match() {
+  local left right
+  left="$(normalize_cron_expression "$1")"
+  right="$(normalize_cron_expression "$2")"
+  [ -n "${left}" ] && [ -n "${right}" ] && [ "${left}" = "${right}" ]
 }
 
 sanitize_positive_int() {
@@ -173,12 +216,12 @@ case "${GITHUB_EVENT_NAME}" in
     publish_release="true"
     if [ "${requested_build_mode}" = "auto" ]; then
       if [ -n "${event_schedule_raw}" ]; then
-        if [ "${event_schedule_raw}" = "${nightly_schedule_cron}" ]; then
+        if cron_expressions_match "${event_schedule_raw}" "${nightly_schedule_cron}"; then
           build_mode="nightly"
-          echo "::notice::schedule build_mode=auto resolved to nightly via cron '${event_schedule_raw}'."
+          echo "::notice::schedule build_mode=auto resolved to nightly via cron '${event_schedule_raw}' (target nightly cron '${nightly_schedule_cron}')."
         else
           build_mode="tag-poll"
-          echo "::notice::schedule build_mode=auto resolved to tag-poll via cron '${event_schedule_raw}' (nightly cron '${nightly_schedule_cron}')."
+          echo "::notice::schedule build_mode=auto resolved to tag-poll via cron '${event_schedule_raw}' (target nightly cron '${nightly_schedule_cron}')."
         fi
       else
         # Compatibility fallback for environments where github.event.schedule
