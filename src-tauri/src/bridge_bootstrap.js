@@ -32,18 +32,21 @@
     return;
   }
 
-  const invoke =
+  const resolveInvoke = () =>
     window.__TAURI_INTERNALS__?.invoke ||
-    window.__TAURI__?.core?.invoke;
-  const transformCallback = window.__TAURI_INTERNALS__?.transformCallback;
-  const tauriEvent = window.__TAURI_INTERNALS__?.event ?? window.__TAURI__?.event;
-  if (typeof invoke !== 'function') {
+    window.__TAURI__?.core?.invoke ||
+    null;
+  const resolveTransformCallback = () =>
+    window.__TAURI_INTERNALS__?.transformCallback || null;
+  const resolveTauriEvent = () =>
+    window.__TAURI_INTERNALS__?.event ?? window.__TAURI__?.event ?? null;
+
+  if (typeof resolveInvoke() !== 'function') {
     if (typeof console !== 'undefined' && typeof console.warn === 'function') {
       console.warn(
-        '[astrbotDesktop] bridge bootstrap skipped: tauri invoke is unavailable',
+        '[astrbotDesktop] tauri invoke unavailable during bootstrap; bridge will run in degraded mode until invoke is available.',
       );
     }
-    return;
   }
 
   const BRIDGE_COMMANDS = Object.freeze({
@@ -60,6 +63,10 @@
   const TRAY_RESTART_BACKEND_EVENT = '{TRAY_RESTART_BACKEND_EVENT}';
 
   const invokeBridge = async (command, payload = {}) => {
+    const invoke = resolveInvoke();
+    if (typeof invoke !== 'function') {
+      return { ok: false, reason: 'Tauri invoke is unavailable.' };
+    }
     try {
       return await invoke(command, payload);
     } catch (error) {
@@ -68,10 +75,15 @@
   };
 
   const createLegacyEventListener = async (eventName, handler) => {
+    const transformCallback = resolveTransformCallback();
     if (typeof transformCallback !== 'function') {
       throw new Error(
         'No supported Tauri event listener API: expected tauriEvent.listen or __TAURI_INTERNALS__.invoke + transformCallback'
       );
+    }
+    const invoke = resolveInvoke();
+    if (typeof invoke !== 'function') {
+      throw new Error('No supported Tauri invoke API for legacy event listener.');
     }
 
     let eventId;
@@ -99,6 +111,7 @@
   };
 
   const createEventListener = async (eventName, handler) => {
+    const tauriEvent = resolveTauriEvent();
     if (typeof tauriEvent?.listen === 'function') {
       return tauriEvent.listen(eventName, handler);
     }
