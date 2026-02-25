@@ -24,8 +24,14 @@ if [ -z "${bundles}" ]; then
   exit 1
 fi
 
+tauri_config_path="${ASTRBOT_TAURI_CONFIG_PATH:-}"
+tauri_build_args=(--bundles "${bundles}")
+if [ -n "${tauri_config_path}" ]; then
+  tauri_build_args=(--config "${tauri_config_path}" "${tauri_build_args[@]}")
+fi
+
 echo "Building Windows installers with bundles: ${bundles}"
 (
   cd "${root_dir}"
-  cargo tauri build --bundles "${bundles}"
+  cargo tauri build "${tauri_build_args[@]}"
 )

@@ -247,7 +247,11 @@ pub(crate) async fn desktop_bridge_install_desktop_app_update(
     append_desktop_log(&format!(
         "desktop app update installed to version {target_version}; restarting app"
     ));
-    app_handle.restart();
+    app_handle.request_restart();
+    BackendBridgeResult {
+        ok: true,
+        reason: None,
+    }
 }
 
 #[tauri::command]

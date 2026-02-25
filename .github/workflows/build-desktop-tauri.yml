@@ -47,6 +47,9 @@ env:
   # build outputs will include signed updater bundles and *.sig files.
   TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
   TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+  # Default updater source points to upstream release latest.json; can be overridden per repo/fork.
+  ASTRBOT_UPDATER_ENDPOINT: ${{ vars.ASTRBOT_UPDATER_ENDPOINT || 'https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest/download/latest.json' }}
+  ASTRBOT_UPDATER_PUBKEY: ${{ vars.ASTRBOT_UPDATER_PUBKEY || '' }}
 
 jobs:
   resolve_build_context:
@@ -200,6 +203,20 @@ jobs:
         with:
           astrbot_version: ${{ steps.desktop_version.outputs.normalized }}
 
+      - name: Prepare Tauri build config (Linux)
+        env:
+          ASTRBOT_UPDATER_ENDPOINT: ${{ env.ASTRBOT_UPDATER_ENDPOINT }}
+          ASTRBOT_UPDATER_PUBKEY: ${{ env.ASTRBOT_UPDATER_PUBKEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          config_path="src-tauri/tauri.build.config.json"
+          python3 scripts/ci/render-tauri-build-config.py \
+            --output "${config_path}" \
+            --updater-endpoint "${ASTRBOT_UPDATER_ENDPOINT}" \
+            --updater-pubkey "${ASTRBOT_UPDATER_PUBKEY}"
+          echo "ASTRBOT_TAURI_CONFIG_PATH=${config_path}" >> "${GITHUB_ENV}"
+
       - name: Build desktop installers (Linux)
         env:
           ASTRBOT_SOURCE_GIT_URL: ${{ needs.resolve_build_context.outputs.source_git_url }}
@@ -208,7 +225,7 @@ jobs:
           ASTRBOT_LINUX_BUNDLES: ${{ env.ASTRBOT_LINUX_BUNDLES }}
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
-        run: cargo tauri build --bundles "${ASTRBOT_LINUX_BUNDLES}"
+        run: cargo tauri build --config "${ASTRBOT_TAURI_CONFIG_PATH}" --bundles "${ASTRBOT_LINUX_BUNDLES}"
 
       - name: Collect Linux updater artifacts (if any)
         env:
@@ -298,6 +315,20 @@ jobs:
             --override-source "env:ASTRBOT_MACOS_APP_BUNDLE_NAME" \
             --github-output "${GITHUB_OUTPUT}"
 
+      - name: Prepare Tauri build config (macOS)
+        env:
+          ASTRBOT_UPDATER_ENDPOINT: ${{ env.ASTRBOT_UPDATER_ENDPOINT }}
+          ASTRBOT_UPDATER_PUBKEY: ${{ env.ASTRBOT_UPDATER_PUBKEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          config_path="src-tauri/tauri.build.config.json"
+          python3 scripts/ci/render-tauri-build-config.py \
+            --output "${config_path}" \
+            --updater-endpoint "${ASTRBOT_UPDATER_ENDPOINT}" \
+            --updater-pubkey "${ASTRBOT_UPDATER_PUBKEY}"
+          echo "ASTRBOT_TAURI_CONFIG_PATH=${config_path}" >> "${GITHUB_ENV}"
+
       - name: Build desktop app bundle (macOS)
         env:
           ASTRBOT_SOURCE_GIT_URL: ${{ needs.resolve_build_context.outputs.source_git_url }}
@@ -341,7 +372,7 @@ jobs:
 
           for attempt in $(seq 1 "${max_attempts}"); do
             build_log="$(mktemp -t tauri-macos-build.XXXXXX.log)"
-            if cargo tauri build --verbose --target ${{ matrix.target }} --bundles app 2>&1 | tee "${build_log}"; then
+            if cargo tauri build --verbose --config "${ASTRBOT_TAURI_CONFIG_PATH}" --target ${{ matrix.target }} --bundles app 2>&1 | tee "${build_log}"; then
               rm -f "${build_log}" || true
               break
             fi
@@ -459,6 +490,20 @@ jobs:
         uses: ./.github/actions/sync-desktop-version
         with:
           astrbot_version: ${{ steps.desktop_version.outputs.normalized }}
+
+      - name: Prepare Tauri build config (Windows)
+        env:
+          ASTRBOT_UPDATER_ENDPOINT: ${{ env.ASTRBOT_UPDATER_ENDPOINT }}
+          ASTRBOT_UPDATER_PUBKEY: ${{ env.ASTRBOT_UPDATER_PUBKEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          config_path="src-tauri/tauri.build.config.json"
+          python3 scripts/ci/render-tauri-build-config.py \
+            --output "${config_path}" \
+            --updater-endpoint "${ASTRBOT_UPDATER_ENDPOINT}" \
+            --updater-pubkey "${ASTRBOT_UPDATER_PUBKEY}"
+          echo "ASTRBOT_TAURI_CONFIG_PATH=${config_path}" >> "${GITHUB_ENV}"
 
       - name: Build desktop installers (Windows)
         env:

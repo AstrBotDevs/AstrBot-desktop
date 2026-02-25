@@ -15,13 +15,21 @@ RUST_MANIFEST ?= src-tauri/Cargo.toml
 NODE_MODULES_DIR ?= node_modules
 PNPM_STORE_DIR ?= .pnpm-store
 TAURI_TARGET_DIR ?= src-tauri/target
+TAURI_BUILD_CONFIG ?= src-tauri/tauri.build.config.json
+TAURI_SIGNING_PRIVATE_KEY_OUT ?= $(HOME)/.tauri/astrbot.key
+ASTRBOT_UPDATER_ENDPOINT ?= https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest/download/latest.json
+ASTRBOT_UPDATER_PUBKEY ?=
+ASTRBOT_UPDATER_PUBKEY_FILE ?=
+ASTRBOT_ENABLE_UPDATER_ARTIFACTS ?= 1
+ASTRBOT_TAURI_BUNDLES ?=
 # Single source of env keys managed by `make clean-env`.
 # If build/resource scripts start consuming a new persistent env var, add it here.
-ASTRBOT_ENV_KEYS := ASTRBOT_SOURCE_DIR ASTRBOT_SOURCE_GIT_URL ASTRBOT_SOURCE_GIT_REF ASTRBOT_DESKTOP_VERSION ASTRBOT_BUILD_SOURCE_DIR
+ASTRBOT_ENV_KEYS := ASTRBOT_SOURCE_DIR ASTRBOT_SOURCE_GIT_URL ASTRBOT_SOURCE_GIT_REF ASTRBOT_DESKTOP_VERSION ASTRBOT_BUILD_SOURCE_DIR ASTRBOT_UPDATER_ENDPOINT ASTRBOT_UPDATER_PUBKEY ASTRBOT_UPDATER_PUBKEY_FILE ASTRBOT_ENABLE_UPDATER_ARTIFACTS ASTRBOT_TAURI_BUNDLES TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PATH TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 # Hash of ASTRBOT_ENV_KEYS for stale reset-script detection in `make clean-env`.
 ASTRBOT_ENV_KEYS_HASH := $(shell (printf '%s\n' "$(ASTRBOT_ENV_KEYS)" | shasum -a 256 2>/dev/null || printf '%s\n' "$(ASTRBOT_ENV_KEYS)" | sha256sum 2>/dev/null || printf '%s\n' "$(ASTRBOT_ENV_KEYS)" | cksum 2>/dev/null) | awk '{print $$1}' | head -n 1)
 
 .PHONY: help deps sync-version update prepare-webui prepare-backend prepare-resources dev build \
+	signing-key render-tauri-config build-signed \
 	prepare rebuild lint test doctor prune size clean clean-rust clean-resources \
 	clean-vendor-local clean-vendor clean-node clean-env clean-all
 
@@ -38,6 +46,12 @@ help:
 	@echo "  make dev                Run Tauri dev"
 	@echo "  make build              Run Tauri build"
 	@echo "                          (set ASTRBOT_SOURCE_DIR=... or ASTRBOT_BUILD_SOURCE_DIR=...)"
+	@echo "  make signing-key        Generate updater signing key pair"
+	@echo "                          (TAURI_SIGNING_PRIVATE_KEY_OUT=$(TAURI_SIGNING_PRIVATE_KEY_OUT))"
+	@echo "  make render-tauri-config Generate temporary tauri build override config"
+	@echo "                          (ASTRBOT_UPDATER_ENDPOINT / ASTRBOT_UPDATER_PUBKEY / ASTRBOT_UPDATER_PUBKEY_FILE)"
+	@echo "  make build-signed       Build with --config $(TAURI_BUILD_CONFIG)"
+	@echo "                          (optional ASTRBOT_TAURI_BUNDLES=deb,rpm,appimage)"
 	@echo "  make rebuild            Clean and build"
 	@echo "  make lint               Run formatting and clippy checks"
 	@echo "  make test               Run Rust + script behavior tests"
@@ -103,6 +117,51 @@ build:
 		export ASTRBOT_SOURCE_DIR="$$build_source_dir"; \
 	fi; \
 	pnpm run build
+
+signing-key:
+	cargo tauri signer generate -w "$(TAURI_SIGNING_PRIVATE_KEY_OUT)"
+
+render-tauri-config:
+	@set -e; \
+	updater_pubkey="$(ASTRBOT_UPDATER_PUBKEY)"; \
+	if [ -z "$$updater_pubkey" ] && [ -n "$(ASTRBOT_UPDATER_PUBKEY_FILE)" ]; then \
+		updater_pubkey="$$(cat "$(ASTRBOT_UPDATER_PUBKEY_FILE)")"; \
+	fi; \
+	disable_flag=""; \
+	case "$(ASTRBOT_ENABLE_UPDATER_ARTIFACTS)" in \
+		0|false|False|FALSE|no|No|NO|off|Off|OFF) disable_flag="--disable-updater-artifacts" ;; \
+	esac; \
+	python3 scripts/ci/render-tauri-build-config.py \
+		--output "$(TAURI_BUILD_CONFIG)" \
+		--updater-endpoint "$(ASTRBOT_UPDATER_ENDPOINT)" \
+		--updater-pubkey "$$updater_pubkey" \
+		$$disable_flag
+
+build-signed: render-tauri-config
+	@set -e; \
+	build_version="$(ASTRBOT_DESKTOP_VERSION)"; \
+	build_source_dir="$(ASTRBOT_BUILD_SOURCE_DIR)"; \
+	if [ -z "$$build_source_dir" ]; then \
+		build_source_dir="$(ASTRBOT_SOURCE_DIR)"; \
+	fi; \
+	if [ -z "$$build_version" ]; then \
+		build_version="$$(node -e "console.log(require('./package.json').version)")"; \
+	fi; \
+	if [ -n "$$build_source_dir" ]; then \
+		echo "Using build source dir: $$build_source_dir"; \
+	fi; \
+	echo "Build resource source dir: $${build_source_dir:-<auto vendor from git ref>}"; \
+	export ASTRBOT_SOURCE_GIT_URL="$(ASTRBOT_SOURCE_GIT_URL)"; \
+	export ASTRBOT_SOURCE_GIT_REF="$(ASTRBOT_SOURCE_GIT_REF)"; \
+	export ASTRBOT_DESKTOP_VERSION="$$build_version"; \
+	if [ -n "$$build_source_dir" ]; then \
+		export ASTRBOT_SOURCE_DIR="$$build_source_dir"; \
+	fi; \
+	build_cmd="cargo tauri build --config $(TAURI_BUILD_CONFIG)"; \
+	if [ -n "$(ASTRBOT_TAURI_BUNDLES)" ]; then \
+		build_cmd="$$build_cmd --bundles \"$(ASTRBOT_TAURI_BUNDLES)\""; \
+	fi; \
+	eval "$$build_cmd"
 
 rebuild: clean build
 

@@ -110,72 +110,54 @@ source .astrbot-reset-env.sh
 
 ## 应用内升级（Updater）与签名构建
 
-当前 CI 已支持上传 updater 产物并生成 `latest.json`，但要真正启用应用内升级，还需要完成以下配置。
+推荐使用 `make`，避免手动拼接长命令。
 
-### 1. 配置 GitHub Actions（远程构建）
+### 本地从头构建（推荐）
 
-在仓库 `Settings -> Secrets and variables -> Actions` 配置：
+```bash
+make deps
+make prepare
+make signing-key
 
-- `TAURI_SIGNING_PRIVATE_KEY`：Tauri updater 私钥内容（多行文本）
-- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：私钥密码
-- `ASTRBOT_LINUX_BUNDLES`（可选）：Linux 打包目标，建议 `deb,rpm,appimage`（需要 Linux updater 时）
+export TAURI_SIGNING_PRIVATE_KEY_PATH="$HOME/.tauri/astrbot.key"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='你的密码'
 
-### 2. 配置 Tauri updater（仓库文件）
-
-在 `src-tauri/tauri.conf.json` 中启用 updater 配置（示例）：
-
-```json
-{
-  "bundle": {
-    "createUpdaterArtifacts": true
-  },
-  "plugins": {
-    "updater": {
-      "active": true,
-      "endpoints": [
-        "https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest/download/latest.json"
-      ],
-      "pubkey": "<tauri signer 生成的公钥>"
-    }
-  }
-}
+make build-signed \
+  ASTRBOT_UPDATER_PUBKEY_FILE="$HOME/.tauri/astrbot.key.pub" \
+  ASTRBOT_TAURI_BUNDLES="deb,rpm,appimage"
 ```
 
 说明：
 
-- `pubkey` 必须与签名私钥配对，否则客户端会校验失败。
-- `latest.json` 会在 release 阶段由 CI 自动生成并上传。
+- `make build-signed` 会自动生成临时覆盖配置 `src-tauri/tauri.build.config.json`，并用 `cargo tauri build --config ...` 构建。
+- 默认 updater endpoint 指向上游：
+  `https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest/download/latest.json`
+- 临时覆盖配置已在 `.gitignore` 中，不会误提交。
 
-### 3. 本地生成密钥与签名构建
-
-生成私钥/公钥：
-
-```bash
-cargo tauri signer generate -w ~/.tauri/astrbot.key
-```
-
-设置签名环境变量（二选一）：
+### 本地切换到 fork 更新源（测试用）
 
 ```bash
-# 方式 A：直接传私钥内容
-export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/astrbot.key)"
-export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='你的密码'
+make build-signed \
+  ASTRBOT_UPDATER_PUBKEY_FILE="$HOME/.tauri/astrbot.key.pub" \
+  ASTRBOT_UPDATER_ENDPOINT="https://github.com/<your-name>/AstrBot-desktop/releases/latest/download/latest.json" \
+  ASTRBOT_TAURI_BUNDLES="deb,rpm,appimage"
 ```
 
-```bash
-# 方式 B：传私钥路径
-export TAURI_SIGNING_PRIVATE_KEY_PATH="$HOME/.tauri/astrbot.key"
-export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='你的密码'
-```
+注意：`ASTRBOT_UPDATER_ENDPOINT` 对应的发布资产，必须使用与 `ASTRBOT_UPDATER_PUBKEY` 匹配的私钥签名。
 
-执行构建：
+### CI（GitHub Actions）需要配置
 
-```bash
-# Linux（包含 updater 常用目标）
-cargo tauri build --bundles "deb,rpm,appimage"
-```
+在仓库 `Settings -> Secrets and variables -> Actions` 配置：
 
-可用以下命令检查是否生成 updater 产物与签名文件：
+- `TAURI_SIGNING_PRIVATE_KEY`：Tauri updater 私钥内容（多行）
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：私钥密码
+- `ASTRBOT_UPDATER_PUBKEY`：与私钥配对的公钥
+- `ASTRBOT_UPDATER_ENDPOINT`（可选）：覆盖更新源（默认上游）
+- `ASTRBOT_LINUX_BUNDLES`（可选）：建议 `deb,rpm,appimage`
+
+CI 在发布阶段会自动生成并上传 `latest.json` 与 updater 产物（含 `.sig`）。
+
+### 产物检查
 
 ```bash
 find src-tauri/target/release/bundle -type f | rg 'updater|\.sig$|AppImage\.tar\.gz|\.app\.tar\.gz|nsis\.zip'
