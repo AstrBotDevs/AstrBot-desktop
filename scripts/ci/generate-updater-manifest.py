@@ -130,7 +130,7 @@ def main() -> int:
         return 0
 
     manifest = {
-        "version": args.version,
+        "version": expected_version,
         "pub_date": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "platforms": platforms,
     }
