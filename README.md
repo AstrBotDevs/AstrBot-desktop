@@ -122,7 +122,7 @@ make signing-key
 export TAURI_SIGNING_PRIVATE_KEY_PATH="$HOME/.tauri/astrbot.key"
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='你的密码'
 export ASTRBOT_UPDATER_PUBKEY_FILE="$HOME/.tauri/astrbot.key.pub"
-export ASTRBOT_TAURI_BUNDLES="deb,rpm,appimage"
+# export ASTRBOT_TAURI_BUNDLES="deb,rpm,appimage"
 
 make build-signed
 ```
@@ -142,7 +142,7 @@ export TAURI_SIGNING_PRIVATE_KEY_PATH="$HOME/.tauri/astrbot.key"
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='你的密码'
 export ASTRBOT_UPDATER_PUBKEY_FILE="$HOME/.tauri/astrbot.key.pub"
 export ASTRBOT_UPDATER_ENDPOINT="https://github.com/<your-name>/AstrBot-desktop/releases/latest/download/latest.json"
-export ASTRBOT_TAURI_BUNDLES="deb,rpm,appimage"
+# export ASTRBOT_TAURI_BUNDLES="deb,rpm,appimage"
 
 make build-signed
 ```
