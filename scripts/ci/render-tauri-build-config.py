@@ -37,7 +37,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     output_path = pathlib.Path(args.output)
-    updater_endpoint = args.updater_endpoint.strip()
+    updater_endpoint = args.updater_endpoint.strip() or DEFAULT_UPDATER_ENDPOINT
     updater_pubkey = args.updater_pubkey.strip()
 
     config: dict[str, object] = {}

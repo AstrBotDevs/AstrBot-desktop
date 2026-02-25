@@ -26,6 +26,13 @@ OS_TO_TAURI_TARGET = {
 }
 
 
+def normalize_version(value: str) -> str:
+    normalized = value.strip()
+    if normalized.startswith("v") and len(normalized) > 1 and normalized[1].isdigit():
+        return normalized[1:]
+    return normalized
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Generate Tauri updater latest.json from normalized updater assets."
@@ -55,9 +62,11 @@ def main() -> int:
         return 0
 
     platforms: dict[str, dict[str, str]] = {}
+    mismatched_versions: list[tuple[str, str]] = []
     asset_base_url = (
         f"https://github.com/{args.repository}/releases/download/{args.release_tag}"
     )
+    expected_version = normalize_version(args.version)
 
     for asset_path in sorted(path for path in root.rglob("*") if path.is_file()):
         match = UPDATER_ARTIFACT_PATTERN.fullmatch(asset_path.name)
@@ -65,6 +74,11 @@ def main() -> int:
             continue
 
         groups = match.groupdict()
+        artifact_version = normalize_version(groups["version"])
+        if artifact_version != expected_version:
+            mismatched_versions.append((asset_path.name, groups["version"]))
+            continue
+
         os_name = groups["os"]
         arch_name = groups["arch"]
 
@@ -101,6 +115,15 @@ def main() -> int:
             "signature": signature,
             "url": f"{asset_base_url}/{asset_path.name}",
         }
+
+    if mismatched_versions:
+        for asset_name, raw_version in mismatched_versions:
+            print(
+                "::error::[updater-manifest] "
+                f"artifact version mismatch: {asset_name} has version {raw_version!r}, "
+                f"expected {args.version!r}"
+            )
+        return 1
 
     if not platforms:
         print("[updater-manifest] no updater assets found; skip latest.json generation")

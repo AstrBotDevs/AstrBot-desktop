@@ -17,7 +17,8 @@ PNPM_STORE_DIR ?= .pnpm-store
 TAURI_TARGET_DIR ?= src-tauri/target
 TAURI_BUILD_CONFIG ?= src-tauri/tauri.build.config.json
 TAURI_SIGNING_PRIVATE_KEY_OUT ?= $(HOME)/.tauri/astrbot.key
-ASTRBOT_UPDATER_ENDPOINT ?= https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest/download/latest.json
+# Leave empty to use the centralized default endpoint in scripts/ci/render-tauri-build-config.py.
+ASTRBOT_UPDATER_ENDPOINT ?=
 ASTRBOT_UPDATER_PUBKEY ?=
 ASTRBOT_UPDATER_PUBKEY_FILE ?=
 ASTRBOT_ENABLE_UPDATER_ARTIFACTS ?= 1
@@ -157,11 +158,11 @@ build-signed: render-tauri-config
 	if [ -n "$$build_source_dir" ]; then \
 		export ASTRBOT_SOURCE_DIR="$$build_source_dir"; \
 	fi; \
-	build_cmd="cargo tauri build --config $(TAURI_BUILD_CONFIG)"; \
+	set -- cargo tauri build --config "$(TAURI_BUILD_CONFIG)"; \
 	if [ -n "$(ASTRBOT_TAURI_BUNDLES)" ]; then \
-		build_cmd="$$build_cmd --bundles \"$(ASTRBOT_TAURI_BUNDLES)\""; \
+		set -- "$$@" --bundles "$(ASTRBOT_TAURI_BUNDLES)"; \
 	fi; \
-	eval "$$build_cmd"
+	"$$@"
 
 rebuild: clean build
 

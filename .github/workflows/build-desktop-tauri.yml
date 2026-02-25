@@ -47,8 +47,8 @@ env:
   # build outputs will include signed updater bundles and *.sig files.
   TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
   TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
-  # Default updater source points to upstream release latest.json; can be overridden per repo/fork.
-  ASTRBOT_UPDATER_ENDPOINT: ${{ vars.ASTRBOT_UPDATER_ENDPOINT || 'https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest/download/latest.json' }}
+  # Optional override. When empty, scripts/ci/render-tauri-build-config.py applies the centralized default endpoint.
+  ASTRBOT_UPDATER_ENDPOINT: ${{ vars.ASTRBOT_UPDATER_ENDPOINT || '' }}
   ASTRBOT_UPDATER_PUBKEY: ${{ vars.ASTRBOT_UPDATER_PUBKEY || '' }}
 
 jobs:

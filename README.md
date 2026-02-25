@@ -130,8 +130,7 @@ make build-signed \
 说明：
 
 - `make build-signed` 会自动生成临时覆盖配置 `src-tauri/tauri.build.config.json`，并用 `cargo tauri build --config ...` 构建。
-- 默认 updater endpoint 指向上游：
-  `https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest/download/latest.json`
+- 默认 updater endpoint 由 `scripts/ci/render-tauri-build-config.py` 统一定义（上游地址）。
 - 临时覆盖配置已在 `.gitignore` 中，不会误提交。
 
 ### 本地切换到 fork 更新源（测试用）
@@ -152,10 +151,12 @@ make build-signed \
 - `TAURI_SIGNING_PRIVATE_KEY`：Tauri updater 私钥内容（多行）
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：私钥密码
 - `ASTRBOT_UPDATER_PUBKEY`：与私钥配对的公钥
-- `ASTRBOT_UPDATER_ENDPOINT`（可选）：覆盖更新源（默认上游）
-- `ASTRBOT_LINUX_BUNDLES`（可选）：建议 `deb,rpm,appimage`
+- `ASTRBOT_UPDATER_ENDPOINT`（可选）：覆盖更新源（留空时使用脚本内置默认上游地址）
 
 CI 在发布阶段会自动生成并上传 `latest.json` 与 updater 产物（含 `.sig`）。
+
+CI 与本地都通过同一个脚本生成临时配置：`scripts/ci/render-tauri-build-config.py`。  
+差异仅在于构建矩阵与打包目标由 workflow 控制，本地由 `ASTRBOT_TAURI_BUNDLES` 控制。
 
 ### 产物检查
 
