@@ -32,10 +32,19 @@
     return;
   }
 
-  const invoke = window.__TAURI_INTERNALS__?.invoke;
+  const invoke =
+    window.__TAURI_INTERNALS__?.invoke ||
+    window.__TAURI__?.core?.invoke;
   const transformCallback = window.__TAURI_INTERNALS__?.transformCallback;
   const tauriEvent = window.__TAURI_INTERNALS__?.event ?? window.__TAURI__?.event;
-  if (typeof invoke !== 'function') return;
+  if (typeof invoke !== 'function') {
+    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+      console.warn(
+        '[astrbotDesktop] bridge bootstrap skipped: tauri invoke is unavailable',
+      );
+    }
+    return;
+  }
 
   const BRIDGE_COMMANDS = Object.freeze({
     IS_DESKTOP_RUNTIME: 'desktop_bridge_is_desktop_runtime',
