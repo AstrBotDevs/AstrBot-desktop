@@ -237,6 +237,11 @@ jobs:
             echo "No Linux updater bundle (*.AppImage.tar.gz) found; skip."
             exit 0
           fi
+          if [ "${#updater_candidates[@]}" -gt 1 ]; then
+            echo "::error::Multiple Linux updater bundles found; expected exactly one for matrix arch ${TARGET_ARCH}:"
+            printf ' - %s\n' "${updater_candidates[@]}"
+            exit 1
+          fi
 
           source_bundle="${updater_candidates[0]}"
           target_bundle="${updater_dir}/AstrBot_${ASTRBOT_VERSION}_linux_${TARGET_ARCH}_updater.tar.gz"
@@ -513,6 +518,11 @@ jobs:
           if [ "${#updater_candidates[@]}" -eq 0 ]; then
             echo "No Windows updater bundle (*.nsis.zip) found; skip."
             exit 0
+          fi
+          if [ "${#updater_candidates[@]}" -gt 1 ]; then
+            echo "::error::Multiple Windows updater bundles found; expected exactly one for matrix arch ${TARGET_ARCH}:"
+            printf ' - %s\n' "${updater_candidates[@]}"
+            exit 1
           fi
 
           source_bundle="${updater_candidates[0]}"

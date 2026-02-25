@@ -1,4 +1,4 @@
-use std::{fs, path::Path, process::Command};
+use std::fs;
 
 use tauri::{webview::PageLoadEvent, Manager, RunEvent, WindowEvent};
 
@@ -10,26 +10,6 @@ use crate::{
 
 fn desktop_git_commit() -> &'static str {
     option_env!("ASTRBOT_DESKTOP_GIT_COMMIT").unwrap_or("unknown")
-}
-
-fn resolve_git_head(repo_dir: &Path) -> Option<String> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repo_dir)
-        .arg("rev-parse")
-        .arg("HEAD")
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let commit = String::from_utf8(output.stdout).ok()?;
-    let trimmed = commit.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
 }
 
 fn resolve_astrbot_source_commit_from_manifest(app_handle: &tauri::AppHandle) -> Option<String> {
@@ -46,11 +26,6 @@ fn resolve_astrbot_source_commit_from_manifest(app_handle: &tauri::AppHandle) ->
     } else {
         Some(commit)
     }
-}
-
-fn resolve_astrbot_source_commit() -> Option<String> {
-    crate::runtime_paths::detect_astrbot_source_root()
-        .and_then(|source_root| resolve_git_head(&source_root))
 }
 
 pub(crate) fn run() {
@@ -143,8 +118,8 @@ pub(crate) fn run() {
         })
         .setup(|app| {
             let app_handle = app.handle().clone();
+            // runtime-manifest.json is the single source of truth for packed backend source commit.
             let astrbot_source_commit = resolve_astrbot_source_commit_from_manifest(&app_handle)
-                .or_else(resolve_astrbot_source_commit)
                 .unwrap_or_else(|| "unknown".to_string());
             append_startup_log(&format!("astrbot source commit: {astrbot_source_commit}"));
 
