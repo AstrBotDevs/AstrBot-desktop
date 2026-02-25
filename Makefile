@@ -140,6 +140,17 @@ render-tauri-config:
 
 build-signed: render-tauri-config
 	@set -e; \
+	signing_private_key="$(TAURI_SIGNING_PRIVATE_KEY)"; \
+	if [ -z "$$signing_private_key" ] && [ -n "$(TAURI_SIGNING_PRIVATE_KEY_PATH)" ]; then \
+		if [ ! -f "$(TAURI_SIGNING_PRIVATE_KEY_PATH)" ]; then \
+			echo "TAURI_SIGNING_PRIVATE_KEY_PATH file not found: $(TAURI_SIGNING_PRIVATE_KEY_PATH)" >&2; \
+			exit 1; \
+		fi; \
+		signing_private_key="$$(cat "$(TAURI_SIGNING_PRIVATE_KEY_PATH)")"; \
+	fi; \
+	if [ -n "$$signing_private_key" ]; then \
+		export TAURI_SIGNING_PRIVATE_KEY="$$signing_private_key"; \
+	fi; \
 	build_version="$(ASTRBOT_DESKTOP_VERSION)"; \
 	build_source_dir="$(ASTRBOT_BUILD_SOURCE_DIR)"; \
 	if [ -z "$$build_source_dir" ]; then \
