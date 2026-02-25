@@ -121,14 +121,16 @@ make signing-key
 
 export TAURI_SIGNING_PRIVATE_KEY_PATH="$HOME/.tauri/astrbot.key"
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='你的密码'
+export ASTRBOT_UPDATER_PUBKEY_FILE="$HOME/.tauri/astrbot.key.pub"
+export ASTRBOT_TAURI_BUNDLES="deb,rpm,appimage"
 
-make build-signed \
-  ASTRBOT_UPDATER_PUBKEY_FILE="$HOME/.tauri/astrbot.key.pub" \
-  ASTRBOT_TAURI_BUNDLES="deb,rpm,appimage"
+make build-signed
 ```
 
 说明：
 
+- 私钥可用路径变量 `TAURI_SIGNING_PRIVATE_KEY_PATH`，公钥可用路径变量 `ASTRBOT_UPDATER_PUBKEY_FILE`。
+- 也支持直接传内容：`TAURI_SIGNING_PRIVATE_KEY`（私钥内容）和 `ASTRBOT_UPDATER_PUBKEY`（公钥内容）。
 - `make build-signed` 会自动生成临时覆盖配置 `src-tauri/tauri.build.config.json`，并用 `cargo tauri build --config ...` 构建。
 - 默认 updater endpoint 由 `scripts/ci/render-tauri-build-config.py` 统一定义（上游地址）。
 - 临时覆盖配置已在 `.gitignore` 中，不会误提交。
@@ -136,10 +138,13 @@ make build-signed \
 ### 本地切换到 fork 更新源（测试用）
 
 ```bash
-make build-signed \
-  ASTRBOT_UPDATER_PUBKEY_FILE="$HOME/.tauri/astrbot.key.pub" \
-  ASTRBOT_UPDATER_ENDPOINT="https://github.com/<your-name>/AstrBot-desktop/releases/latest/download/latest.json" \
-  ASTRBOT_TAURI_BUNDLES="deb,rpm,appimage"
+export TAURI_SIGNING_PRIVATE_KEY_PATH="$HOME/.tauri/astrbot.key"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='你的密码'
+export ASTRBOT_UPDATER_PUBKEY_FILE="$HOME/.tauri/astrbot.key.pub"
+export ASTRBOT_UPDATER_ENDPOINT="https://github.com/<your-name>/AstrBot-desktop/releases/latest/download/latest.json"
+export ASTRBOT_TAURI_BUNDLES="deb,rpm,appimage"
+
+make build-signed
 ```
 
 注意：`ASTRBOT_UPDATER_ENDPOINT` 对应的发布资产，必须使用与 `ASTRBOT_UPDATER_PUBKEY` 匹配的私钥签名。

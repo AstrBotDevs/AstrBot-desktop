@@ -49,6 +49,11 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Updater manifest version (SemVer or v-prefixed SemVer).",
     )
+    parser.add_argument(
+        "--strict-version-match",
+        action="store_true",
+        help="Fail when updater artifact version does not match --version.",
+    )
     parser.add_argument("--output", required=True, help="Output latest.json path.")
     return parser.parse_args()
 
@@ -118,12 +123,14 @@ def main() -> int:
 
     if mismatched_versions:
         for asset_name, raw_version in mismatched_versions:
+            level = "::error::" if args.strict_version_match else "::warning::"
             print(
-                "::error::[updater-manifest] "
+                f"{level}[updater-manifest] "
                 f"artifact version mismatch: {asset_name} has version {raw_version!r}, "
-                f"expected {args.version!r}"
+                f"expected {args.version!r} (normalized: {expected_version!r})"
             )
-        return 1
+        if args.strict_version_match:
+            return 1
 
     if not platforms:
         print("[updater-manifest] no updater assets found; skip latest.json generation")

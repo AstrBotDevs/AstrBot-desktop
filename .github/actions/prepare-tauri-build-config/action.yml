@@ -1,0 +1,29 @@
+name: Prepare Tauri Build Config
+description: Render temporary Tauri build config and export ASTRBOT_TAURI_CONFIG_PATH.
+
+inputs:
+  updater-endpoint:
+    description: Updater latest.json endpoint URL override.
+    required: false
+    default: ''
+  updater-pubkey:
+    description: Updater public key override.
+    required: false
+    default: ''
+  output-path:
+    description: Generated Tauri build config path.
+    required: false
+    default: src-tauri/tauri.build.config.json
+
+runs:
+  using: composite
+  steps:
+    - name: Render config
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 scripts/ci/render-tauri-build-config.py \
+          --output "${{ inputs.output-path }}" \
+          --updater-endpoint "${{ inputs.updater-endpoint }}" \
+          --updater-pubkey "${{ inputs.updater-pubkey }}"
+        echo "ASTRBOT_TAURI_CONFIG_PATH=${{ inputs.output-path }}" >> "${GITHUB_ENV}"

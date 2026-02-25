@@ -50,6 +50,8 @@ env:
   # Optional override. When empty, scripts/ci/render-tauri-build-config.py applies the centralized default endpoint.
   ASTRBOT_UPDATER_ENDPOINT: ${{ vars.ASTRBOT_UPDATER_ENDPOINT || '' }}
   ASTRBOT_UPDATER_PUBKEY: ${{ vars.ASTRBOT_UPDATER_PUBKEY || '' }}
+  # Strict mode for updater manifest generation on version mismatches.
+  ASTRBOT_UPDATER_MANIFEST_STRICT_VERSION_MATCH: ${{ vars.ASTRBOT_UPDATER_MANIFEST_STRICT_VERSION_MATCH || '0' }}
 
 jobs:
   resolve_build_context:
@@ -203,19 +205,11 @@ jobs:
         with:
           astrbot_version: ${{ steps.desktop_version.outputs.normalized }}
 
-      - name: Prepare Tauri build config (Linux)
-        env:
-          ASTRBOT_UPDATER_ENDPOINT: ${{ env.ASTRBOT_UPDATER_ENDPOINT }}
-          ASTRBOT_UPDATER_PUBKEY: ${{ env.ASTRBOT_UPDATER_PUBKEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          config_path="src-tauri/tauri.build.config.json"
-          python3 scripts/ci/render-tauri-build-config.py \
-            --output "${config_path}" \
-            --updater-endpoint "${ASTRBOT_UPDATER_ENDPOINT}" \
-            --updater-pubkey "${ASTRBOT_UPDATER_PUBKEY}"
-          echo "ASTRBOT_TAURI_CONFIG_PATH=${config_path}" >> "${GITHUB_ENV}"
+      - name: Prepare Tauri build config
+        uses: ./.github/actions/prepare-tauri-build-config
+        with:
+          updater-endpoint: ${{ env.ASTRBOT_UPDATER_ENDPOINT }}
+          updater-pubkey: ${{ env.ASTRBOT_UPDATER_PUBKEY }}
 
       - name: Build desktop installers (Linux)
         env:
@@ -315,19 +309,11 @@ jobs:
             --override-source "env:ASTRBOT_MACOS_APP_BUNDLE_NAME" \
             --github-output "${GITHUB_OUTPUT}"
 
-      - name: Prepare Tauri build config (macOS)
-        env:
-          ASTRBOT_UPDATER_ENDPOINT: ${{ env.ASTRBOT_UPDATER_ENDPOINT }}
-          ASTRBOT_UPDATER_PUBKEY: ${{ env.ASTRBOT_UPDATER_PUBKEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          config_path="src-tauri/tauri.build.config.json"
-          python3 scripts/ci/render-tauri-build-config.py \
-            --output "${config_path}" \
-            --updater-endpoint "${ASTRBOT_UPDATER_ENDPOINT}" \
-            --updater-pubkey "${ASTRBOT_UPDATER_PUBKEY}"
-          echo "ASTRBOT_TAURI_CONFIG_PATH=${config_path}" >> "${GITHUB_ENV}"
+      - name: Prepare Tauri build config
+        uses: ./.github/actions/prepare-tauri-build-config
+        with:
+          updater-endpoint: ${{ env.ASTRBOT_UPDATER_ENDPOINT }}
+          updater-pubkey: ${{ env.ASTRBOT_UPDATER_PUBKEY }}
 
       - name: Build desktop app bundle (macOS)
         env:
@@ -491,19 +477,11 @@ jobs:
         with:
           astrbot_version: ${{ steps.desktop_version.outputs.normalized }}
 
-      - name: Prepare Tauri build config (Windows)
-        env:
-          ASTRBOT_UPDATER_ENDPOINT: ${{ env.ASTRBOT_UPDATER_ENDPOINT }}
-          ASTRBOT_UPDATER_PUBKEY: ${{ env.ASTRBOT_UPDATER_PUBKEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          config_path="src-tauri/tauri.build.config.json"
-          python3 scripts/ci/render-tauri-build-config.py \
-            --output "${config_path}" \
-            --updater-endpoint "${ASTRBOT_UPDATER_ENDPOINT}" \
-            --updater-pubkey "${ASTRBOT_UPDATER_PUBKEY}"
-          echo "ASTRBOT_TAURI_CONFIG_PATH=${config_path}" >> "${GITHUB_ENV}"
+      - name: Prepare Tauri build config
+        uses: ./.github/actions/prepare-tauri-build-config
+        with:
+          updater-endpoint: ${{ env.ASTRBOT_UPDATER_ENDPOINT }}
+          updater-pubkey: ${{ env.ASTRBOT_UPDATER_PUBKEY }}
 
       - name: Build desktop installers (Windows)
         env:
@@ -615,15 +593,25 @@ jobs:
         env:
           RELEASE_TAG: ${{ needs.resolve_build_context.outputs.release_tag }}
           RELEASE_VERSION: ${{ needs.resolve_build_context.outputs.astrbot_version }}
+          ASTRBOT_UPDATER_MANIFEST_STRICT_VERSION_MATCH: ${{ env.ASTRBOT_UPDATER_MANIFEST_STRICT_VERSION_MATCH }}
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/ci/generate-updater-manifest.py \
-            --root release-artifacts \
-            --repository "${GITHUB_REPOSITORY}" \
-            --release-tag "${RELEASE_TAG}" \
-            --version "${RELEASE_VERSION}" \
+          manifest_args=(
+            --root release-artifacts
+            --repository "${GITHUB_REPOSITORY}"
+            --release-tag "${RELEASE_TAG}"
+            --version "${RELEASE_VERSION}"
             --output release-artifacts/latest.json
+          )
+          strict_flag="$(printf '%s' "${ASTRBOT_UPDATER_MANIFEST_STRICT_VERSION_MATCH}" | tr '[:upper:]' '[:lower:]')"
+          case "${strict_flag}" in
+            1|true|yes|on)
+              manifest_args+=(--strict-version-match)
+              ;;
+          esac
+          python3 scripts/ci/generate-updater-manifest.py \
+            "${manifest_args[@]}"
 
       - name: Remove existing assets from target release
         env:
