@@ -3,6 +3,8 @@
   if (
     window.astrbotDesktop &&
     window.astrbotDesktop.__tauriBridge === true &&
+    typeof window.astrbotAppUpdater?.checkForAppUpdate === 'function' &&
+    typeof window.astrbotAppUpdater?.installAppUpdate === 'function' &&
     typeof window.astrbotDesktop.onTrayRestartBackend === 'function' &&
     typeof existingTrayRestartState?.unlistenTrayRestartBackendEvent === 'function'
   ) {
@@ -22,6 +24,8 @@
     RESTART_BACKEND: 'desktop_bridge_restart_backend',
     STOP_BACKEND: 'desktop_bridge_stop_backend',
     OPEN_EXTERNAL_URL: 'desktop_bridge_open_external_url',
+    CHECK_DESKTOP_APP_UPDATE: 'desktop_bridge_check_desktop_app_update',
+    INSTALL_DESKTOP_APP_UPDATE: 'desktop_bridge_install_desktop_app_update',
   });
   const TRAY_RESTART_BACKEND_EVENT = '{TRAY_RESTART_BACKEND_EVENT}';
 
@@ -708,6 +712,10 @@
       });
     },
     stopBackend: () => invokeBridge(BRIDGE_COMMANDS.STOP_BACKEND),
+    checkDesktopAppUpdate: () =>
+      invokeBridge(BRIDGE_COMMANDS.CHECK_DESKTOP_APP_UPDATE),
+    installDesktopAppUpdate: () =>
+      invokeBridge(BRIDGE_COMMANDS.INSTALL_DESKTOP_APP_UPDATE),
     openExternalUrl: (url) => {
       const rawUrl = typeof url === 'string' ? url : String(url ?? '');
       if (!rawUrl.trim()) {
@@ -721,6 +729,12 @@
       });
     },
     onTrayRestartBackend,
+  };
+  window.astrbotAppUpdater = {
+    checkForAppUpdate: () =>
+      invokeBridge(BRIDGE_COMMANDS.CHECK_DESKTOP_APP_UPDATE),
+    installAppUpdate: () =>
+      invokeBridge(BRIDGE_COMMANDS.INSTALL_DESKTOP_APP_UPDATE),
   };
 
   installNavigationBridges();

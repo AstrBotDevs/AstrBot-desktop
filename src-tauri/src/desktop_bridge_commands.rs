@@ -1,10 +1,12 @@
 use std::process::{Command, Stdio};
 use tauri::{AppHandle, Manager};
+use tauri_plugin_updater::UpdaterExt;
 use url::Url;
 
 use crate::{
     append_desktop_log, restart_backend_flow, runtime_paths, shell_locale, tray_labels,
-    BackendBridgeResult, BackendBridgeState, BackendState, DEFAULT_SHELL_LOCALE,
+    BackendBridgeResult, BackendBridgeState, BackendState, DesktopAppUpdateCheckResult,
+    DEFAULT_SHELL_LOCALE,
 };
 
 fn parse_openable_url(raw_url: &str) -> Result<Url, String> {
@@ -147,6 +149,105 @@ pub(crate) fn desktop_bridge_open_external_url(url: String) -> BackendBridgeResu
             reason: Some(error),
         },
     }
+}
+
+#[tauri::command]
+pub(crate) async fn desktop_bridge_check_desktop_app_update(
+    app_handle: AppHandle,
+) -> DesktopAppUpdateCheckResult {
+    let current_version = app_handle.package_info().version.to_string();
+    let updater = match app_handle.updater() {
+        Ok(updater) => updater,
+        Err(error) => {
+            let reason = format!("Failed to initialize updater: {error}");
+            append_desktop_log(&reason);
+            return DesktopAppUpdateCheckResult {
+                ok: false,
+                reason: Some(reason),
+                current_version,
+                latest_version: None,
+                has_update: false,
+            };
+        }
+    };
+
+    match updater.check().await {
+        Ok(Some(update)) => DesktopAppUpdateCheckResult {
+            ok: true,
+            reason: None,
+            current_version,
+            latest_version: Some(update.version.to_string()),
+            has_update: true,
+        },
+        Ok(None) => DesktopAppUpdateCheckResult {
+            ok: true,
+            reason: None,
+            current_version: current_version.clone(),
+            latest_version: Some(current_version),
+            has_update: false,
+        },
+        Err(error) => {
+            let reason = format!("Failed to check desktop app update: {error}");
+            append_desktop_log(&reason);
+            DesktopAppUpdateCheckResult {
+                ok: false,
+                reason: Some(reason),
+                current_version,
+                latest_version: None,
+                has_update: false,
+            }
+        }
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn desktop_bridge_install_desktop_app_update(
+    app_handle: AppHandle,
+) -> BackendBridgeResult {
+    let updater = match app_handle.updater() {
+        Ok(updater) => updater,
+        Err(error) => {
+            let reason = format!("Failed to initialize updater: {error}");
+            append_desktop_log(&reason);
+            return BackendBridgeResult {
+                ok: false,
+                reason: Some(reason),
+            };
+        }
+    };
+
+    let update = match updater.check().await {
+        Ok(Some(update)) => update,
+        Ok(None) => {
+            return BackendBridgeResult {
+                ok: false,
+                reason: Some("Already on latest desktop version.".to_string()),
+            };
+        }
+        Err(error) => {
+            let reason = format!("Failed to check desktop app update: {error}");
+            append_desktop_log(&reason);
+            return BackendBridgeResult {
+                ok: false,
+                reason: Some(reason),
+            };
+        }
+    };
+
+    let target_version = update.version.to_string();
+    if let Err(error) = update.download_and_install(|_, _| {}, || {}).await {
+        let reason = format!("Failed to install desktop app update: {error}");
+        append_desktop_log(&reason);
+        return BackendBridgeResult {
+            ok: false,
+            reason: Some(reason),
+        };
+    }
+
+    append_desktop_log(&format!(
+        "desktop app update installed to version {target_version}; restarting app"
+    ));
+    app_handle.restart();
 }
 
 #[tauri::command]

@@ -18,6 +18,7 @@ pub(crate) fn run() {
     ));
     tauri::Builder::default()
         .manage(BackendState::default())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             crate::desktop_bridge_commands::desktop_bridge_is_desktop_runtime,
             crate::desktop_bridge_commands::desktop_bridge_get_backend_state,
@@ -25,7 +26,9 @@ pub(crate) fn run() {
             crate::desktop_bridge_commands::desktop_bridge_set_shell_locale,
             crate::desktop_bridge_commands::desktop_bridge_restart_backend,
             crate::desktop_bridge_commands::desktop_bridge_stop_backend,
-            crate::desktop_bridge_commands::desktop_bridge_open_external_url
+            crate::desktop_bridge_commands::desktop_bridge_open_external_url,
+            crate::desktop_bridge_commands::desktop_bridge_check_desktop_app_update,
+            crate::desktop_bridge_commands::desktop_bridge_install_desktop_app_update
         ])
         .on_window_event(|window, event| {
             if window.label() != "main" {

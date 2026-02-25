@@ -41,6 +41,12 @@ env:
   ASTRBOT_NIGHTLY_SOURCE_GIT_REF: ${{ vars.ASTRBOT_NIGHTLY_SOURCE_GIT_REF || 'master' }}
   ASTRBOT_NIGHTLY_SCHEDULE_CRON: ${{ vars.ASTRBOT_NIGHTLY_SCHEDULE_CRON || '7 3 * * *' }}
   ASTRBOT_NIGHTLY_UTC_HOUR: ${{ vars.ASTRBOT_NIGHTLY_UTC_HOUR || '3' }}
+  # Linux updater builds usually require AppImage; keep configurable to avoid hard failures.
+  ASTRBOT_LINUX_BUNDLES: ${{ vars.ASTRBOT_LINUX_BUNDLES || 'deb,rpm' }}
+  # Optional updater signing secrets. When set and Tauri updater artifacts are enabled in config,
+  # build outputs will include signed updater bundles and *.sig files.
+  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
 
 jobs:
   resolve_build_context:
@@ -199,9 +205,35 @@ jobs:
           ASTRBOT_SOURCE_GIT_URL: ${{ needs.resolve_build_context.outputs.source_git_url }}
           ASTRBOT_SOURCE_GIT_REF: ${{ needs.resolve_build_context.outputs.source_git_ref }}
           ASTRBOT_DESKTOP_VERSION: ${{ steps.desktop_version.outputs.prefixed }}
+          ASTRBOT_LINUX_BUNDLES: ${{ env.ASTRBOT_LINUX_BUNDLES }}
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
-        run: cargo tauri build --bundles deb,rpm
+        run: cargo tauri build --bundles "${ASTRBOT_LINUX_BUNDLES}"
+
+      - name: Collect Linux updater artifacts (if any)
+        env:
+          ASTRBOT_VERSION: ${{ needs.resolve_build_context.outputs.astrbot_version }}
+          TARGET_ARCH: ${{ matrix.arch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          updater_dir="src-tauri/target/release/bundle/updater"
+          mkdir -p "${updater_dir}"
+          shopt -s nullglob
+
+          updater_candidates=(src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz)
+          if [ "${#updater_candidates[@]}" -eq 0 ]; then
+            echo "No Linux updater bundle (*.AppImage.tar.gz) found; skip."
+            exit 0
+          fi
+
+          source_bundle="${updater_candidates[0]}"
+          target_bundle="${updater_dir}/AstrBot_${ASTRBOT_VERSION}_linux_${TARGET_ARCH}_updater.tar.gz"
+          cp "${source_bundle}" "${target_bundle}"
+          if [ -f "${source_bundle}.sig" ]; then
+            cp "${source_bundle}.sig" "${target_bundle}.sig"
+          fi
+          echo "Collected Linux updater bundle: ${target_bundle}"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6.0.0
@@ -211,6 +243,7 @@ jobs:
           path: |
             src-tauri/target/release/bundle/**/*.deb
             src-tauri/target/release/bundle/**/*.rpm
+            src-tauri/target/release/bundle/updater/*
 
   build-macos:
     needs:
@@ -368,6 +401,18 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "${app_path}" "${zip_path}"
           echo "Created ${zip_path}"
 
+          updater_bundle="${app_path}.tar.gz"
+          if [ -f "${updater_bundle}" ]; then
+            updater_target="${zip_dir}/AstrBot_${{ needs.resolve_build_context.outputs.astrbot_version }}_macos_${{ matrix.arch }}_updater.tar.gz"
+            cp "${updater_bundle}" "${updater_target}"
+            if [ -f "${updater_bundle}.sig" ]; then
+              cp "${updater_bundle}.sig" "${updater_target}.sig"
+            fi
+            echo "Collected macOS updater bundle: ${updater_target}"
+          else
+            echo "No macOS updater bundle (${updater_bundle}) found; skip."
+          fi
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v6.0.0
         with:
@@ -375,6 +420,8 @@ jobs:
           if-no-files-found: error
           path: |
             src-tauri/target/${{ matrix.target }}/release/bundle/zip/*.zip
+            src-tauri/target/${{ matrix.target }}/release/bundle/zip/*_updater.tar.gz
+            src-tauri/target/${{ matrix.target }}/release/bundle/zip/*_updater.tar.gz.sig
 
   build-windows:
     needs:
@@ -428,6 +475,31 @@ jobs:
         shell: bash
         run: bash scripts/ci/verify-windows-installer-outputs.sh
 
+      - name: Collect Windows updater artifacts (if any)
+        env:
+          ASTRBOT_VERSION: ${{ needs.resolve_build_context.outputs.astrbot_version }}
+          TARGET_ARCH: ${{ matrix.arch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          updater_dir="src-tauri/target/release/bundle/updater"
+          mkdir -p "${updater_dir}"
+          shopt -s nullglob
+
+          updater_candidates=(src-tauri/target/release/bundle/nsis/*.nsis.zip)
+          if [ "${#updater_candidates[@]}" -eq 0 ]; then
+            echo "No Windows updater bundle (*.nsis.zip) found; skip."
+            exit 0
+          fi
+
+          source_bundle="${updater_candidates[0]}"
+          target_bundle="${updater_dir}/AstrBot_${ASTRBOT_VERSION}_windows_${TARGET_ARCH}_updater.zip"
+          cp "${source_bundle}" "${target_bundle}"
+          if [ -f "${source_bundle}.sig" ]; then
+            cp "${source_bundle}.sig" "${target_bundle}.sig"
+          fi
+          echo "Collected Windows updater bundle: ${target_bundle}"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v6.0.0
         with:
@@ -437,6 +509,7 @@ jobs:
           # A broad **/*.exe pattern also matches bundled Python runtime helpers.
           path: |
             ${{ env.WINDOWS_INSTALLER_EXE_GLOBS }}
+            src-tauri/target/release/bundle/updater/*
 
   release:
     name: Publish GitHub Release
@@ -492,6 +565,20 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/ci/validate-release-artifacts.py release-artifacts
+
+      - name: Generate updater latest.json (if updater artifacts exist)
+        env:
+          RELEASE_TAG: ${{ needs.resolve_build_context.outputs.release_tag }}
+          RELEASE_VERSION: ${{ needs.resolve_build_context.outputs.astrbot_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/generate-updater-manifest.py \
+            --root release-artifacts \
+            --repository "${GITHUB_REPOSITORY}" \
+            --release-tag "${RELEASE_TAG}" \
+            --version "${RELEASE_VERSION}" \
+            --output release-artifacts/latest.json
 
       - name: Remove existing assets from target release
         env:

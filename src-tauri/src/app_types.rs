@@ -63,6 +63,16 @@ pub(crate) struct BackendBridgeResult {
     pub(crate) reason: Option<String>,
 }
 
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DesktopAppUpdateCheckResult {
+    pub(crate) ok: bool,
+    pub(crate) reason: Option<String>,
+    pub(crate) current_version: String,
+    pub(crate) latest_version: Option<String>,
+    pub(crate) has_update: bool,
+}
+
 pub(crate) struct AtomicFlagGuard<'a> {
     flag: &'a AtomicBool,
 }

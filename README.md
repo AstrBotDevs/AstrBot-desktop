@@ -108,6 +108,79 @@ source .astrbot-reset-env.sh
 - 定时构建（`schedule`）检测到上游新 tag 时，会先自动同步版本文件并提交，再继续构建。
 - 手动触发（`workflow_dispatch`）默认只构建，不自动回写版本文件。
 
+## 应用内升级（Updater）与签名构建
+
+当前 CI 已支持上传 updater 产物并生成 `latest.json`，但要真正启用应用内升级，还需要完成以下配置。
+
+### 1. 配置 GitHub Actions（远程构建）
+
+在仓库 `Settings -> Secrets and variables -> Actions` 配置：
+
+- `TAURI_SIGNING_PRIVATE_KEY`：Tauri updater 私钥内容（多行文本）
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：私钥密码
+- `ASTRBOT_LINUX_BUNDLES`（可选）：Linux 打包目标，建议 `deb,rpm,appimage`（需要 Linux updater 时）
+
+### 2. 配置 Tauri updater（仓库文件）
+
+在 `src-tauri/tauri.conf.json` 中启用 updater 配置（示例）：
+
+```json
+{
+  "bundle": {
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest/download/latest.json"
+      ],
+      "pubkey": "<tauri signer 生成的公钥>"
+    }
+  }
+}
+```
+
+说明：
+
+- `pubkey` 必须与签名私钥配对，否则客户端会校验失败。
+- `latest.json` 会在 release 阶段由 CI 自动生成并上传。
+
+### 3. 本地生成密钥与签名构建
+
+生成私钥/公钥：
+
+```bash
+cargo tauri signer generate -w ~/.tauri/astrbot.key
+```
+
+设置签名环境变量（二选一）：
+
+```bash
+# 方式 A：直接传私钥内容
+export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/astrbot.key)"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='你的密码'
+```
+
+```bash
+# 方式 B：传私钥路径
+export TAURI_SIGNING_PRIVATE_KEY_PATH="$HOME/.tauri/astrbot.key"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='你的密码'
+```
+
+执行构建：
+
+```bash
+# Linux（包含 updater 常用目标）
+cargo tauri build --bundles "deb,rpm,appimage"
+```
+
+可用以下命令检查是否生成 updater 产物与签名文件：
+
+```bash
+find src-tauri/target/release/bundle -type f | rg 'updater|\.sig$|AppImage\.tar\.gz|\.app\.tar\.gz|nsis\.zip'
+```
+
 ## 构建流程说明
 
 `src-tauri/tauri.conf.json` 配置了 `beforeBuildCommand=pnpm run prepare:resources`。构建时会自动完成：
