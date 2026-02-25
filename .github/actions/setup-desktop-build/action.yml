@@ -61,3 +61,61 @@ runs:
       if: runner.os == 'Windows'
       shell: pwsh
       run: pnpm install
+
+    - name: Normalize signing key env (raw or base64)
+      shell: bash
+      run: |
+        set -euo pipefail
+        python_cmd="python3"
+        if ! command -v "${python_cmd}" >/dev/null 2>&1; then
+          python_cmd="python"
+        fi
+        if ! command -v "${python_cmd}" >/dev/null 2>&1; then
+          echo "::error::Python interpreter not found (expected python3 or python)." >&2
+          exit 1
+        fi
+
+        "${python_cmd}" - <<'PY'
+        import base64
+        import os
+        import sys
+
+        MINISIGN_PREFIX = "untrusted comment:"
+        GITHUB_ENV = os.environ.get("GITHUB_ENV")
+        if not GITHUB_ENV:
+            print("::error::GITHUB_ENV is not set.")
+            sys.exit(1)
+
+        def normalize_signing_private_key(name: str) -> str:
+            raw = (os.environ.get(name) or "").strip()
+            if not raw:
+                return ""
+            if raw.lstrip().startswith(MINISIGN_PREFIX):
+                return base64.b64encode(raw.encode("utf-8")).decode("ascii")
+            compact_base64 = "".join(raw.split())
+            try:
+                decoded = base64.b64decode(compact_base64, validate=True).decode("utf-8").strip()
+            except Exception as error:
+                print(
+                    f"::error::{name} is neither raw minisign text nor valid base64: {error}"
+                )
+                sys.exit(1)
+            if not decoded.lstrip().startswith(MINISIGN_PREFIX):
+                print(
+                    f"::error::{name} base64-decoded content is not minisign key text "
+                    f"(missing '{MINISIGN_PREFIX}' prefix)."
+                )
+                sys.exit(1)
+            return compact_base64
+
+        normalized_signing_key = normalize_signing_private_key("TAURI_SIGNING_PRIVATE_KEY")
+
+        with open(GITHUB_ENV, "a", encoding="utf-8") as env_file:
+            if normalized_signing_key:
+                env_file.write(
+                    "TAURI_SIGNING_PRIVATE_KEY<<__ASTRBOT_EOF__\n"
+                    f"{normalized_signing_key}\n"
+                    "__ASTRBOT_EOF__\n"
+                )
+                print("[normalized-key] TAURI_SIGNING_PRIVATE_KEY: accepted (raw/base64)")
+        PY
