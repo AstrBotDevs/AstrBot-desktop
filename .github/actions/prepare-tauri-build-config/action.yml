@@ -22,7 +22,15 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        python3 scripts/ci/render-tauri-build-config.py \
+        python_cmd="python3"
+        if ! command -v "${python_cmd}" >/dev/null 2>&1; then
+          python_cmd="python"
+        fi
+        if ! command -v "${python_cmd}" >/dev/null 2>&1; then
+          echo "::error::Python interpreter not found (expected python3 or python)." >&2
+          exit 1
+        fi
+        "${python_cmd}" scripts/ci/render-tauri-build-config.py \
           --output "${{ inputs.output-path }}" \
           --updater-endpoint "${{ inputs.updater-endpoint }}" \
           --updater-pubkey "${{ inputs.updater-pubkey }}"

@@ -93,10 +93,32 @@ const resolveSourceCommit = (resolvedSourceDir) => {
   const commitResult = spawnSync('git', ['-C', resolvedSourceDir, 'rev-parse', 'HEAD'], {
     encoding: 'utf8',
   });
-  if (commitResult.error || commitResult.status !== 0) {
+  if (commitResult.error) {
+    console.warn(
+      `[build-backend] failed to resolve AstrBot source commit via git at ${resolvedSourceDir}: ${commitResult.error.message}`,
+    );
+    return null;
+  }
+  if (commitResult.status !== 0) {
+    const stderr = String(commitResult.stderr || '').trim();
+    if (stderr) {
+      console.warn(
+        `[build-backend] git rev-parse failed at ${resolvedSourceDir}: ${stderr}`,
+      );
+    } else {
+      console.warn(
+        `[build-backend] git rev-parse failed at ${resolvedSourceDir} with exit code ${commitResult.status}.`,
+      );
+    }
     return null;
   }
   const commit = String(commitResult.stdout || '').trim();
+  if (!commit) {
+    console.warn(
+      `[build-backend] git rev-parse returned empty commit at ${resolvedSourceDir}.`,
+    );
+    return null;
+  }
   return commit || null;
 };
 

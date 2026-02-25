@@ -1,13 +1,34 @@
 (() => {
   const existingTrayRestartState = window.__astrbotDesktopTrayRestartState;
+  const existingDesktopBridge = window.astrbotDesktop;
+  const ensureAppUpdaterBridgeFromDesktop = () => {
+    if (
+      typeof window.astrbotAppUpdater?.checkForAppUpdate === 'function' &&
+      typeof window.astrbotAppUpdater?.installAppUpdate === 'function'
+    ) {
+      return;
+    }
+    if (!existingDesktopBridge || existingDesktopBridge.__tauriBridge !== true) {
+      return;
+    }
+    window.astrbotAppUpdater = {
+      checkForAppUpdate: () =>
+        typeof existingDesktopBridge.checkDesktopAppUpdate === 'function'
+          ? existingDesktopBridge.checkDesktopAppUpdate()
+          : Promise.resolve({ ok: false, reason: 'desktop updater bridge unavailable' }),
+      installAppUpdate: () =>
+        typeof existingDesktopBridge.installDesktopAppUpdate === 'function'
+          ? existingDesktopBridge.installDesktopAppUpdate()
+          : Promise.resolve({ ok: false, reason: 'desktop updater bridge unavailable' }),
+    };
+  };
   if (
-    window.astrbotDesktop &&
-    window.astrbotDesktop.__tauriBridge === true &&
-    typeof window.astrbotAppUpdater?.checkForAppUpdate === 'function' &&
-    typeof window.astrbotAppUpdater?.installAppUpdate === 'function' &&
-    typeof window.astrbotDesktop.onTrayRestartBackend === 'function' &&
+    existingDesktopBridge &&
+    existingDesktopBridge.__tauriBridge === true &&
+    typeof existingDesktopBridge.onTrayRestartBackend === 'function' &&
     typeof existingTrayRestartState?.unlistenTrayRestartBackendEvent === 'function'
   ) {
+    ensureAppUpdaterBridgeFromDesktop();
     return;
   }
 
