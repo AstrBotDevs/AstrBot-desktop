@@ -89,12 +89,24 @@ const writeLauncherScript = () => {
   fs.writeFileSync(launcherPath, content, 'utf8');
 };
 
-const writeRuntimeManifest = (runtimePython) => {
+const resolveSourceCommit = (resolvedSourceDir) => {
+  const commitResult = spawnSync('git', ['-C', resolvedSourceDir, 'rev-parse', 'HEAD'], {
+    encoding: 'utf8',
+  });
+  if (commitResult.error || commitResult.status !== 0) {
+    return null;
+  }
+  const commit = String(commitResult.stdout || '').trim();
+  return commit || null;
+};
+
+const writeRuntimeManifest = (runtimePython, sourceCommit) => {
   const manifest = {
     mode: 'cpython-runtime',
     python: runtimePython.relative,
     entrypoint: path.basename(launcherPath),
     app: path.relative(outputDir, appDir),
+    source_commit: sourceCommit,
   };
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
 };
@@ -211,6 +223,7 @@ const installRuntimeDependencies = (runtimePython) => {
 
 const main = () => {
   const resolvedSourceDir = requireSourceDir();
+  const sourceCommit = resolveSourceCommit(resolvedSourceDir);
 
   const runtimeSourceReal = resolveAndValidateRuntimeSource({
     projectRoot,
@@ -241,10 +254,11 @@ const main = () => {
   const runtimePython = prepareRuntimeExecutable(runtimeSourceReal);
   installRuntimeDependencies(runtimePython);
   writeLauncherScript();
-  writeRuntimeManifest(runtimePython);
+  writeRuntimeManifest(runtimePython, sourceCommit);
 
   console.log(`Prepared CPython backend runtime in ${outputDir}`);
   console.log(`Runtime source: ${runtimeSourceReal}`);
+  console.log(`AstrBot source commit: ${sourceCommit || 'unknown'}`);
   console.log(`Python executable: ${runtimePython.relative}`);
 };
 

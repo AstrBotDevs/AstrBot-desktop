@@ -24,6 +24,7 @@ pub(crate) struct TrayMenuState {
 pub(crate) struct RuntimeManifest {
     pub(crate) python: Option<String>,
     pub(crate) entrypoint: Option<String>,
+    pub(crate) source_commit: Option<String>,
 }
 
 #[derive(Debug)]
