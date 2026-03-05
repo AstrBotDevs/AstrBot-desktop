@@ -312,19 +312,31 @@ const main = async (options) => {
   }
 };
 
-const runCli = async (argv = process.argv.slice(2)) => {
-  const options = parseCliOptions(argv);
+const runCli = async (argv = process.argv.slice(2), runtime = {}) => {
+  const executeMain = runtime.executeMain || main;
+  const log = runtime.log || console.log;
+  const logError = runtime.logError || console.error;
+
+  let options;
+  try {
+    options = parseCliOptions(argv);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    logError(`[backend-smoke] FAILED: ${reason}`);
+    return 1;
+  }
+
   if (options.showHelp) {
-    console.log(usageMessage());
+    log(usageMessage());
     return 0;
   }
 
   const tracePrefix = getTracePrefix(options);
   try {
-    await main(options);
+    await executeMain(options);
     return 0;
   } catch (error) {
-    console.error(`${tracePrefix} FAILED: ${error instanceof Error ? error.message : String(error)}`);
+    logError(`${tracePrefix} FAILED: ${error instanceof Error ? error.message : String(error)}`);
     return 1;
   }
 };

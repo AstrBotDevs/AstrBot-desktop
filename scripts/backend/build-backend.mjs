@@ -66,42 +66,96 @@ const splitImportTargets = (value) => {
   return results;
 };
 
-const stripPythonInlineComment = (line) => {
-  let inSingleQuote = false;
-  let inDoubleQuote = false;
-  let escaped = false;
+const stripPythonInlineComment = (line, state) => {
   let output = '';
+  let index = 0;
 
-  for (const char of line) {
-    if (escaped) {
+  while (index < line.length) {
+    const char = line[index];
+    const tripleSingle = line.startsWith("'''", index);
+    const tripleDouble = line.startsWith('"""', index);
+
+    if (state.inTripleSingleQuote) {
+      if (tripleSingle) {
+        output += "'''";
+        index += 3;
+        state.inTripleSingleQuote = false;
+        continue;
+      }
       output += char;
-      escaped = false;
+      index += 1;
+      continue;
+    }
+
+    if (state.inTripleDoubleQuote) {
+      if (tripleDouble) {
+        output += '"""';
+        index += 3;
+        state.inTripleDoubleQuote = false;
+        continue;
+      }
+      output += char;
+      index += 1;
+      continue;
+    }
+
+    if (state.escaped) {
+      output += char;
+      state.escaped = false;
+      index += 1;
+      continue;
+    }
+
+    if (tripleSingle && !state.inDoubleQuote) {
+      state.inTripleSingleQuote = true;
+      output += "'''";
+      index += 3;
+      continue;
+    }
+
+    if (tripleDouble && !state.inSingleQuote) {
+      state.inTripleDoubleQuote = true;
+      output += '"""';
+      index += 3;
       continue;
     }
 
     if (char === '\\') {
       output += char;
-      escaped = true;
+      state.escaped = true;
+      index += 1;
       continue;
     }
 
-    if (char === "'" && !inDoubleQuote) {
-      inSingleQuote = !inSingleQuote;
+    if (char === "'" && !state.inDoubleQuote) {
+      state.inSingleQuote = !state.inSingleQuote;
       output += char;
+      index += 1;
       continue;
     }
 
-    if (char === '"' && !inSingleQuote) {
-      inDoubleQuote = !inDoubleQuote;
+    if (char === '"' && !state.inSingleQuote) {
+      state.inDoubleQuote = !state.inDoubleQuote;
       output += char;
+      index += 1;
       continue;
     }
 
-    if (char === '#' && !inSingleQuote && !inDoubleQuote) {
+    if (char === '#' && !state.inSingleQuote && !state.inDoubleQuote) {
       break;
     }
 
     output += char;
+    index += 1;
+  }
+
+  if (
+    !state.inSingleQuote &&
+    !state.inDoubleQuote &&
+    !state.inTripleSingleQuote &&
+    !state.inTripleDoubleQuote
+  ) {
+    state.escaped = false;
   }
 
   return output;
@@ -110,12 +164,19 @@ const stripPythonInlineComment = (line) => {
 const collectImportStatements = (lines, filePath) => {
   const statements = [];
   const parsingWarnings = [];
+  const commentStripState = {
+    inSingleQuote: false,
+    inDoubleQuote: false,
+    inTripleSingleQuote: false,
+    inTripleDoubleQuote: false,
+    escaped: false,
+  };
   let pendingStatement = '';
   let pendingStartLine = 0;
   let parenthesisDepth = 0;
 
   for (let index = 0; index < lines.length; index += 1) {
-    const line = stripPythonInlineComment(lines[index]).trim();
+    const line = stripPythonInlineComment(lines[index], commentStripState).trim();
     if (!line && !pendingStatement) {
       continue;
     }
@@ -152,44 +213,22 @@ const collectImportStatements = (lines, filePath) => {
   return { statements, parsingWarnings };
 };
 
-const parseImportStatement = (statement, lineNumber, filePath) => {
-  const normalizedStatement = statement.replace(/\s+/g, ' ').trim();
-  if (!normalizedStatement) {
-    return null;
-  }
-
-  const importMatch = normalizedStatement.match(/^import\s+(.+)$/);
-  if (importMatch) {
-    return {
-      kind: 'import',
-      targets: splitImportTargets(importMatch[1]),
-    };
-  }
-
-  const fromImportMatch = normalizedStatement.match(/^from\s+([.A-Za-z_][\w.]*)\s+import\s+(.+)$/);
-  if (fromImportMatch) {
-    return {
-      kind: 'from',
-      moduleSpec: fromImportMatch[1].trim(),
-      importedPart: fromImportMatch[2].trim(),
-    };
-  }
-
-  return {
-    kind: 'unparsed',
-    filePath,
-    lineNumber,
-    normalized: normalizedStatement,
-  };
-};
-
-const resolveParsedImport = (parsedImport, imports, warnings, availableModules = null) => {
-  if (!parsedImport) {
+const applyImportStatement = (
+  rawStatement,
+  lineNumber,
+  filePath,
+  imports,
+  warnings,
+  availableModules = null,
+) => {
+  const statement = rawStatement.replace(/\s+/g, ' ').trim();
+  if (!statement) {
     return;
   }
 
-  if (parsedImport.kind === 'import') {
-    for (const modulePart of parsedImport.targets) {
+  const importMatch = statement.match(/^import\s+(.+)$/);
+  if (importMatch) {
+    for (const modulePart of splitImportTargets(importMatch[1])) {
       const rootModule = modulePart.split('.')[0].trim();
       if (rootModule) {
         imports.add(rootModule);
@@ -198,8 +237,14 @@ const resolveParsedImport = (parsedImport, imports, warnings, availableModules =
     return;
   }
 
-  if (parsedImport.kind === 'from') {
-    const { moduleSpec, importedPart } = parsedImport;
+  const bareRelativeFromImportMatch = statement.match(/^from\s+(\.+)\s+import\s+(.+)$/);
+  const fromImportMatch = statement.match(
+    /^from\s+((?:\.+[A-Za-z_][\w.]*)|(?:[A-Za-z_][\w.]*))\s+import\s+(.+)$/,
+  );
+  if (bareRelativeFromImportMatch || fromImportMatch) {
+    const moduleSpec = (bareRelativeFromImportMatch?.[1] || fromImportMatch?.[1] || '').trim();
+    const importedPart = (bareRelativeFromImportMatch?.[2] || fromImportMatch?.[2] || '').trim();
+
     if (moduleSpec.startsWith('.')) {
       const localModule = moduleSpec.replace(/^\.+/, '').split('.')[0].trim();
       if (localModule) {
@@ -227,7 +272,7 @@ const resolveParsedImport = (parsedImport, imports, warnings, availableModules =
   }
 
   warnings.push(
-    `unparsed import statement in ${path.basename(parsedImport.filePath)}:${parsedImport.lineNumber}: ${parsedImport.normalized}`,
+    `unparsed import statement in ${path.basename(filePath)}:${lineNumber}: ${statement}`,
   );
 };
 
@@ -244,8 +289,7 @@ const extractImportedRootModules = (filePath, availableModules = null) => {
   const { statements, parsingWarnings } = collectImportStatements(lines, filePath);
 
   for (const { statement, line } of statements) {
-    const parsedImport = parseImportStatement(statement, line, filePath);
-    resolveParsedImport(parsedImport, imports, parsingWarnings, availableModules);
+    applyImportStatement(statement, line, filePath, imports, parsingWarnings, availableModules);
   }
 
   warnImportScannerWarnings(parsingWarnings);
