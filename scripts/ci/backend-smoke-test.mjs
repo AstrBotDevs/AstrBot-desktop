@@ -98,6 +98,8 @@ const assertPathExists = (fsLike, targetPath, description) => {
 
 const reserveLoopbackPort = async () =>
   new Promise((resolve, reject) => {
+    // NOTE: this reserve-then-bind pattern has a small race window by design.
+    // If CI flakes with EADDRINUSE, prefer adding bind-retry logic in main().
     const server = net.createServer();
     server.unref();
     server.on('error', reject);
