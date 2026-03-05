@@ -49,74 +49,19 @@ const prepareOutputDirs = () => {
   fs.mkdirSync(appDir, { recursive: true });
 };
 
-const extractImportedRootModules = (filePath, availableModules = null) => {
-  const content = fs.readFileSync(filePath, 'utf8');
-  const imports = new Set();
+const splitImportTargets = (value) =>
+  value
+    .replace(/[()]/g, ' ')
+    .split(',')
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .map((segment) => segment.split(/\s+as\s+/i)[0].trim())
+    .map((segment) => segment.replace(/\\\s*$/g, '').trim())
+    .filter(Boolean);
+
+const collectImportStatements = (lines, filePath) => {
+  const statements = [];
   const parsingWarnings = [];
-  const lines = content.split(/\r?\n/);
-
-  const splitImportTargets = (value) =>
-    value
-      .replace(/[()]/g, ' ')
-      .split(',')
-      .map((segment) => segment.trim())
-      .filter(Boolean)
-      .map((segment) => segment.split(/\s+as\s+/i)[0].trim())
-      .map((segment) => segment.replace(/\\\s*$/g, '').trim())
-      .filter(Boolean);
-
-  const parseImportStatement = (statement, lineNumber) => {
-    const normalizedStatement = statement.replace(/\\\s*/g, ' ').replace(/\s+/g, ' ').trim();
-    if (!normalizedStatement) {
-      return;
-    }
-
-    const importMatch = normalizedStatement.match(/^import\s+(.+)$/);
-    if (importMatch) {
-      for (const modulePart of splitImportTargets(importMatch[1])) {
-        const rootModule = modulePart.split('.')[0].trim();
-        if (rootModule) {
-          imports.add(rootModule);
-        }
-      }
-      return;
-    }
-
-    const fromImportMatch = normalizedStatement.match(/^from\s+([.A-Za-z_][\w.]*)\s+import\s+(.+)$/);
-    if (fromImportMatch) {
-      const moduleSpec = fromImportMatch[1].trim();
-      const importedPart = fromImportMatch[2].trim();
-      if (moduleSpec.startsWith('.')) {
-        const localModule = moduleSpec.replace(/^\.+/, '').split('.')[0].trim();
-        if (localModule) {
-          imports.add(localModule);
-          return;
-        }
-
-        for (const importedName of splitImportTargets(importedPart)) {
-          const candidateModule = importedName.split('.')[0].trim();
-          if (!candidateModule) {
-            continue;
-          }
-          if (!availableModules || availableModules.has(candidateModule)) {
-            imports.add(candidateModule);
-          }
-        }
-        return;
-      }
-
-      const rootModule = moduleSpec.split('.')[0].trim();
-      if (rootModule) {
-        imports.add(rootModule);
-      }
-      return;
-    }
-
-    parsingWarnings.push(
-      `unparsed import statement in ${path.basename(filePath)}:${lineNumber}: ${normalizedStatement}`,
-    );
-  };
-
   let pendingStatement = '';
   let pendingStartLine = 0;
   let parenthesisDepth = 0;
@@ -144,7 +89,7 @@ const extractImportedRootModules = (filePath, availableModules = null) => {
       continue;
     }
 
-    parseImportStatement(pendingStatement, pendingStartLine);
+    statements.push({ statement: pendingStatement, line: pendingStartLine });
     pendingStatement = '';
     pendingStartLine = 0;
     parenthesisDepth = 0;
@@ -156,20 +101,141 @@ const extractImportedRootModules = (filePath, availableModules = null) => {
     );
   }
 
-  if (parsingWarnings.length > 0) {
-    console.warn(`[build-backend] ${parsingWarnings.join('; ')}`);
+  return { statements, parsingWarnings };
+};
+
+const parseImportStatement = (
+  statement,
+  lineNumber,
+  filePath,
+  imports,
+  warnings,
+  availableModules = null,
+) => {
+  const normalizedStatement = statement.replace(/\\\s*/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!normalizedStatement) {
+    return;
   }
 
+  const importMatch = normalizedStatement.match(/^import\s+(.+)$/);
+  if (importMatch) {
+    for (const modulePart of splitImportTargets(importMatch[1])) {
+      const rootModule = modulePart.split('.')[0].trim();
+      if (rootModule) {
+        imports.add(rootModule);
+      }
+    }
+    return;
+  }
+
+  const fromImportMatch = normalizedStatement.match(/^from\s+([.A-Za-z_][\w.]*)\s+import\s+(.+)$/);
+  if (fromImportMatch) {
+    const moduleSpec = fromImportMatch[1].trim();
+    const importedPart = fromImportMatch[2].trim();
+    if (moduleSpec.startsWith('.')) {
+      const localModule = moduleSpec.replace(/^\.+/, '').split('.')[0].trim();
+      if (localModule) {
+        imports.add(localModule);
+        return;
+      }
+
+      for (const importedName of splitImportTargets(importedPart)) {
+        const candidateModule = importedName.split('.')[0].trim();
+        if (!candidateModule || candidateModule === '*') {
+          continue;
+        }
+        if (!availableModules || availableModules.has(candidateModule)) {
+          imports.add(candidateModule);
+        }
+      }
+      return;
+    }
+
+    const rootModule = moduleSpec.split('.')[0].trim();
+    if (rootModule) {
+      imports.add(rootModule);
+    }
+    return;
+  }
+
+  warnings.push(
+    `unparsed import statement in ${path.basename(filePath)}:${lineNumber}: ${normalizedStatement}`,
+  );
+};
+
+const warnImportScannerWarnings = (warnings) => {
+  if (warnings.length > 0) {
+    console.warn(`[build-backend] ${warnings.join('; ')}`);
+  }
+};
+
+const extractImportedRootModules = (filePath, availableModules = null) => {
+  const content = fs.readFileSync(filePath, 'utf8');
+  const imports = new Set();
+  const lines = content.split(/\r?\n/);
+  const { statements, parsingWarnings } = collectImportStatements(lines, filePath);
+
+  for (const { statement, line } of statements) {
+    parseImportStatement(statement, line, filePath, imports, parsingWarnings, availableModules);
+  }
+
+  warnImportScannerWarnings(parsingWarnings);
   return imports;
 };
 
-const resolveRequiredRootPythonFiles = (resolvedSourceDir, entryFile = 'main.py') => {
-  const availableModules = new Set(
-    fs
-      .readdirSync(resolvedSourceDir, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && path.extname(entry.name) === '.py')
-      .map((entry) => path.basename(entry.name, '.py')),
+const listAvailableRootModules = (resolvedSourceDir) => {
+  const modules = new Map();
+  const entries = fs.readdirSync(resolvedSourceDir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (!entry.isFile() || path.extname(entry.name) !== '.py') {
+      continue;
+    }
+    const moduleName = path.basename(entry.name, '.py');
+    modules.set(moduleName, {
+      relativePath: entry.name,
+      scanPath: path.join(resolvedSourceDir, entry.name),
+    });
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const moduleName = entry.name;
+    const initPath = path.join(resolvedSourceDir, moduleName, '__init__.py');
+    if (!fs.existsSync(initPath)) {
+      continue;
+    }
+    if (modules.has(moduleName)) {
+      console.warn(
+        `[build-backend] both module file and package found for "${moduleName}", ` +
+          `preferring ${modules.get(moduleName).relativePath}`,
+      );
+      continue;
+    }
+    modules.set(moduleName, {
+      relativePath: moduleName,
+      scanPath: initPath,
+    });
+  }
+
+  return modules;
+};
+
+const warnUnresolvedImports = (unresolvedImports, entryFile) => {
+  if (unresolvedImports.size === 0) {
+    return;
+  }
+  console.warn(
+    `[build-backend] unresolved root module imports while scanning ${entryFile}: ` +
+      `${Array.from(unresolvedImports).sort().join(', ')} ` +
+      '(these may be stdlib/third-party imports; verify local helper modules are present when needed).',
   );
+};
+
+const resolveRequiredRootPythonFiles = (resolvedSourceDir, entryFile = 'main.py') => {
+  const availableModules = listAvailableRootModules(resolvedSourceDir);
   const required = new Set();
   const visitedFiles = new Set();
   const unresolvedImports = new Set();
@@ -184,36 +250,30 @@ const resolveRequiredRootPythonFiles = (resolvedSourceDir, entryFile = 'main.py'
     const importedModules = extractImportedRootModules(currentFile, availableModules);
 
     for (const importedModule of importedModules) {
-      if (!availableModules.has(importedModule)) {
+      const moduleEntry = availableModules.get(importedModule);
+      if (!moduleEntry) {
         unresolvedImports.add(`${path.basename(currentFile)} -> ${importedModule}`);
         continue;
       }
-      const relativeFile = `${importedModule}.py`;
-      if (relativeFile === entryFile) {
+      if (moduleEntry.relativePath === entryFile) {
         continue;
       }
-      if (!required.has(relativeFile)) {
-        required.add(relativeFile);
-        queue.push(path.join(resolvedSourceDir, relativeFile));
+      if (!required.has(moduleEntry.relativePath)) {
+        required.add(moduleEntry.relativePath);
+        queue.push(moduleEntry.scanPath);
       }
     }
   }
 
-  if (unresolvedImports.size > 0) {
-    console.warn(
-      `[build-backend] unresolved root module imports while scanning ${entryFile}: ` +
-        `${Array.from(unresolvedImports).sort().join(', ')} ` +
-        '(these may be stdlib/third-party imports; verify local helper modules are present when needed).',
-    );
-  }
-
+  warnUnresolvedImports(unresolvedImports, entryFile);
   return Array.from(required).sort();
 };
 
+const getRequiredSourceEntries = (resolvedSourceDir) =>
+  Array.from(new Set([...requiredSourceEntries, ...resolveRequiredRootPythonFiles(resolvedSourceDir, 'main.py')]));
+
 const copyAppSources = (resolvedSourceDir) => {
-  const requiredEntries = Array.from(
-    new Set([...requiredSourceEntries, ...resolveRequiredRootPythonFiles(resolvedSourceDir, 'main.py')]),
-  );
+  const requiredEntries = getRequiredSourceEntries(resolvedSourceDir);
 
   for (const relativePath of requiredEntries) {
     const sourcePath = path.join(resolvedSourceDir, relativePath);

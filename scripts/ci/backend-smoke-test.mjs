@@ -3,10 +3,12 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import net from 'node:net';
+import http from 'node:http';
+import https from 'node:https';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { pathToFileURL } from 'node:url';
 
-const args = process.argv.slice(2);
 const defaultBackendDir = path.resolve('resources', 'backend');
 const defaultWebuiDir = path.resolve('resources', 'webui');
 
@@ -29,6 +31,7 @@ const parseCliOptions = (argv) => {
     startupTimeoutMs: 45_000,
     pollIntervalMs: 500,
     label: '',
+    showHelp: false,
   };
 
   const requireValue = (flag, index) => {
@@ -50,8 +53,7 @@ const parseCliOptions = (argv) => {
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '-h' || arg === '--help') {
-      console.log(usageMessage());
-      process.exit(0);
+      parsed.showHelp = true;
     } else if (arg === '--backend-dir') {
       const raw = requireValue(arg, i).trim();
       if (!raw) {
@@ -85,9 +87,8 @@ const parseCliOptions = (argv) => {
   return parsed;
 };
 
-const options = parseCliOptions(args);
-
-const tracePrefix = options.label ? `[backend-smoke:${options.label}]` : '[backend-smoke]';
+const getTracePrefix = (options) =>
+  options.label ? `[backend-smoke:${options.label}]` : '[backend-smoke]';
 
 const assertPathExists = (targetPath, description) => {
   if (!fs.existsSync(targetPath)) {
@@ -117,11 +118,53 @@ const reserveLoopbackPort = async () =>
     });
   });
 
+const fallbackFetch = async (url, options = {}) =>
+  new Promise((resolve, reject) => {
+    const urlObject = new URL(url);
+    const client = urlObject.protocol === 'https:' ? https : http;
+    const request = client.request(
+      urlObject,
+      {
+        method: options.method || 'GET',
+      },
+      (response) => {
+        response.resume();
+        const status = response.statusCode || 0;
+        resolve({
+          status,
+          ok: status >= 200 && status < 300,
+        });
+      },
+    );
+
+    request.on('error', reject);
+    if (options.signal) {
+      const onAbort = () => {
+        request.destroy(new Error('Request aborted'));
+      };
+      if (options.signal.aborted) {
+        onAbort();
+      } else {
+        options.signal.addEventListener('abort', onAbort, { once: true });
+        request.on('close', () => options.signal?.removeEventListener('abort', onAbort));
+      }
+    }
+    request.end();
+  });
+
+const getFetchImplementation = () => {
+  if (typeof globalThis.fetch === 'function') {
+    return globalThis.fetch.bind(globalThis);
+  }
+  return fallbackFetch;
+};
+
 const fetchWithTimeout = async (url, timeoutMs) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const fetchImpl = getFetchImplementation();
   try {
-    return await fetch(url, { method: 'GET', signal: controller.signal });
+    return await fetchImpl(url, { method: 'GET', signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -145,7 +188,8 @@ const terminateChild = async (child, timeoutMs = 4_000) => {
   }
 };
 
-const main = async () => {
+const main = async (options) => {
+  const tracePrefix = getTracePrefix(options);
   const backendDir = options.backendDir;
   const webuiDir = options.webuiDir;
   const manifestPath = path.join(backendDir, 'runtime-manifest.json');
@@ -268,7 +312,26 @@ const main = async () => {
   }
 };
 
-main().catch((error) => {
-  console.error(`${tracePrefix} FAILED: ${error instanceof Error ? error.message : String(error)}`);
-  process.exit(1);
-});
+const runCli = async (argv = process.argv.slice(2)) => {
+  const options = parseCliOptions(argv);
+  if (options.showHelp) {
+    console.log(usageMessage());
+    return 0;
+  }
+
+  const tracePrefix = getTracePrefix(options);
+  try {
+    await main(options);
+    return 0;
+  } catch (error) {
+    console.error(`${tracePrefix} FAILED: ${error instanceof Error ? error.message : String(error)}`);
+    return 1;
+  }
+};
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const exitCode = await runCli();
+  process.exit(exitCode);
+}
+
+export { main, parseCliOptions, runCli, usageMessage };
