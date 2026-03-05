@@ -334,6 +334,10 @@ const runCli = async (argv = process.argv.slice(2), runtime = {}) => {
   const executeMain = runtime.executeMain || main;
   const log = runtime.log || console.log;
   const logError = runtime.logError || console.error;
+  const addrInUseRetries = Number.isInteger(runtime.addrInUseRetries)
+    ? runtime.addrInUseRetries
+    : 1;
+  const isAddressInUseError = (message) => /EADDRINUSE|address already in use/i.test(message);
 
   let options;
   try {
@@ -350,18 +354,30 @@ const runCli = async (argv = process.argv.slice(2), runtime = {}) => {
   }
 
   const tracePrefix = getTracePrefix(options);
-  try {
-    await executeMain(options);
-    return 0;
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    if (reason.startsWith(tracePrefix)) {
-      logError(reason);
-    } else {
-      logError(`${tracePrefix} FAILED: ${reason}`);
+  let lastError = null;
+  for (let attempt = 0; attempt <= addrInUseRetries; attempt += 1) {
+    try {
+      await executeMain(options);
+      return 0;
+    } catch (error) {
+      lastError = error;
+      const reason = error instanceof Error ? error.message : String(error);
+      if (attempt < addrInUseRetries && isAddressInUseError(reason)) {
+        log(`${tracePrefix} detected EADDRINUSE, retrying startup (${attempt + 1}/${addrInUseRetries}).`);
+        continue;
+      }
+      if (reason.startsWith(tracePrefix)) {
+        logError(reason);
+      } else {
+        logError(`${tracePrefix} FAILED: ${reason}`);
+      }
+      return 1;
     }
-    return 1;
   }
+
+  const fallbackReason = lastError instanceof Error ? lastError.message : String(lastError);
+  logError(`${tracePrefix} FAILED: ${fallbackReason}`);
+  return 1;
 };
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

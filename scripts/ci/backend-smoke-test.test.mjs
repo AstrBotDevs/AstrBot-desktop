@@ -210,6 +210,30 @@ test('runCli returns 1 and emits labeled failure message when main throws', asyn
   assert.match(errorLogs[0], /^\[backend-smoke:ci-test\] FAILED: boom/);
 });
 
+test('runCli retries once on EADDRINUSE and then succeeds', async () => {
+  const logs = [];
+  const errorLogs = [];
+  let calls = 0;
+
+  const exitCode = await runCli(['--label', 'ci-test'], {
+    executeMain: async () => {
+      calls += 1;
+      if (calls === 1) {
+        throw new Error('listen EADDRINUSE: address already in use');
+      }
+    },
+    log: (line) => logs.push(String(line)),
+    logError: (line) => errorLogs.push(String(line)),
+    addrInUseRetries: 1,
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(calls, 2);
+  assert.equal(errorLogs.length, 0);
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /\[backend-smoke:ci-test\] detected EADDRINUSE, retrying startup/);
+});
+
 test('runCli returns 1 and emits parse errors with default prefix', async () => {
   const errorLogs = [];
   const exitCode = await runCli(['--startup-timeout-ms', '0'], {
@@ -677,7 +701,9 @@ test('main fails when spawn emits error', async () => {
         ),
       (error) =>
         error instanceof Error &&
-        error.message.includes('[backend-smoke:spawn-error] Failed to spawn backend process: spawn failed'),
+        error.message.includes('[backend-smoke:spawn-error] Failed to spawn backend process: spawn failed') &&
+        error.message.includes('[backend-smoke:spawn-error] recent backend logs:') &&
+        error.message.includes('spawn-error: spawn failed'),
     );
   } finally {
     await rm(fixture.root, { recursive: true, force: true });

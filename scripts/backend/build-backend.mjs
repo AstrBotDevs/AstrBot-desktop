@@ -61,8 +61,23 @@ const resolveImportScannerPythonExecutable = () => {
 };
 
 const IMPORT_SCANNER_TIMEOUT_MS = 30_000;
+const importScannerCache = new Map();
+
+const getImportScannerCacheKey = (filePath) => {
+  try {
+    const stat = fs.statSync(filePath);
+    return `${filePath}:${stat.mtimeMs}:${stat.size}`;
+  } catch {
+    return '';
+  }
+};
 
 const runImportScanner = (filePath) => {
+  const cacheKey = getImportScannerCacheKey(filePath);
+  if (cacheKey && importScannerCache.has(cacheKey)) {
+    return importScannerCache.get(cacheKey);
+  }
+
   const scannerPython = resolveImportScannerPythonExecutable();
   const result = spawnSync(scannerPython, [importScannerScriptPath, filePath], {
     encoding: 'utf8',
@@ -97,6 +112,9 @@ const runImportScanner = (filePath) => {
     if (!Array.isArray(parsed)) {
       throw new Error('scanner output is not an array');
     }
+    if (cacheKey) {
+      importScannerCache.set(cacheKey, parsed);
+    }
     return parsed;
   } catch (error) {
     console.warn(
@@ -106,11 +124,12 @@ const runImportScanner = (filePath) => {
   }
 };
 
-const extractImportedRootModules = (filePath, availableModules = null) => {
+const extractImportedRootModules = (filePath) => {
   const imports = new Set();
+  const relativeBareImports = new Set();
   const descriptors = runImportScanner(filePath);
 
-  const addRoot = (name, requiresAvailableModule = false) => {
+  const addRoot = (name, metadata = null) => {
     if (typeof name !== 'string') {
       return;
     }
@@ -118,8 +137,8 @@ const extractImportedRootModules = (filePath, availableModules = null) => {
     if (!rootModule || rootModule === '*') {
       return;
     }
-    if (requiresAvailableModule && availableModules && !availableModules.has(rootModule)) {
-      return;
+    if (metadata?.fromRelativeBareImport) {
+      relativeBareImports.add(rootModule);
     }
     imports.add(rootModule);
   };
@@ -131,7 +150,7 @@ const extractImportedRootModules = (filePath, availableModules = null) => {
 
     if (descriptor.kind === 'import') {
       if (typeof descriptor.module === 'string' && descriptor.module.trim()) {
-        addRoot(descriptor.module, false);
+        addRoot(descriptor.module);
       }
       continue;
     }
@@ -143,7 +162,7 @@ const extractImportedRootModules = (filePath, availableModules = null) => {
 
       if (level > 0) {
         if (moduleSpec) {
-          addRoot(moduleSpec, false);
+          addRoot(moduleSpec);
           continue;
         }
 
@@ -151,18 +170,18 @@ const extractImportedRootModules = (filePath, availableModules = null) => {
           if (typeof importedName !== 'string') {
             continue;
           }
-          addRoot(importedName, true);
+          addRoot(importedName, { fromRelativeBareImport: true });
         }
         continue;
       }
 
       if (moduleSpec) {
-        addRoot(moduleSpec, false);
+        addRoot(moduleSpec);
       }
     }
   }
 
-  return imports;
+  return { imports, relativeBareImports };
 };
 
 const listAvailableRootModules = (resolvedSourceDir) => {
@@ -176,7 +195,7 @@ const listAvailableRootModules = (resolvedSourceDir) => {
     if (entry.isFile() && path.extname(entry.name) === '.py') {
       const moduleName = path.basename(entry.name, '.py');
       const existingModule = modules.get(moduleName);
-      if (existingModule?.kind === 'package') {
+      if (existingModule?.isPackage) {
         console.warn(
           `[build-backend] both module file and package found for "${moduleName}", ` +
             `preferring ${entry.name}`,
@@ -185,7 +204,7 @@ const listAvailableRootModules = (resolvedSourceDir) => {
       modules.set(moduleName, {
         relativePath: entry.name,
         scanPath: path.join(resolvedSourceDir, entry.name),
-        kind: 'file',
+        isPackage: false,
       });
       continue;
     }
@@ -199,20 +218,20 @@ const listAvailableRootModules = (resolvedSourceDir) => {
       continue;
     }
     const existingModule = modules.get(moduleName);
-    if (existingModule?.kind === 'file') {
+    if (existingModule && !existingModule.isPackage) {
       console.warn(
         `[build-backend] both module file and package found for "${moduleName}", ` +
           `preferring ${existingModule.relativePath}`,
       );
       continue;
     }
-    if (existingModule?.kind === 'package') {
+    if (existingModule?.isPackage) {
       continue;
     }
     modules.set(moduleName, {
       relativePath: moduleName,
       scanPath: initPath,
-      kind: 'package',
+      isPackage: true,
     });
   }
 
@@ -249,11 +268,14 @@ const resolveRequiredRootPythonFiles = (resolvedSourceDir, entryFile = 'main.py'
       continue;
     }
     visitedFiles.add(currentFile);
-    const importedModules = extractImportedRootModules(currentFile, availableModules);
+    const { imports: importedModules, relativeBareImports } = extractImportedRootModules(currentFile);
 
     for (const importedModule of importedModules) {
       const moduleEntry = availableModules.get(importedModule);
       if (!moduleEntry) {
+        if (relativeBareImports.has(importedModule)) {
+          continue;
+        }
         unresolvedImports.push({
           file: path.basename(currentFile),
           module: importedModule,
