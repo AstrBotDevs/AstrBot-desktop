@@ -49,8 +49,91 @@ const prepareOutputDirs = () => {
   fs.mkdirSync(appDir, { recursive: true });
 };
 
+const listRootPythonModules = (resolvedSourceDir) => {
+  const modules = new Map();
+  for (const entry of fs.readdirSync(resolvedSourceDir, { withFileTypes: true })) {
+    if (!entry.isFile() || path.extname(entry.name) !== '.py') {
+      continue;
+    }
+    const moduleName = path.basename(entry.name, '.py');
+    modules.set(moduleName, entry.name);
+  }
+  return modules;
+};
+
+const extractImportedRootModules = (filePath) => {
+  const content = fs.readFileSync(filePath, 'utf8');
+  const imports = new Set();
+
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.split('#')[0].trim();
+    if (!line) {
+      continue;
+    }
+
+    const importMatch = line.match(/^import\s+(.+)$/);
+    if (importMatch) {
+      for (const segmentRaw of importMatch[1].split(',')) {
+        const segment = segmentRaw.trim();
+        if (!segment) {
+          continue;
+        }
+        const modulePart = segment.split(/\s+as\s+/i)[0].trim();
+        const rootModule = modulePart.split('.')[0].trim();
+        if (rootModule) {
+          imports.add(rootModule);
+        }
+      }
+      continue;
+    }
+
+    const fromImportMatch = line.match(/^from\s+([A-Za-z_][\w.]*)\s+import\s+/);
+    if (fromImportMatch) {
+      const rootModule = fromImportMatch[1].split('.')[0].trim();
+      if (rootModule) {
+        imports.add(rootModule);
+      }
+    }
+  }
+
+  return imports;
+};
+
+const resolveRequiredRootPythonFiles = (resolvedSourceDir) => {
+  const modules = listRootPythonModules(resolvedSourceDir);
+  const required = new Set();
+  const visitedFiles = new Set();
+  const queue = [path.join(resolvedSourceDir, 'main.py')];
+
+  while (queue.length > 0) {
+    const currentFile = queue.shift();
+    if (!currentFile || visitedFiles.has(currentFile) || !fs.existsSync(currentFile)) {
+      continue;
+    }
+    visitedFiles.add(currentFile);
+    const importedModules = extractImportedRootModules(currentFile);
+
+    for (const importedModule of importedModules) {
+      const relativeFile = modules.get(importedModule);
+      if (!relativeFile || relativeFile === 'main.py') {
+        continue;
+      }
+      if (!required.has(relativeFile)) {
+        required.add(relativeFile);
+        queue.push(path.join(resolvedSourceDir, relativeFile));
+      }
+    }
+  }
+
+  return Array.from(required).sort();
+};
+
 const copyAppSources = (resolvedSourceDir) => {
-  for (const relativePath of requiredSourceEntries) {
+  const requiredEntries = Array.from(
+    new Set([...requiredSourceEntries, ...resolveRequiredRootPythonFiles(resolvedSourceDir)]),
+  );
+
+  for (const relativePath of requiredEntries) {
     const sourcePath = path.join(resolvedSourceDir, relativePath);
     const targetPath = path.join(appDir, relativePath);
     if (!fs.existsSync(sourcePath)) {

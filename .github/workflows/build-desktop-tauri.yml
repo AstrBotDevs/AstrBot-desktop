@@ -203,6 +203,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: cargo tauri build --bundles deb,rpm
 
+      - name: Smoke test backend startup (Linux)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/ci/backend-smoke-test.mjs --label "linux-${{ matrix.arch }}"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v6.0.0
         with:
@@ -330,6 +336,12 @@ jobs:
             sleep "${retry_sleep_seconds}"
           done
 
+      - name: Smoke test backend startup (macOS)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/ci/backend-smoke-test.mjs --label "macos-${{ matrix.arch }}"
+
       - name: Package macOS app as zip
         env:
           RESOLVED_APP_BUNDLE_NAME: ${{ steps.resolve_macos_app_bundle.outputs.app_bundle_name }}
@@ -423,6 +435,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: bash scripts/ci/build-windows-installers.sh
+
+      - name: Smoke test backend startup (Windows)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/ci/backend-smoke-test.mjs --label "windows-${{ matrix.arch }}"
 
       - name: Verify Windows installer outputs
         shell: bash
