@@ -1,8 +1,52 @@
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { test } from 'node:test';
 
-import { parseCliOptions, runCli, usageMessage } from './backend-smoke-test.mjs';
+import { main, parseCliOptions, runCli, usageMessage } from './backend-smoke-test.mjs';
+
+const createFixtureLayout = async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'astrbot-backend-smoke-test-'));
+  const backendDir = path.join(root, 'backend');
+  const webuiDir = path.join(root, 'webui');
+  const appDir = path.join(backendDir, 'app');
+  const pythonDir = path.join(backendDir, 'python');
+  const launcherPath = path.join(backendDir, 'launch_backend.py');
+  const mainPath = path.join(appDir, 'main.py');
+  const pythonPath = path.join(pythonDir, 'python');
+
+  await mkdir(appDir, { recursive: true });
+  await mkdir(pythonDir, { recursive: true });
+  await mkdir(webuiDir, { recursive: true });
+  await writeFile(launcherPath, '# launcher', 'utf8');
+  await writeFile(mainPath, '# main', 'utf8');
+  await writeFile(pythonPath, '#!/bin/sh\n', 'utf8');
+  await writeFile(
+    path.join(backendDir, 'runtime-manifest.json'),
+    JSON.stringify({ python: 'python/python' }),
+    'utf8',
+  );
+
+  return { root, backendDir, webuiDir };
+};
+
+const createFakeChild = () => {
+  const child = new EventEmitter();
+  child.pid = 12345;
+  child.exitCode = null;
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.kill = () => {
+    if (child.exitCode === null) {
+      child.exitCode = 0;
+    }
+    return true;
+  };
+  return child;
+};
 
 test('parseCliOptions returns default values when no args provided', () => {
   const options = parseCliOptions([]);
@@ -170,4 +214,243 @@ test('runCli prints usage and returns 0 for --help', async () => {
   assert.equal(errorLogs.length, 0);
   assert.equal(logs.length, 1);
   assert.match(logs[0], /Usage: node scripts\/ci\/backend-smoke-test\.mjs \[options\]/);
+});
+
+test('main succeeds on readiness and always runs terminate/cleanup', async () => {
+  const fixture = await createFixtureLayout();
+  try {
+    const child = createFakeChild();
+    let terminated = 0;
+    let cleanedUpPath = '';
+
+    await main(
+      {
+        backendDir: fixture.backendDir,
+        webuiDir: fixture.webuiDir,
+        startupTimeoutMs: 50,
+        pollIntervalMs: 1,
+        label: 'main-ok',
+      },
+      {
+        fs,
+        spawn: () => child,
+        reserveLoopbackPort: async () => 6190,
+        fetchWithTimeout: async () => ({ ok: true, status: 200 }),
+        terminateChild: async (actualChild) => {
+          assert.equal(actualChild, child);
+          terminated += 1;
+        },
+        sleep: async () => {},
+        now: () => 0,
+        mkdtempSync: (prefix) => fs.mkdtempSync(prefix),
+        rmSync: (targetPath, options) => {
+          cleanedUpPath = targetPath;
+          fs.rmSync(targetPath, options);
+        },
+        tmpdir: () => os.tmpdir(),
+      },
+    );
+
+    assert.equal(terminated, 1);
+    assert.ok(cleanedUpPath.length > 0);
+    assert.equal(fs.existsSync(cleanedUpPath), false);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test('main fails when backend exits before readiness and includes prefixed logs', async () => {
+  const fixture = await createFixtureLayout();
+  try {
+    const child = createFakeChild();
+    let now = 0;
+    const emitOnce = { done: false };
+    let terminated = 0;
+    let cleanedUpPath = '';
+
+    await assert.rejects(
+      () =>
+        main(
+          {
+            backendDir: fixture.backendDir,
+            webuiDir: fixture.webuiDir,
+            startupTimeoutMs: 20,
+            pollIntervalMs: 1,
+            label: 'exit-early',
+          },
+          {
+            fs,
+            spawn: () => child,
+            reserveLoopbackPort: async () => 6191,
+            fetchWithTimeout: async () => {
+              throw new Error('connect refused');
+            },
+            terminateChild: async () => {
+              terminated += 1;
+            },
+            sleep: async () => {
+              if (!emitOnce.done) {
+                emitOnce.done = true;
+                child.stderr.emit('data', 'boot log line');
+                child.exitCode = 1;
+              }
+              now += 1;
+            },
+            now: () => now,
+            mkdtempSync: (prefix) => fs.mkdtempSync(prefix),
+            rmSync: (targetPath, options) => {
+              cleanedUpPath = targetPath;
+              fs.rmSync(targetPath, options);
+            },
+            tmpdir: () => os.tmpdir(),
+          },
+        ),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes('[backend-smoke:exit-early] Backend exited before readiness') &&
+        error.message.includes('[backend-smoke:exit-early] recent backend logs:') &&
+        error.message.includes('stderr: boot log line'),
+    );
+
+    assert.equal(terminated, 1);
+    assert.ok(cleanedUpPath.length > 0);
+    assert.equal(fs.existsSync(cleanedUpPath), false);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test('main fails on readiness timeout and keeps bounded recent logs', async () => {
+  const fixture = await createFixtureLayout();
+  try {
+    const child = createFakeChild();
+    let now = 0;
+
+    await assert.rejects(
+      () =>
+        main(
+          {
+            backendDir: fixture.backendDir,
+            webuiDir: fixture.webuiDir,
+            startupTimeoutMs: 260,
+            pollIntervalMs: 1,
+            label: 'timeout',
+          },
+          {
+            fs,
+            spawn: () => child,
+            reserveLoopbackPort: async () => 6192,
+            fetchWithTimeout: async () => {
+              throw new Error('still not reachable');
+            },
+            terminateChild: async () => {},
+            sleep: async () => {
+              child.stdout.emit('data', `line-${now}`);
+              now += 1;
+            },
+            now: () => now,
+            mkdtempSync: (prefix) => fs.mkdtempSync(prefix),
+            rmSync: (targetPath, options) => fs.rmSync(targetPath, options),
+            tmpdir: () => os.tmpdir(),
+          },
+        ),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes('[backend-smoke:timeout] Backend did not become HTTP-reachable') &&
+        error.message.includes('stdout: line-250') &&
+        !error.message.includes('stdout: line-0'),
+    );
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test('main fails when backend crashes after readiness', async () => {
+  const fixture = await createFixtureLayout();
+  try {
+    const child = createFakeChild();
+    let sleepCalls = 0;
+
+    await assert.rejects(
+      () =>
+        main(
+          {
+            backendDir: fixture.backendDir,
+            webuiDir: fixture.webuiDir,
+            startupTimeoutMs: 50,
+            pollIntervalMs: 1,
+            label: 'crash-after-ready',
+          },
+          {
+            fs,
+            spawn: () => child,
+            reserveLoopbackPort: async () => 6193,
+            fetchWithTimeout: async () => ({ ok: true, status: 200 }),
+            terminateChild: async () => {},
+            sleep: async () => {
+              sleepCalls += 1;
+              if (sleepCalls === 1) {
+                child.exitCode = 2;
+              }
+            },
+            now: () => 0,
+            mkdtempSync: (prefix) => fs.mkdtempSync(prefix),
+            rmSync: (targetPath, options) => fs.rmSync(targetPath, options),
+            tmpdir: () => os.tmpdir(),
+          },
+        ),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes('[backend-smoke:crash-after-ready] Backend crashed after readiness (exit=2).'),
+    );
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test('main fails when spawn emits error', async () => {
+  const fixture = await createFixtureLayout();
+  try {
+    const child = createFakeChild();
+    let now = 0;
+
+    await assert.rejects(
+      () =>
+        main(
+          {
+            backendDir: fixture.backendDir,
+            webuiDir: fixture.webuiDir,
+            startupTimeoutMs: 50,
+            pollIntervalMs: 1,
+            label: 'spawn-error',
+          },
+          {
+            fs,
+            spawn: () => {
+              queueMicrotask(() => {
+                child.emit('error', new Error('spawn failed'));
+              });
+              return child;
+            },
+            reserveLoopbackPort: async () => 6194,
+            fetchWithTimeout: async () => {
+              throw new Error('connection refused');
+            },
+            terminateChild: async () => {},
+            sleep: async () => {
+              now += 1;
+            },
+            now: () => now,
+            mkdtempSync: (prefix) => fs.mkdtempSync(prefix),
+            rmSync: (targetPath, options) => fs.rmSync(targetPath, options),
+            tmpdir: () => os.tmpdir(),
+          },
+        ),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes('[backend-smoke:spawn-error] Failed to spawn backend process: spawn failed'),
+    );
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
 });

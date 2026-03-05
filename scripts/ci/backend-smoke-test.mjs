@@ -90,8 +90,8 @@ const parseCliOptions = (argv) => {
 const getTracePrefix = (options) =>
   options.label ? `[backend-smoke:${options.label}]` : '[backend-smoke]';
 
-const assertPathExists = (targetPath, description) => {
-  if (!fs.existsSync(targetPath)) {
+const assertPathExists = (fsLike, targetPath, description) => {
+  if (!fsLike.existsSync(targetPath)) {
     throw new Error(`${description} not found: ${targetPath}`);
   }
 };
@@ -188,7 +188,21 @@ const terminateChild = async (child, timeoutMs = 4_000) => {
   }
 };
 
-const main = async (options) => {
+const createMainRuntime = (overrides = {}) => ({
+  fs,
+  spawn,
+  reserveLoopbackPort,
+  fetchWithTimeout,
+  terminateChild,
+  sleep,
+  now: () => Date.now(),
+  mkdtempSync: (prefix) => fs.mkdtempSync(prefix),
+  rmSync: (targetPath, options) => fs.rmSync(targetPath, options),
+  tmpdir: () => os.tmpdir(),
+  ...overrides,
+});
+
+const main = async (options, runtime = createMainRuntime()) => {
   const tracePrefix = getTracePrefix(options);
   const backendDir = options.backendDir;
   const webuiDir = options.webuiDir;
@@ -196,21 +210,23 @@ const main = async (options) => {
   const launcherPath = path.join(backendDir, 'launch_backend.py');
   const appMainPath = path.join(backendDir, 'app', 'main.py');
 
-  assertPathExists(backendDir, 'Backend directory');
-  assertPathExists(webuiDir, 'WebUI directory');
-  assertPathExists(manifestPath, 'Backend runtime manifest');
-  assertPathExists(launcherPath, 'Backend launcher');
-  assertPathExists(appMainPath, 'Backend app main.py');
+  assertPathExists(runtime.fs, backendDir, 'Backend directory');
+  assertPathExists(runtime.fs, webuiDir, 'WebUI directory');
+  assertPathExists(runtime.fs, manifestPath, 'Backend runtime manifest');
+  assertPathExists(runtime.fs, launcherPath, 'Backend launcher');
+  assertPathExists(runtime.fs, appMainPath, 'Backend app main.py');
 
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  const manifest = JSON.parse(runtime.fs.readFileSync(manifestPath, 'utf8'));
   if (!manifest.python || typeof manifest.python !== 'string') {
     throw new Error(`Invalid runtime manifest python entry: ${manifestPath}`);
   }
   const pythonPath = path.join(backendDir, manifest.python);
-  assertPathExists(pythonPath, 'Runtime python executable');
+  assertPathExists(runtime.fs, pythonPath, 'Runtime python executable');
 
-  const dashboardPort = await reserveLoopbackPort();
-  const backendRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'astrbot-backend-smoke-'));
+  const dashboardPort = await runtime.reserveLoopbackPort();
+  const backendRoot = runtime.mkdtempSync(
+    path.join(runtime.tmpdir(), 'astrbot-backend-smoke-'),
+  );
   const backendUrl = `http://127.0.0.1:${dashboardPort}/`;
   const childLogs = [];
   const maxLogLines = 200;
@@ -228,7 +244,7 @@ const main = async (options) => {
   };
   let spawnError = null;
 
-  const child = spawn(
+  const child = runtime.spawn(
     pythonPath,
     [launcherPath, '--webui-dir', webuiDir],
     {
@@ -260,12 +276,12 @@ const main = async (options) => {
     `${tracePrefix} started backend pid=${child.pid} url=${backendUrl} root=${backendRoot}`,
   );
 
-  const deadline = Date.now() + options.startupTimeoutMs;
+  const deadline = runtime.now() + options.startupTimeoutMs;
   let ready = false;
   let lastProbeError = '';
 
   try {
-    while (Date.now() < deadline) {
+    while (runtime.now() < deadline) {
       if (spawnError) {
         throw new Error(`Failed to spawn backend process: ${spawnError.message}`);
       }
@@ -276,7 +292,7 @@ const main = async (options) => {
       }
 
       try {
-        const response = await fetchWithTimeout(backendUrl, 1_200);
+        const response = await runtime.fetchWithTimeout(backendUrl, 1_200);
         if (response.ok) {
           ready = true;
           break;
@@ -285,7 +301,7 @@ const main = async (options) => {
       } catch (error) {
         lastProbeError = error instanceof Error ? error.message : String(error);
       }
-      await sleep(options.pollIntervalMs);
+      await runtime.sleep(options.pollIntervalMs);
     }
 
     if (!ready) {
@@ -295,7 +311,7 @@ const main = async (options) => {
     }
 
     // Keep the process alive for a short extra window to catch immediate crash loops.
-    await sleep(1_200);
+    await runtime.sleep(1_200);
     if (child.exitCode !== null) {
       throw new Error(`Backend crashed after readiness (exit=${child.exitCode}).`);
     }
@@ -305,10 +321,10 @@ const main = async (options) => {
       ? `\n${tracePrefix} recent backend logs:\n${childLogs.join('\n')}`
       : '';
     const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(`${reason}${details}`);
+    throw new Error(`${tracePrefix} ${reason}${details}`);
   } finally {
-    await terminateChild(child);
-    fs.rmSync(backendRoot, { recursive: true, force: true });
+    await runtime.terminateChild(child);
+    runtime.rmSync(backendRoot, { recursive: true, force: true });
   }
 };
 
@@ -336,7 +352,12 @@ const runCli = async (argv = process.argv.slice(2), runtime = {}) => {
     await executeMain(options);
     return 0;
   } catch (error) {
-    logError(`${tracePrefix} FAILED: ${error instanceof Error ? error.message : String(error)}`);
+    const reason = error instanceof Error ? error.message : String(error);
+    if (reason.startsWith(tracePrefix)) {
+      logError(reason);
+    } else {
+      logError(`${tracePrefix} FAILED: ${reason}`);
+    }
     return 1;
   }
 };
@@ -346,4 +367,4 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   process.exit(exitCode);
 }
 
-export { main, parseCliOptions, runCli, usageMessage };
+export { createMainRuntime, main, parseCliOptions, runCli, usageMessage };

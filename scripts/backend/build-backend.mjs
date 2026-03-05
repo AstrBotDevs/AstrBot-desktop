@@ -24,6 +24,7 @@ const runtimeDir = path.join(outputDir, 'python');
 const manifestPath = path.join(outputDir, 'runtime-manifest.json');
 const launcherPath = path.join(outputDir, 'launch_backend.py');
 const launcherTemplatePath = path.join(__dirname, 'templates', 'launch_backend.py');
+const importScannerScriptPath = path.join(__dirname, 'tools', 'scan_imports.py');
 
 const runtimeSource =
   process.env.ASTRBOT_DESKTOP_BACKEND_RUNTIME ||
@@ -49,259 +50,106 @@ const prepareOutputDirs = () => {
   fs.mkdirSync(appDir, { recursive: true });
 };
 
-const splitImportTargets = (value) => {
-  const results = [];
-  for (const rawSegment of value.replace(/[()]/g, ' ').split(',')) {
-    let segment = rawSegment.trim();
-    if (!segment) {
-      continue;
-    }
-    const [base] = segment.split(/\s+as\s+/i);
-    segment = base.replace(/\\\s*$/g, '').trim();
-    if (!segment) {
-      continue;
-    }
-    results.push(segment);
+const resolveImportScannerPythonExecutable = () => {
+  if (process.env.ASTRBOT_DESKTOP_IMPORT_SCANNER_PYTHON) {
+    return process.env.ASTRBOT_DESKTOP_IMPORT_SCANNER_PYTHON;
   }
-  return results;
+  if (process.env.PYTHON) {
+    return process.env.PYTHON;
+  }
+  return process.platform === 'win32' ? 'python' : 'python3';
 };
 
-const stripPythonInlineComment = (line, state) => {
-  let output = '';
-  let index = 0;
+const runImportScanner = (filePath) => {
+  const scannerPython = resolveImportScannerPythonExecutable();
+  const result = spawnSync(scannerPython, [importScannerScriptPath, filePath], {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
 
-  while (index < line.length) {
-    const char = line[index];
-    const tripleSingle = line.startsWith("'''", index);
-    const tripleDouble = line.startsWith('"""', index);
-
-    if (state.inTripleSingleQuote) {
-      if (tripleSingle) {
-        output += "'''";
-        index += 3;
-        state.inTripleSingleQuote = false;
-        continue;
-      }
-      output += char;
-      index += 1;
-      continue;
-    }
-
-    if (state.inTripleDoubleQuote) {
-      if (tripleDouble) {
-        output += '"""';
-        index += 3;
-        state.inTripleDoubleQuote = false;
-        continue;
-      }
-      output += char;
-      index += 1;
-      continue;
-    }
-
-    if (state.escaped) {
-      output += char;
-      state.escaped = false;
-      index += 1;
-      continue;
-    }
-
-    if (tripleSingle && !state.inDoubleQuote) {
-      state.inTripleSingleQuote = true;
-      output += "'''";
-      index += 3;
-      continue;
-    }
-
-    if (tripleDouble && !state.inSingleQuote) {
-      state.inTripleDoubleQuote = true;
-      output += '"""';
-      index += 3;
-      continue;
-    }
-
-    if (char === '\\') {
-      output += char;
-      state.escaped = true;
-      index += 1;
-      continue;
-    }
-
-    if (char === "'" && !state.inDoubleQuote) {
-      state.inSingleQuote = !state.inSingleQuote;
-      output += char;
-      index += 1;
-      continue;
-    }
-
-    if (char === '"' && !state.inSingleQuote) {
-      state.inDoubleQuote = !state.inDoubleQuote;
-      output += char;
-      index += 1;
-      continue;
-    }
-
-    if (char === '#' && !state.inSingleQuote && !state.inDoubleQuote) {
-      break;
-    }
-
-    output += char;
-    index += 1;
-  }
-
-  if (
-    !state.inSingleQuote &&
-    !state.inDoubleQuote &&
-    !state.inTripleSingleQuote &&
-    !state.inTripleDoubleQuote
-  ) {
-    state.escaped = false;
-  }
-
-  return output;
-};
-
-const collectImportStatements = (lines, filePath) => {
-  const statements = [];
-  const parsingWarnings = [];
-  const commentStripState = {
-    inSingleQuote: false,
-    inDoubleQuote: false,
-    inTripleSingleQuote: false,
-    inTripleDoubleQuote: false,
-    escaped: false,
-  };
-  let pendingStatement = '';
-  let pendingStartLine = 0;
-  let parenthesisDepth = 0;
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const startedInTripleQuote =
-      commentStripState.inTripleSingleQuote || commentStripState.inTripleDoubleQuote;
-    const line = stripPythonInlineComment(lines[index], commentStripState).trim();
-    if (startedInTripleQuote && !pendingStatement) {
-      continue;
-    }
-    if (!line && !pendingStatement) {
-      continue;
-    }
-
-    if (!pendingStatement) {
-      if (!/^(import|from)\b/.test(line)) {
-        continue;
-      }
-      pendingStatement = line;
-      pendingStartLine = index + 1;
-      parenthesisDepth = (line.match(/\(/g) || []).length - (line.match(/\)/g) || []).length;
-    } else {
-      pendingStatement = `${pendingStatement} ${line}`.trim();
-      parenthesisDepth += (line.match(/\(/g) || []).length - (line.match(/\)/g) || []).length;
-    }
-
-    const hasLineContinuation = /\\\s*$/.test(line);
-    if (parenthesisDepth > 0 || hasLineContinuation) {
-      continue;
-    }
-
-    statements.push({ statement: pendingStatement, line: pendingStartLine });
-    pendingStatement = '';
-    pendingStartLine = 0;
-    parenthesisDepth = 0;
-  }
-
-  if (pendingStatement) {
-    parsingWarnings.push(
-      `unterminated import statement in ${path.basename(filePath)}:${pendingStartLine}: ${pendingStatement}`,
+  if (result.error || result.status !== 0) {
+    const details = result.error?.message || result.stderr?.trim() || `exit code ${result.status}`;
+    console.warn(
+      `[build-backend] failed to scan imports for ${path.basename(filePath)}: ${details}`,
     );
+    return [];
   }
 
-  return { statements, parsingWarnings };
-};
-
-const applyImportStatement = (
-  rawStatement,
-  lineNumber,
-  filePath,
-  imports,
-  warnings,
-  availableModules = null,
-) => {
-  const statement = rawStatement.replace(/\s+/g, ' ').trim();
-  if (!statement) {
-    return;
-  }
-
-  const importMatch = statement.match(/^import\s+(.+)$/);
-  if (importMatch) {
-    for (const modulePart of splitImportTargets(importMatch[1])) {
-      const rootModule = modulePart.split('.')[0].trim();
-      if (rootModule) {
-        imports.add(rootModule);
-      }
+  try {
+    const parsed = JSON.parse(result.stdout || '[]');
+    if (!Array.isArray(parsed)) {
+      throw new Error('scanner output is not an array');
     }
-    return;
-  }
-
-  const bareRelativeFromImportMatch = statement.match(/^from\s+(\.+)\s+import\s+(.+)$/);
-  const fromImportMatch = statement.match(
-    /^from\s+((?:\.+[A-Za-z_][\w.]*)|(?:[A-Za-z_][\w.]*))\s+import\s+(.+)$/,
-  );
-  if (bareRelativeFromImportMatch || fromImportMatch) {
-    const moduleSpec = (bareRelativeFromImportMatch?.[1] || fromImportMatch?.[1] || '').trim();
-    const importedPart = (bareRelativeFromImportMatch?.[2] || fromImportMatch?.[2] || '').trim();
-
-    if (moduleSpec.startsWith('.')) {
-      const localModule = moduleSpec.replace(/^\.+/, '').split('.')[0].trim();
-      if (localModule) {
-        imports.add(localModule);
-        return;
-      }
-
-      for (const importedName of splitImportTargets(importedPart)) {
-        const candidateModule = importedName.split('.')[0].trim();
-        if (!candidateModule || candidateModule === '*') {
-          continue;
-        }
-        if (!availableModules || availableModules.has(candidateModule)) {
-          imports.add(candidateModule);
-        }
-      }
-      return;
-    }
-
-    const rootModule = moduleSpec.split('.')[0].trim();
-    if (rootModule) {
-      imports.add(rootModule);
-    }
-    return;
-  }
-
-  warnings.push(
-    `unparsed import statement in ${path.basename(filePath)}:${lineNumber}: ${statement}`,
-  );
-};
-
-const warnImportScannerWarnings = (warnings) => {
-  if (warnings.length > 0) {
-    console.warn(`[build-backend] ${warnings.join('; ')}`);
+    return parsed;
+  } catch (error) {
+    console.warn(
+      `[build-backend] invalid import scanner output for ${path.basename(filePath)}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return [];
   }
 };
 
 const extractImportedRootModules = (filePath, availableModules = null) => {
-  const content = fs.readFileSync(filePath, 'utf8');
   const imports = new Set();
-  const lines = content.split(/\r?\n/);
-  const { statements, parsingWarnings } = collectImportStatements(lines, filePath);
+  const descriptors = runImportScanner(filePath);
 
-  for (const { statement, line } of statements) {
-    applyImportStatement(statement, line, filePath, imports, parsingWarnings, availableModules);
+  for (const descriptor of descriptors) {
+    if (!descriptor || typeof descriptor !== 'object') {
+      continue;
+    }
+
+    if (descriptor.kind === 'import') {
+      const moduleName = typeof descriptor.module === 'string' ? descriptor.module : '';
+      const rootModule = moduleName.split('.')[0].trim();
+      if (rootModule) {
+        imports.add(rootModule);
+      }
+      continue;
+    }
+
+    if (descriptor.kind === 'from') {
+      const level = Number.isInteger(descriptor.level) ? descriptor.level : 0;
+      const moduleSpec = typeof descriptor.module === 'string' ? descriptor.module.trim() : '';
+      const names = Array.isArray(descriptor.names) ? descriptor.names : [];
+
+      if (level > 0) {
+        if (moduleSpec) {
+          const localRootModule = moduleSpec.split('.')[0].trim();
+          if (localRootModule) {
+            imports.add(localRootModule);
+          }
+          continue;
+        }
+
+        for (const importedName of names) {
+          if (typeof importedName !== 'string') {
+            continue;
+          }
+          const candidateModule = importedName.split('.')[0].trim();
+          if (!candidateModule || candidateModule === '*') {
+            continue;
+          }
+          if (!availableModules || availableModules.has(candidateModule)) {
+            imports.add(candidateModule);
+          }
+        }
+        continue;
+      }
+
+      const rootModule = moduleSpec.split('.')[0].trim();
+      if (rootModule) {
+        imports.add(rootModule);
+      }
+    }
   }
 
-  warnImportScannerWarnings(parsingWarnings);
   return imports;
 };
 
 const listAvailableRootModules = (resolvedSourceDir) => {
+  // The desktop bundle currently tracks root-level modules/packages under sourceDir.
+  // Nested package-only relative imports are not traversed as independent entries because
+  // top-level package directories are copied as whole trees once selected.
   const modules = new Map();
   const entries = fs.readdirSync(resolvedSourceDir, { withFileTypes: true });
 
