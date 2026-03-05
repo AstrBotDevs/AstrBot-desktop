@@ -10,30 +10,82 @@ const args = process.argv.slice(2);
 const defaultBackendDir = path.resolve('resources', 'backend');
 const defaultWebuiDir = path.resolve('resources', 'webui');
 
-const options = {
-  backendDir: defaultBackendDir,
-  webuiDir: defaultWebuiDir,
-  startupTimeoutMs: 45_000,
-  pollIntervalMs: 500,
-  label: '',
+const usageMessage = () => `
+Usage: node scripts/ci/backend-smoke-test.mjs [options]
+
+Options:
+  --backend-dir <path>         Backend resources directory (default: resources/backend)
+  --webui-dir <path>           WebUI resources directory (default: resources/webui)
+  --startup-timeout-ms <ms>    Startup timeout in milliseconds (default: 45000)
+  --poll-interval-ms <ms>      Readiness poll interval in milliseconds (default: 500)
+  --label <name>               Optional log label
+  -h, --help                   Show this message
+`.trim();
+
+const parseCliOptions = (argv) => {
+  const parsed = {
+    backendDir: defaultBackendDir,
+    webuiDir: defaultWebuiDir,
+    startupTimeoutMs: 45_000,
+    pollIntervalMs: 500,
+    label: '',
+  };
+
+  const requireValue = (flag, index) => {
+    const next = argv[index + 1];
+    if (next === undefined || next.startsWith('--')) {
+      throw new Error(`Missing value for ${flag}.\n\n${usageMessage()}`);
+    }
+    return next;
+  };
+
+  const parsePositiveNumber = (flag, rawValue) => {
+    const value = Number(rawValue);
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new Error(`Invalid numeric value for ${flag}: ${rawValue}\n\n${usageMessage()}`);
+    }
+    return value;
+  };
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === '-h' || arg === '--help') {
+      console.log(usageMessage());
+      process.exit(0);
+    } else if (arg === '--backend-dir') {
+      const raw = requireValue(arg, i).trim();
+      if (!raw) {
+        throw new Error(`Empty value for ${arg}.\n\n${usageMessage()}`);
+      }
+      parsed.backendDir = path.resolve(raw);
+      i += 1;
+    } else if (arg === '--webui-dir') {
+      const raw = requireValue(arg, i).trim();
+      if (!raw) {
+        throw new Error(`Empty value for ${arg}.\n\n${usageMessage()}`);
+      }
+      parsed.webuiDir = path.resolve(raw);
+      i += 1;
+    } else if (arg === '--startup-timeout-ms') {
+      const raw = requireValue(arg, i);
+      parsed.startupTimeoutMs = parsePositiveNumber(arg, raw);
+      i += 1;
+    } else if (arg === '--poll-interval-ms') {
+      const raw = requireValue(arg, i);
+      parsed.pollIntervalMs = parsePositiveNumber(arg, raw);
+      i += 1;
+    } else if (arg === '--label') {
+      parsed.label = requireValue(arg, i);
+      i += 1;
+    } else {
+      throw new Error(`Unsupported argument: ${arg}\n\n${usageMessage()}`);
+    }
+  }
+
+  return parsed;
 };
 
-for (let i = 0; i < args.length; i += 1) {
-  const arg = args[i];
-  if (arg === '--backend-dir') {
-    options.backendDir = path.resolve(args[++i] ?? '');
-  } else if (arg === '--webui-dir') {
-    options.webuiDir = path.resolve(args[++i] ?? '');
-  } else if (arg === '--startup-timeout-ms') {
-    options.startupTimeoutMs = Number(args[++i] ?? options.startupTimeoutMs);
-  } else if (arg === '--poll-interval-ms') {
-    options.pollIntervalMs = Number(args[++i] ?? options.pollIntervalMs);
-  } else if (arg === '--label') {
-    options.label = args[++i] ?? '';
-  } else {
-    throw new Error(`Unsupported argument: ${arg}`);
-  }
-}
+const options = parseCliOptions(args);
 
 const tracePrefix = options.label ? `[backend-smoke:${options.label}]` : '[backend-smoke]';
 
@@ -126,6 +178,7 @@ const main = async () => {
       }
     }
   };
+  let spawnError = null;
 
   const child = spawn(
     pythonPath,
@@ -149,6 +202,11 @@ const main = async () => {
 
   child.stdout?.on('data', (chunk) => appendLog('stdout', chunk));
   child.stderr?.on('data', (chunk) => appendLog('stderr', chunk));
+  child.on('error', (error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    spawnError = error instanceof Error ? error : new Error(message);
+    appendLog('spawn-error', message);
+  });
 
   console.log(
     `${tracePrefix} started backend pid=${child.pid} url=${backendUrl} root=${backendRoot}`,
@@ -160,6 +218,9 @@ const main = async () => {
 
   try {
     while (Date.now() < deadline) {
+      if (spawnError) {
+        throw new Error(`Failed to spawn backend process: ${spawnError.message}`);
+      }
       if (child.exitCode !== null) {
         throw new Error(
           `Backend exited before readiness check passed (exit=${child.exitCode}).`,
