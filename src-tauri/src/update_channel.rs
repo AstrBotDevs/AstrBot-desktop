@@ -23,8 +23,10 @@ struct NightlyVersionFormatSpec {
     canonical_format: String,
     date_digits: usize,
     sha_hex_digits: usize,
+    #[cfg(test)]
     #[serde(default)]
     valid_examples: Vec<String>,
+    #[cfg(test)]
     #[serde(default)]
     invalid_examples: Vec<String>,
 }
