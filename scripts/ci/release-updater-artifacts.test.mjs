@@ -250,3 +250,69 @@ test('release artifact normalization keeps updater signatures aligned for latest
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+test('release artifact normalization canonicalizes linux AppImage assets for latest.json generation', async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'astrbot-release-artifacts-'));
+
+  try {
+    const artifactsDir = path.join(tempDir, 'release-artifacts');
+    const sourceSha = '7ac169c5e81cee0acc1416d22d7ee4464a507a8d';
+
+    await mkdir(artifactsDir, { recursive: true });
+
+    await writeFile(
+      path.join(artifactsDir, 'AstrBot_4.19.2-nightly.20260306.7ac169c5_aarch64.AppImage'),
+      'appimage',
+      'utf8',
+    );
+    await writeFile(
+      path.join(artifactsDir, 'AstrBot_4.19.2-nightly.20260306.7ac169c5_aarch64.AppImage.sig'),
+      'linux-signature',
+      'utf8',
+    );
+
+    runPython(
+      normalizeModule,
+      ['--root', artifactsDir, '--build-mode', 'nightly', '--source-git-ref', sourceSha],
+      projectRoot,
+    );
+
+    const normalizedLinux = path.join(
+      artifactsDir,
+      'AstrBot_4.19.2_linux_arm64_nightly_7ac169c5.AppImage',
+    );
+    const normalizedLinuxSig = path.join(
+      artifactsDir,
+      'AstrBot_4.19.2_linux_arm64_nightly_7ac169c5.AppImage.sig',
+    );
+
+    await access(normalizedLinux, fsConstants.F_OK);
+    await access(normalizedLinuxSig, fsConstants.F_OK);
+
+    const outputPath = path.join(artifactsDir, 'latest.json');
+    runPython(
+      generateModule,
+      [
+        '--artifacts-root',
+        artifactsDir,
+        '--repo',
+        'AstrBotDevs/AstrBot-desktop',
+        '--tag',
+        'nightly',
+        '--version',
+        '4.19.2-nightly.20260306.7ac169c5',
+        '--output',
+        outputPath,
+      ],
+      projectRoot,
+    );
+
+    const payload = JSON.parse(await readFile(outputPath, 'utf8'));
+    assert.deepEqual(payload.platforms['linux-aarch64-appimage'], {
+      signature: 'linux-signature',
+      url: 'https://github.com/AstrBotDevs/AstrBot-desktop/releases/download/nightly/AstrBot_4.19.2_linux_arm64_nightly_7ac169c5.AppImage',
+    });
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});

@@ -10,6 +10,7 @@ from pathlib import Path
 from scripts.ci.lib.artifact_arch import normalize_arch_alias
 from scripts.ci.lib.nightly_version import NIGHTLY_CANONICAL_FORMAT, NIGHTLY_VERSION_RE
 from scripts.ci.lib.release_artifacts import (
+    LINUX_APPIMAGE_UPDATER_PATTERNS,
     MACOS_UPDATER_ARCHIVE_PATTERNS,
     WINDOWS_UPDATER_PATTERNS,
     match_any,
@@ -51,6 +52,15 @@ def platform_key_for_macos(arch: str) -> str:
     raise ValueError(f"Unsupported macOS arch: {arch}")
 
 
+def platform_key_for_linux_appimage(arch: str) -> str:
+    arch = normalize_arch(arch)
+    if arch == "amd64":
+        return "linux-x86_64-appimage"
+    if arch == "arm64":
+        return "linux-aarch64-appimage"
+    raise ValueError(f"Unsupported Linux AppImage arch: {arch}")
+
+
 def derive_release_metadata(version: str, channel: str | None) -> tuple[str, str, str]:
     inferred_channel = "nightly" if "nightly" in version.lower() else "stable"
     effective_channel = channel or inferred_channel
@@ -67,7 +77,11 @@ def derive_release_metadata(version: str, channel: str | None) -> tuple[str, str
                     f"Invalid nightly version {version!r}: expected format {NIGHTLY_CANONICAL_FORMAT}"
                 )
             raise ValueError(message)
-        return effective_channel, match.group("base"), f"_nightly_{match.group('sha')[:8]}"
+        return (
+            effective_channel,
+            match.group("base"),
+            f"_nightly_{match.group('sha')[:8]}",
+        )
 
     base_version = match.group("base") if match else version
     return effective_channel, base_version, ""
@@ -89,6 +103,14 @@ def canonical_macos_filename(
     _, base_version, nightly_suffix = derive_release_metadata(version, channel)
     arch = normalize_arch(arch)
     return f"{name}_{base_version}_macos_{arch}{nightly_suffix}{archive_ext}"
+
+
+def canonical_linux_appimage_filename(
+    name: str, arch: str, version: str, channel: str
+) -> str:
+    _, base_version, nightly_suffix = derive_release_metadata(version, channel)
+    arch = normalize_arch(arch)
+    return f"{name}_{base_version}_linux_{arch}{nightly_suffix}.AppImage"
 
 
 def parse_windows_artifact_name(source_name: str) -> re.Match[str]:
@@ -119,6 +141,19 @@ def parse_macos_artifact_name(source_name: str) -> tuple[re.Match[str], str]:
         )
     archive_ext = ".app.tar.gz" if source_name.endswith(".app.tar.gz") else ".zip"
     return match, archive_ext
+
+
+def parse_linux_appimage_artifact_name(source_name: str) -> re.Match[str]:
+    match = match_any(source_name, LINUX_APPIMAGE_UPDATER_PATTERNS)
+    if match:
+        return match
+    raise ValueError(
+        "Unexpected Linux AppImage artifact name: "
+        f"{source_name}. Expected format: "
+        "<name>_<version>_linux_<arch>.AppImage or legacy "
+        "<name>_<version>_<arch>.AppImage "
+        "(nightly builds may append _nightly_<sha> before .AppImage)."
+    )
 
 
 def add_platform(
@@ -196,13 +231,32 @@ def collect_platforms(
             )
             continue
 
+        if sig_name.endswith(".AppImage.sig"):
+            source_name = sig_name[:-4]
+            match = parse_linux_appimage_artifact_name(source_name)
+            artifact_name = canonical_linux_appimage_filename(
+                match.group("name"),
+                match.group("arch"),
+                version,
+                channel,
+            )
+            add_platform(
+                platforms,
+                platform_key_for_linux_appimage(match.group("arch")),
+                "Linux AppImage",
+                artifact_name,
+                sig_path,
+                repo,
+                tag,
+            )
+            continue
+
         unsupported_signature_files.append(sig_name)
 
     if unsupported_signature_files:
         joined = ", ".join(unsupported_signature_files)
         raise ValueError(
-            "Unsupported updater signature files under artifacts root: "
-            f"{joined}"
+            f"Unsupported updater signature files under artifacts root: {joined}"
         )
 
     return platforms

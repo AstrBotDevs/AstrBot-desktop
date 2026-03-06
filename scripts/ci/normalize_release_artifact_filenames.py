@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import pathlib
 import re
+import sys
 
 from .lib.artifact_arch import normalize_arch_alias
 from .lib.release_artifacts import (
@@ -30,6 +31,7 @@ LINUX_CANONICAL_RULE: tuple[re.Pattern[str], str] = (
     "AstrBot_{version}_linux_{arch}",
 )
 CANONICALIZE_RULES: dict[str, tuple[tuple[re.Pattern[str], str], ...]] = {
+    ".AppImage": (LINUX_CANONICAL_RULE,),
     ".rpm": (
         (
             re.compile(
@@ -39,14 +41,10 @@ CANONICALIZE_RULES: dict[str, tuple[tuple[re.Pattern[str], str], ...]] = {
         ),
         LINUX_CANONICAL_RULE,
     ),
-    ".deb": (
-        LINUX_CANONICAL_RULE,
-    ),
+    ".deb": (LINUX_CANONICAL_RULE,),
     ".exe": (
         (
-            re.compile(
-                rf"{WINDOWS_ARTIFACT_STEM_PATTERN_FRAGMENT}(?:-setup|_setup)$"
-            ),
+            re.compile(rf"{WINDOWS_ARTIFACT_STEM_PATTERN_FRAGMENT}(?:-setup|_setup)$"),
             "AstrBot_{version}_windows_{arch}_setup",
         ),
     ),
@@ -71,6 +69,7 @@ CANONICALIZE_RULES: dict[str, tuple[tuple[re.Pattern[str], str], ...]] = {
         ),
     ),
 }
+
 
 def normalize_arch(arch: str, warned_unknown_arches: set[str]) -> str:
     normalized = normalize_arch_alias(arch)
@@ -116,7 +115,7 @@ def detect_artifact_extension(path: pathlib.Path) -> str | None:
     best_len = -1
 
     for ext in ARTIFACT_EXTENSIONS:
-        if not lower_name.endswith(ext):
+        if not lower_name.endswith(ext.lower()):
             continue
         ext_len = len(ext)
         if ext_len > best_len:
@@ -168,7 +167,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Normalize AstrBot release artifact filenames before publishing."
     )
-    parser.add_argument("--root", required=True, help="Directory containing release artifacts.")
+    parser.add_argument(
+        "--root", required=True, help="Directory containing release artifacts."
+    )
     parser.add_argument(
         "--build-mode",
         default="",
@@ -191,7 +192,9 @@ def main() -> int:
     args = parse_args()
     root = pathlib.Path(args.root)
     if not root.exists():
-        print(f"[normalize-artifacts] artifact directory does not exist, skipping: {root}")
+        print(
+            f"[normalize-artifacts] artifact directory does not exist, skipping: {root}"
+        )
         return 0
     if not root.is_dir():
         raise RuntimeError(f"artifact path is not a directory: {root}")
@@ -248,11 +251,15 @@ def main() -> int:
             rename_plan.append((path, new_path))
 
     collisions = {
-        target: sources for target, sources in target_sources.items() if len(sources) > 1
+        target: sources
+        for target, sources in target_sources.items()
+        if len(sources) > 1
     }
     if collisions:
         collision_details = []
-        for target, sources in sorted(collisions.items(), key=lambda item: str(item[0])):
+        for target, sources in sorted(
+            collisions.items(), key=lambda item: str(item[0])
+        ):
             source_list = ", ".join(str(source.name) for source in sorted(sources))
             collision_details.append(f"{target.name} <= {source_list}")
         raise RuntimeError(

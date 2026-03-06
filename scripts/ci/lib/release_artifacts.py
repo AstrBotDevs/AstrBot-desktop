@@ -8,9 +8,11 @@ import re
 ARTIFACT_EXTENSIONS: tuple[str, ...] = (
     ".app.tar.gz.sig",
     ".app.tar.gz",
+    ".AppImage.sig",
     ".exe.sig",
     ".msi.sig",
     ".zip.sig",
+    ".AppImage",
     ".rpm",
     ".deb",
     ".exe",
@@ -76,12 +78,28 @@ MACOS_UPDATER_ARCHIVE_PATTERNS: tuple[re.Pattern[str], ...] = (
     ),
 )
 
+LINUX_APPIMAGE_UPDATER_PATTERNS: tuple[re.Pattern[str], ...] = (
+    # Canonical:
+    # <name>_<version>_linux_<arch>_nightly_<shortsha>.AppImage
+    re.compile(
+        rf"(?P<name>.+?)_(?P<version>{CANONICAL_VERSION_PATTERN})_linux_(?P<arch>{CANONICAL_ARCH_PATTERN})"
+        rf"{CANONICAL_NIGHTLY_SUFFIX_PATTERN}\.AppImage$"
+    ),
+    # Legacy:
+    # <name>_<version>_<arch>.AppImage
+    re.compile(
+        rf"(?P<name>.+?)_(?P<version>{LEGACY_VERSION_PATTERN})_(?P<arch>x86_64|x64|amd64|aarch64|arm64)\.AppImage$"
+    ),
+)
+
 
 class ReleaseArtifactError(RuntimeError):
     pass
 
 
-def match_any(filename: str, patterns: tuple[re.Pattern[str], ...]) -> re.Match[str] | None:
+def match_any(
+    filename: str, patterns: tuple[re.Pattern[str], ...]
+) -> re.Match[str] | None:
     for pattern in patterns:
         match = pattern.match(filename)
         if match:
