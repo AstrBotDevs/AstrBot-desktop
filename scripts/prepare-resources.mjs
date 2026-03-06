@@ -32,10 +32,6 @@ const main = async () => {
     sourceDirOverrideInput,
     desktopVersionInput,
     desktopVersionOverride,
-    isSourceRepoRefVersionTag,
-    isDesktopBridgeExpectationStrict,
-    pythonBuildStandaloneRelease,
-    pythonBuildStandaloneVersion,
   } = context;
   const needsSourceRepo = mode !== 'version' || !desktopVersionOverride;
   await mkdir(path.join(projectRoot, 'resources'), { recursive: true });
@@ -82,15 +78,7 @@ const main = async () => {
     console.log(`[prepare-resources] Synced desktop version to AstrBot ${astrbotVersion}`);
   }
 
-  await runModeTasks(mode, {
-    sourceDir,
-    projectRoot,
-    sourceRepoRef,
-    isSourceRepoRefVersionTag,
-    isDesktopBridgeExpectationStrict,
-    pythonBuildStandaloneRelease,
-    pythonBuildStandaloneVersion,
-  });
+  await runModeTasks(mode, context);
 };
 
 main().catch((error) => {

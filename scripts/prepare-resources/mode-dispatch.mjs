@@ -9,7 +9,10 @@ const defaultTaskRunner = {
 
 export const runModeTasks = async (
   mode,
-  {
+  context,
+  taskRunner = defaultTaskRunner,
+) => {
+  const {
     sourceDir,
     projectRoot,
     sourceRepoRef,
@@ -17,9 +20,8 @@ export const runModeTasks = async (
     isDesktopBridgeExpectationStrict,
     pythonBuildStandaloneRelease,
     pythonBuildStandaloneVersion,
-  },
-  taskRunner = defaultTaskRunner,
-) => {
+  } = context;
+
   if (!VALID_MODES.has(mode)) {
     throw new Error(`Unsupported mode: ${mode}. Expected version/webui/backend/all.`);
   }

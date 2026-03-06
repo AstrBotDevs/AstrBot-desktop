@@ -32,7 +32,7 @@ fn configure_plugins(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
 fn configure_window_events(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
     builder.on_window_event(|window, event| {
         let is_quitting = window.app_handle().state::<BackendState>().is_quitting();
-        let action = match event {
+        let action = match &event {
             WindowEvent::CloseRequested { .. } => app_runtime_events::main_window_action(
                 window.label(),
                 is_quitting,

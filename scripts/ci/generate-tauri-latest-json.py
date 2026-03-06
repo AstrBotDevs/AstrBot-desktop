@@ -8,7 +8,9 @@ import re
 from pathlib import Path
 
 
-WINDOWS_RE = re.compile(r"(?P<name>.+?)-setup\.exe$")
+WINDOWS_RE = re.compile(
+    r"(?P<name>.+?)_(?P<version>[^_]+)_windows_(?P<arch>[^.]+)-setup\.exe$"
+)
 MACOS_RE = re.compile(r"(?P<name>.+?)_(?P<version>[^_]+)_macos_(?P<arch>[^.]+)\.zip$")
 
 
@@ -43,7 +45,10 @@ def collect_platforms(root: Path, repo: str, tag: str) -> dict[str, dict[str, st
         sig_name = sig_path.name
         if sig_name.endswith(".exe.sig"):
             exe_name = sig_name[:-4]
-            arch = "arm64" if "arm64" in exe_name.lower() else "amd64"
+            match = WINDOWS_RE.match(exe_name)
+            if not match:
+                raise ValueError(f"Unexpected Windows artifact name: {exe_name}")
+            arch = match.group("arch")
             platform_key = platform_key_for_windows(arch)
             platforms[platform_key] = {
                 "signature": read_signature(sig_path),
