@@ -210,6 +210,8 @@ fn parse_nightly_version_info(version: &Version) -> Option<NightlyVersionInfo> {
     })
 }
 
+// Nightly-to-nightly comparisons sort by base version first, then nightly date,
+// and finally hash so same-date upstream rebuilds still advance.
 fn should_offer_nightly_update(current_version: &Version, remote_version: &Version) -> bool {
     let Some(current) = parse_nightly_version_info(current_version) else {
         return remote_version > current_version;
@@ -335,6 +337,11 @@ pub(crate) fn resolve_preferred_channel(
         .unwrap_or_else(|| infer_channel_from_version(current_version))
 }
 
+/// Cross-channel update policy:
+/// - stable -> stable: only strictly newer semver releases.
+/// - stable -> nightly: allow same-base or newer-base nightly builds after an explicit channel switch.
+/// - nightly -> nightly: compare base version, then nightly date, then hash.
+/// - nightly -> stable: only newer stable base versions; same-base stable is treated as a downgrade.
 pub(crate) fn should_offer_update(
     current_version: &Version,
     preferred_channel: UpdateChannel,
@@ -396,6 +403,28 @@ mod tests {
         ));
         fs::create_dir_all(&dir).expect("create temp case dir");
         dir
+    }
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn clear(key: &'static str) -> Self {
+            let previous = std::env::var(key).ok();
+            std::env::remove_var(key);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match self.previous.as_deref() {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
     }
 
     #[test]
@@ -531,16 +560,9 @@ mod tests {
 
     #[test]
     fn write_cached_channel_errors_when_state_path_unavailable() {
-        let env_key = "ASTRBOT_ROOT";
-        let previous = std::env::var(env_key).ok();
-        std::env::remove_var(env_key);
+        let _root_guard = EnvVarGuard::clear("ASTRBOT_ROOT");
 
         let result = write_cached_update_channel(Some(UpdateChannel::Nightly), None);
-
-        match previous {
-            Some(value) => std::env::set_var(env_key, value),
-            None => std::env::remove_var(env_key),
-        }
 
         assert_eq!(
             result.expect_err("missing state path should fail persistence"),
@@ -550,6 +572,7 @@ mod tests {
 
     #[test]
     fn read_cached_channel_round_trips_written_value() {
+        let _root_guard = EnvVarGuard::clear("ASTRBOT_ROOT");
         let dir = create_temp_case_dir("round-trip");
         write_cached_update_channel(Some(UpdateChannel::Nightly), Some(&dir))
             .expect("write cached channel");
@@ -564,6 +587,7 @@ mod tests {
 
     #[test]
     fn resolve_preferred_channel_falls_back_to_installed_version_channel() {
+        let _root_guard = EnvVarGuard::clear("ASTRBOT_ROOT");
         let dir = create_temp_case_dir("fallback");
 
         assert_eq!(

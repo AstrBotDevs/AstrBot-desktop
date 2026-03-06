@@ -108,7 +108,10 @@ def collect_platforms(
             if not match:
                 raise ValueError(
                     "Unexpected Windows artifact name: "
-                    f"{source_name}. Expected current CI Windows signature naming."
+                    f"{source_name}. Expected format: "
+                    "<name>_<version>_windows_<arch>_setup.exe or legacy "
+                    "<name>_<version>_<arch>-setup.exe "
+                    "(nightly builds may append _nightly_<sha> before .exe)."
                 )
             arch = match.group("arch")
             exe_name = canonical_windows_filename(

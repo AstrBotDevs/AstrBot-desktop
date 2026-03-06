@@ -177,7 +177,10 @@ class GenerateTauriLatestJsonTests(unittest.TestCase):
             root = Path(tmpdir)
             (root / 'AstrBot_4.29.0_windows_amd64.exe.sig').write_text('sig-win')
 
-            with self.assertRaisesRegex(ValueError, 'Unexpected Windows artifact name'):
+            with self.assertRaisesRegex(
+                ValueError,
+                r'Expected format: <name>_<version>_windows_<arch>_setup\.exe',
+            ):
                 MODULE.collect_platforms(
                     root,
                     'AstrBotDevs/AstrBot-desktop',
