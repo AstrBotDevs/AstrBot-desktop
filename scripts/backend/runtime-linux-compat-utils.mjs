@@ -26,59 +26,6 @@ const removeFilesByPrefix = (directory, prefixes) => {
   return removedCount;
 };
 
-const walkRecursively = (rootDir, { onFile, onDirectory } = {}) => {
-  if (!fs.existsSync(rootDir)) {
-    return;
-  }
-
-  const stack = [rootDir];
-  while (stack.length > 0) {
-    const current = stack.pop();
-    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
-      if (entry.isSymbolicLink()) {
-        continue;
-      }
-
-      const fullPath = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        if (onDirectory) {
-          onDirectory(fullPath, entry.name);
-        }
-        stack.push(fullPath);
-        continue;
-      }
-
-      if (entry.isFile() && onFile) {
-        onFile(fullPath, entry.name);
-      }
-    }
-  }
-};
-
-const walkFilesRecursively = (rootDir, predicate) => {
-  const collected = [];
-  walkRecursively(rootDir, {
-    onFile: (fullPath, fileName) => {
-      if (predicate(fullPath, fileName)) {
-        collected.push(fullPath);
-      }
-    },
-  });
-  return collected;
-};
-
-const walkDirectoriesRecursively = (rootDir, predicate) => {
-  const collected = [];
-  walkRecursively(rootDir, {
-    onDirectory: (fullPath, dirName) => {
-      if (predicate(fullPath, dirName)) {
-        collected.push(fullPath);
-      }
-    },
-  });
-  return collected;
-};
-
 const listImmediateDirectoriesByPrefix = (rootDir, prefixes) =>
   fs
     .readdirSync(rootDir, { withFileTypes: true })
@@ -88,16 +35,38 @@ const listImmediateDirectoriesByPrefix = (rootDir, prefixes) =>
     )
     .map((entry) => path.join(rootDir, entry.name));
 
+const collectDirectoriesByPrefixRecursively = (rootDir, prefixes) => {
+  const result = [];
+  if (!fs.existsSync(rootDir)) {
+    return result;
+  }
+
+  const stack = [rootDir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      if (entry.isSymbolicLink() || !entry.isDirectory()) {
+        continue;
+      }
+
+      const fullPath = path.join(current, entry.name);
+      if (prefixes.some((prefix) => entry.name.startsWith(prefix))) {
+        result.push(fullPath);
+      }
+      stack.push(fullPath);
+    }
+  }
+
+  return result;
+};
+
 const removeDirectoriesByPrefix = (rootDir, prefixes, { recursive = false } = {}) => {
   if (!fs.existsSync(rootDir)) {
     return 0;
   }
 
   const candidates = recursive
-    ? walkDirectoriesRecursively(
-        rootDir,
-        (_fullPath, dirName) => prefixes.some((prefix) => dirName.startsWith(prefix)),
-      )
+    ? collectDirectoriesByPrefixRecursively(rootDir, prefixes)
     : listImmediateDirectoriesByPrefix(rootDir, prefixes);
 
   let removedCount = 0;
@@ -131,36 +100,123 @@ const hasElfMagic = (filePath) => {
   }
 };
 
-const findPythonLibDynloadDirs = (runtimeLibDir) =>
-  walkDirectoriesRecursively(
-    runtimeLibDir,
-    (dirPath, dirName) =>
-      dirName === 'lib-dynload' && path.basename(path.dirname(dirPath)).startsWith('python'),
-  );
+const findPythonLibDynloadDirs = (runtimeLibDir) => {
+  const result = [];
+  if (!fs.existsSync(runtimeLibDir)) {
+    return result;
+  }
 
-const getPythonLibDirs = (runtimeLibDir) =>
-  fs.existsSync(runtimeLibDir)
-    ? fs
-        .readdirSync(runtimeLibDir, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory() && entry.name.startsWith('python'))
-        .map((entry) => path.join(runtimeLibDir, entry.name))
-    : [];
+  const stack = [runtimeLibDir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      if (entry.isSymbolicLink() || !entry.isDirectory()) {
+        continue;
+      }
 
-const getSitePackagesRoots = (pythonLibDirs) =>
-  pythonLibDirs
-    .map((pythonDir) => path.join(pythonDir, 'site-packages'))
-    .filter((sitePackagesDir) => fs.existsSync(sitePackagesDir));
+      const fullPath = path.join(current, entry.name);
+      if (
+        entry.name === 'lib-dynload' &&
+        path.basename(path.dirname(fullPath)).startsWith('python')
+      ) {
+        result.push(fullPath);
+      }
+      stack.push(fullPath);
+    }
+  }
+
+  return result;
+};
 
 const buildLibsDirsBySitePackages = (sitePackagesRoots) => {
   const libsDirsBySitePackages = new Map();
+
   for (const sitePackagesRoot of sitePackagesRoots) {
-    const libsDirs = walkDirectoriesRecursively(
-      sitePackagesRoot,
-      (_fullPath, dirName) => dirName.endsWith('.libs'),
-    );
+    const libsDirs = [];
+    if (!fs.existsSync(sitePackagesRoot)) {
+      libsDirsBySitePackages.set(sitePackagesRoot, libsDirs);
+      continue;
+    }
+
+    const stack = [sitePackagesRoot];
+    while (stack.length > 0) {
+      const current = stack.pop();
+      for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+        if (entry.isSymbolicLink() || !entry.isDirectory()) {
+          continue;
+        }
+
+        const fullPath = path.join(current, entry.name);
+        if (entry.name.endsWith('.libs')) {
+          libsDirs.push(fullPath);
+        }
+        stack.push(fullPath);
+      }
+    }
+
     libsDirsBySitePackages.set(sitePackagesRoot, libsDirs);
   }
+
   return libsDirsBySitePackages;
+};
+
+const findRuntimeSoFiles = (rootDir) => {
+  const result = [];
+  if (!fs.existsSync(rootDir)) {
+    return result;
+  }
+
+  const stack = [rootDir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) {
+        continue;
+      }
+
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+      } else if (entry.isFile() && isSharedObjectFileName(entry.name)) {
+        result.push(fullPath);
+      }
+    }
+  }
+
+  return result;
+};
+
+const buildPatchContext = (runtimeDir) => {
+  const runtimeLibDir = path.join(runtimeDir, 'lib');
+  if (!fs.existsSync(runtimeLibDir)) {
+    return {
+      runtimeLibDir,
+      pythonLibDirs: [],
+      sitePackagesRoots: [],
+      libsDirsBySitePackages: new Map(),
+      soFiles: [],
+    };
+  }
+
+  const pythonLibDirs = fs
+    .readdirSync(runtimeLibDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith('python'))
+    .map((entry) => path.join(runtimeLibDir, entry.name));
+
+  const sitePackagesRoots = pythonLibDirs
+    .map((pythonDir) => path.join(pythonDir, 'site-packages'))
+    .filter((sitePackagesDir) => fs.existsSync(sitePackagesDir));
+
+  const libsDirsBySitePackages = buildLibsDirsBySitePackages(sitePackagesRoots);
+  const soFiles = findRuntimeSoFiles(runtimeLibDir);
+
+  return {
+    runtimeLibDir,
+    pythonLibDirs,
+    sitePackagesRoots,
+    libsDirsBySitePackages,
+    soFiles,
+  };
 };
 
 const isPathInside = (candidatePath, rootPath) =>
@@ -325,13 +381,13 @@ export const patchLinuxRuntimeRpaths = (runtimeDir) => {
     return;
   }
 
-  const runtimeLibDir = path.join(runtimeDir, 'lib');
-  const pythonLibDirs = getPythonLibDirs(runtimeLibDir);
-  const sitePackagesRoots = getSitePackagesRoots(pythonLibDirs);
-  const libsDirsBySitePackages = buildLibsDirsBySitePackages(sitePackagesRoots);
-  const soFiles = walkFilesRecursively(runtimeLibDir, (_fullPath, fileName) =>
-    isSharedObjectFileName(fileName),
-  );
+  const {
+    runtimeLibDir,
+    pythonLibDirs,
+    sitePackagesRoots,
+    libsDirsBySitePackages,
+    soFiles,
+  } = buildPatchContext(runtimeDir);
 
   const patchContext = {
     runtimeLibDir,

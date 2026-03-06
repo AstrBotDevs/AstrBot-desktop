@@ -75,7 +75,7 @@ pub(crate) fn map_manual_download_result(
         ok: true,
         reason: Some(reason.into()),
         current_version: Some(current_version.to_string()),
-        latest_version: Some(current_version.to_string()),
+        latest_version: None,
         has_update: false,
     }
 }
@@ -127,7 +127,7 @@ mod tests {
         );
         assert!(result.ok);
         assert_eq!(result.current_version.as_deref(), Some("4.19.2"));
-        assert_eq!(result.latest_version.as_deref(), Some("4.19.2"));
+        assert_eq!(result.latest_version, None);
         assert!(!result.has_update);
         assert_eq!(
             result.reason.as_deref(),
