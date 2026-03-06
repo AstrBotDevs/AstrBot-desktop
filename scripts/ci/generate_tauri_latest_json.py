@@ -5,37 +5,23 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
 from pathlib import Path
 
-# Canonical nightly version format lives in `src-tauri/nightly-version-format.json`.
-# Matches current and legacy Windows NSIS signature basenames, e.g.
-# AstrBot_4.19.2_windows_amd64_setup.exe
-# AstrBot_4.19.2_x64-setup.exe
-# AstrBot_4.19.2-nightly.20260307.abcd1234_x64-setup.exe
-WINDOWS_RE = re.compile(
-    r"(?P<name>.+?)_(?P<version>[^_]+)_(?:windows_)?(?P<arch>[A-Za-z0-9_]+)"
-    r"(?:-setup|_setup)(?:_nightly_[0-9A-Fa-f]{7,40})?\.exe$"
+from scripts.ci.lib.artifact_arch import normalize_arch_alias
+from scripts.ci.lib.release_artifacts import (
+    MACOS_UPDATER_ARCHIVE_PATTERNS,
+    WINDOWS_UPDATER_PATTERNS,
+    match_any,
 )
-# Matches current and legacy macOS updater archive basenames, e.g.
-# AstrBot_4.19.2_macos_arm64.zip
-# AstrBot_4.19.2_macos_arm64_nightly_abcd1234.zip
-# AstrBot_4.19.2-nightly.20260307.abcd1234_macos_aarch64.zip
-MACOS_RE = re.compile(
-    r"(?P<name>.+?)_(?P<version>[^_]+)_macos_(?P<arch>[A-Za-z0-9_]+)"
-    r"(?:_nightly_[0-9A-Fa-f]{7,40})?\.zip$"
-)
+
 NIGHTLY_VERSION_RE = re.compile(
     r"^(?P<base>[0-9]+(?:\.[0-9]+){1,2})-nightly\.(?P<date>[0-9]{8})\.(?P<sha>[0-9a-fA-F]{8})$"
 )
 
-ARCH_ALIAS = {
-    "x86_64": "amd64",
-    "x64": "amd64",
-    "amd64": "amd64",
-    "aarch64": "arm64",
-    "arm64": "arm64",
-}
+WINDOWS_PREFIX_ALIAS_RE = re.compile(
+    r"(?P<name>.+?)_(?P<version>[^_]+)_windows_(?P<arch>x86_64|x64|amd64|arm64|aarch64)"
+    r"(?:-setup|_setup)(?:_nightly_[0-9A-Fa-f]{7,40})?\.exe$"
+)
 
 
 def read_signature(path: Path) -> str:
@@ -47,7 +33,7 @@ def asset_url(repo: str, tag: str, filename: str) -> str:
 
 
 def normalize_arch(arch: str) -> str:
-    return ARCH_ALIAS.get(arch, arch)
+    return normalize_arch_alias(arch) or arch
 
 
 def platform_key_for_windows(arch: str) -> str:
@@ -68,6 +54,10 @@ def platform_key_for_macos(arch: str) -> str:
     raise ValueError(f"Unsupported macOS arch: {arch}")
 
 
+def infer_channel(version: str) -> str:
+    return "nightly" if "nightly" in version.lower() else "stable"
+
+
 def derive_nightly_filename_suffix(version: str, channel: str) -> str:
     if channel != "nightly":
         return ""
@@ -81,6 +71,13 @@ def derive_nightly_filename_suffix(version: str, channel: str) -> str:
     return f"_nightly_{match.group('sha')[:8]}"
 
 
+def derive_base_version(version: str) -> str:
+    match = NIGHTLY_VERSION_RE.match(version)
+    if match:
+        return match.group("base")
+    return version
+
+
 def canonical_windows_filename(name: str, arch: str, version: str, channel: str) -> str:
     base_version = derive_base_version(version)
     arch = normalize_arch(arch)
@@ -88,23 +85,56 @@ def canonical_windows_filename(name: str, arch: str, version: str, channel: str)
     return f"{name}_{base_version}_windows_{arch}_setup{suffix}.exe"
 
 
-def canonical_macos_filename(name: str, arch: str, version: str, channel: str) -> str:
+def canonical_macos_filename(
+    name: str,
+    arch: str,
+    version: str,
+    channel: str,
+    archive_ext: str,
+) -> str:
     base_version = derive_base_version(version)
     arch = normalize_arch(arch)
     suffix = derive_nightly_filename_suffix(version, channel)
-    return f"{name}_{base_version}_macos_{arch}{suffix}.zip"
+    return f"{name}_{base_version}_macos_{arch}{suffix}{archive_ext}"
+
+
+def add_platform(
+    platforms: dict[str, dict[str, str]],
+    platform_key: str,
+    platform_label: str,
+    artifact_name: str,
+    signature_path: Path,
+    repo: str,
+    tag: str,
+) -> None:
+    if platform_key in platforms:
+        raise ValueError(
+            f"Duplicate {platform_label} artifact for platform {platform_key!r}: "
+            f"{artifact_name}. Multiple artifacts for the same platform are not allowed."
+        )
+
+    platforms[platform_key] = {
+        "signature": read_signature(signature_path),
+        "url": asset_url(repo, tag, artifact_name),
+    }
 
 
 def collect_platforms(
-    root: Path, repo: str, tag: str, *, version: str, channel: str
+    root: Path,
+    repo: str,
+    tag: str,
+    *,
+    version: str,
+    channel: str,
 ) -> dict[str, dict[str, str]]:
     platforms: dict[str, dict[str, str]] = {}
+    unsupported_signature_files: list[str] = []
 
-    for sig_path in root.rglob("*.sig"):
+    for sig_path in sorted(root.rglob("*.sig")):
         sig_name = sig_path.name
         if sig_name.endswith(".exe.sig"):
             source_name = sig_name[:-4]
-            match = WINDOWS_RE.match(source_name)
+            match = match_any(source_name, WINDOWS_UPDATER_PATTERNS) or WINDOWS_PREFIX_ALIAS_RE.match(source_name)
             if not match:
                 raise ValueError(
                     "Unexpected Windows artifact name: "
@@ -113,49 +143,63 @@ def collect_platforms(
                     "<name>_<version>_<arch>-setup.exe "
                     "(nightly builds may append _nightly_<sha> before .exe)."
                 )
-            arch = match.group("arch")
-            exe_name = canonical_windows_filename(
-                match.group("name"), arch, version, channel
+            artifact_name = canonical_windows_filename(
+                match.group("name"),
+                match.group("arch"),
+                version,
+                channel,
             )
-            platform_key = platform_key_for_windows(arch)
-            platforms[platform_key] = {
-                "signature": read_signature(sig_path),
-                "url": asset_url(repo, tag, exe_name),
-            }
+            add_platform(
+                platforms,
+                platform_key_for_windows(match.group("arch")),
+                "Windows",
+                artifact_name,
+                sig_path,
+                repo,
+                tag,
+            )
             continue
 
-        if sig_name.endswith(".zip.sig"):
+        if sig_name.endswith(".app.tar.gz.sig") or sig_name.endswith(".zip.sig"):
             source_name = sig_name[:-4]
-            match = MACOS_RE.match(source_name)
+            match = match_any(source_name, MACOS_UPDATER_ARCHIVE_PATTERNS)
             if not match:
                 raise ValueError(
                     "Unexpected macOS artifact name: "
-                    f"{source_name}. Expected current CI macOS signature naming."
+                    f"{source_name}. Expected format: "
+                    "<name>_<version>_macos_<arch>.zip or "
+                    "<name>_<version>_macos_<arch>.app.tar.gz "
+                    "(nightly builds may append _nightly_<sha> before the extension)."
                 )
-            arch = match.group("arch")
-            zip_name = canonical_macos_filename(
-                match.group("name"), arch, version, channel
+            archive_ext = ".app.tar.gz" if source_name.endswith(".app.tar.gz") else ".zip"
+            artifact_name = canonical_macos_filename(
+                match.group("name"),
+                match.group("arch"),
+                version,
+                channel,
+                archive_ext,
             )
-            platform_key = platform_key_for_macos(arch)
-            platforms[platform_key] = {
-                "signature": read_signature(sig_path),
-                "url": asset_url(repo, tag, zip_name),
-            }
+            add_platform(
+                platforms,
+                platform_key_for_macos(match.group("arch")),
+                "macOS",
+                artifact_name,
+                sig_path,
+                repo,
+                tag,
+            )
             continue
 
-        print(
-            f"[generate-tauri-latest-json] Ignoring unsupported signature file: {sig_name}",
-            file=sys.stderr,
+        unsupported_signature_files.append(sig_name)
+
+    if unsupported_signature_files:
+        joined = ", ".join(unsupported_signature_files)
+        raise ValueError(
+            "Unsupported updater signature files under artifacts root: "
+            f"{joined}"
         )
 
     return platforms
-
-
-def derive_base_version(version: str) -> str:
-    match = NIGHTLY_VERSION_RE.match(version)
-    if match:
-        return match.group("base")
-    return version
 
 
 def build_payload(
@@ -183,26 +227,30 @@ def main() -> int:
     parser.add_argument("--repo", required=True)
     parser.add_argument("--tag", required=True)
     parser.add_argument("--version", required=True)
-    parser.add_argument("--channel", required=True, choices=["stable", "nightly"])
+    parser.add_argument("--channel", choices=["stable", "nightly"])
     parser.add_argument("--output", required=True)
     parser.add_argument("--notes", default="")
     args = parser.parse_args()
 
+    channel = args.channel or infer_channel(args.version)
     root = Path(args.artifacts_root)
-    platforms = collect_platforms(
-        root,
-        args.repo,
-        args.tag,
-        version=args.version,
-        channel=args.channel,
-    )
-    if not platforms:
-        raise SystemExit("No updater signatures found under artifacts root")
+    try:
+        platforms = collect_platforms(
+            root,
+            args.repo,
+            args.tag,
+            version=args.version,
+            channel=channel,
+        )
+        if not platforms:
+            raise ValueError("No updater signatures found under artifacts root")
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
     payload = build_payload(
         version=args.version,
         notes=args.notes,
-        channel=args.channel,
+        channel=channel,
         base_version=derive_base_version(args.version),
         release_tag=args.tag,
         platforms=platforms,

@@ -1,16 +1,13 @@
-import importlib.util
 import json
 import tempfile
 import unittest
 from unittest import mock
 from pathlib import Path
 
+from scripts.ci import generate_tauri_latest_json as MODULE
 
-SCRIPT_PATH = Path(__file__).with_name('generate-tauri-latest-json.py')
-SPEC = importlib.util.spec_from_file_location('generate_tauri_latest_json', SCRIPT_PATH)
-MODULE = importlib.util.module_from_spec(SPEC)
-assert SPEC.loader is not None
-SPEC.loader.exec_module(MODULE)
+
+SCRIPT_PATH = Path(MODULE.__file__)
 FORMAT_SPEC = json.loads(
     (SCRIPT_PATH.parents[1] / '..' / 'src-tauri' / 'nightly-version-format.json').resolve().read_text()
 )
@@ -266,7 +263,7 @@ class GenerateTauriLatestJsonTests(unittest.TestCase):
     def test_collect_platforms_invalid_macos_sig_raises(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            (root / 'AstrBot_4.29.0_macos_invalidarch.dmg.zip.sig').write_text('sig-mac')
+            (root / 'AstrBot_4.29.0_macos_.zip.sig').write_text('sig-mac')
 
             with self.assertRaisesRegex(ValueError, 'Unexpected macOS artifact name'):
                 MODULE.collect_platforms(
