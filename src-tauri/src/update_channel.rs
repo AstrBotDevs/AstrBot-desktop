@@ -257,10 +257,11 @@ pub(crate) fn write_cached_update_channel(
     packaged_root_dir: Option<&Path>,
 ) -> Result<(), String> {
     let Some(state_path) = desktop_state_path(packaged_root_dir) else {
-        crate::append_desktop_log(
-            "update channel state path is unavailable; skipping channel persistence",
-        );
-        return Ok(());
+        let message =
+            "Update channel state path is unavailable; cannot persist update channel selection."
+                .to_string();
+        crate::append_desktop_log(&message);
+        return Err(message);
     };
 
     if let Some(parent_dir) = state_path.parent() {
@@ -525,6 +526,25 @@ mod tests {
         assert_eq!(
             result.expect("env override should resolve without updater config"),
             "https://env.example/nightly.json"
+        );
+    }
+
+    #[test]
+    fn write_cached_channel_errors_when_state_path_unavailable() {
+        let env_key = "ASTRBOT_ROOT";
+        let previous = std::env::var(env_key).ok();
+        std::env::remove_var(env_key);
+
+        let result = write_cached_update_channel(Some(UpdateChannel::Nightly), None);
+
+        match previous {
+            Some(value) => std::env::set_var(env_key, value),
+            None => std::env::remove_var(env_key),
+        }
+
+        assert_eq!(
+            result.expect_err("missing state path should fail persistence"),
+            "Update channel state path is unavailable; cannot persist update channel selection."
         );
     }
 
