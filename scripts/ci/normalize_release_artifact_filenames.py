@@ -5,22 +5,20 @@ from __future__ import annotations
 import argparse
 import pathlib
 import re
-import sys
+
+from .lib.artifact_arch import normalize_arch_alias
+from .lib.release_artifacts import (
+    ARCH_PATTERN,
+    ARTIFACT_EXTENSIONS,
+    LOCALE_PATTERN,
+    MACOS_CANONICAL_ARTIFACT_STEM_PATTERN,
+    VERSION_PATTERN,
+    WINDOWS_ARTIFACT_STEM_PATTERN_FRAGMENT,
+)
 
 NIGHTLY_DATE_PATTERN = re.compile(r"(?:-|_)nightly[._-][0-9]{8}[._-][0-9a-fA-F]{7,40}")
 NIGHTLY_HASH_PATTERN = re.compile(r"(?:-|_)nightly[-_][0-9a-fA-F]{7,40}")
 HEX_SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{8,64}$")
-ARTIFACT_EXTENSIONS: set[str] = {
-    ".rpm",
-    ".deb",
-    ".exe",
-    ".msi",
-    ".zip",
-}
-
-VERSION_PATTERN = r"[0-9A-Za-z.+-]+"
-ARCH_PATTERN = r"[A-Za-z0-9_]+"
-LOCALE_PATTERN = r"[A-Za-z0-9-]+"
 
 # Intentionally match both legacy names (`AstrBot_<version>_<arch>`) and
 # canonical names (`AstrBot_<version>_linux_<arch>`).
@@ -31,10 +29,6 @@ LINUX_CANONICAL_RULE: tuple[re.Pattern[str], str] = (
     LINUX_ARTIFACT_STEM_PATTERN,
     "AstrBot_{version}_linux_{arch}",
 )
-WINDOWS_ARTIFACT_STEM_PATTERN_FRAGMENT = (
-    rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?:windows_)?(?P<arch>{ARCH_PATTERN})"
-)
-
 CANONICALIZE_RULES: dict[str, tuple[tuple[re.Pattern[str], str], ...]] = {
     ".rpm": (
         (
@@ -66,25 +60,20 @@ CANONICALIZE_RULES: dict[str, tuple[tuple[re.Pattern[str], str], ...]] = {
     ),
     ".zip": (
         (
-            re.compile(
-                rf"^AstrBot_(?P<version>{VERSION_PATTERN})_macos_(?P<arch>{ARCH_PATTERN})$"
-            ),
+            MACOS_CANONICAL_ARTIFACT_STEM_PATTERN,
+            "AstrBot_{version}_macos_{arch}",
+        ),
+    ),
+    ".app.tar.gz": (
+        (
+            MACOS_CANONICAL_ARTIFACT_STEM_PATTERN,
             "AstrBot_{version}_macos_{arch}",
         ),
     ),
 }
 
-ARCH_ALIAS = {
-    "x86_64": "amd64",
-    "x64": "amd64",
-    "amd64": "amd64",
-    "aarch64": "arm64",
-    "arm64": "arm64",
-}
-
-
 def normalize_arch(arch: str, warned_unknown_arches: set[str]) -> str:
-    normalized = ARCH_ALIAS.get(arch)
+    normalized = normalize_arch_alias(arch)
     if normalized is not None:
         return normalized
     if arch not in warned_unknown_arches:
@@ -121,11 +110,38 @@ def resolve_nightly_source_sha(source_git_ref: str) -> str:
     )
 
 
+def detect_artifact_extension(path: pathlib.Path) -> str | None:
+    lower_name = path.name.lower()
+    best_match: str | None = None
+    best_len = -1
+
+    for ext in ARTIFACT_EXTENSIONS:
+        if not lower_name.endswith(ext):
+            continue
+        ext_len = len(ext)
+        if ext_len > best_len:
+            best_len = ext_len
+            best_match = ext
+
+    return best_match
+
+
+def strip_extension(name: str, ext: str) -> str:
+    return name[: -len(ext)] if ext else name
+
+
+def canonicalization_extension(ext: str) -> str:
+    if ext.endswith(".sig"):
+        return ext[:-4]
+    return ext
+
+
 def should_normalize_file(path: pathlib.Path) -> bool:
-    ext = path.suffix.lower()
-    if ext not in ARTIFACT_EXTENSIONS:
+    ext = detect_artifact_extension(path)
+    if ext is None:
         return False
-    return path.stem.startswith("AstrBot_") or path.stem.startswith("AstrBot-")
+    stem = strip_extension(path.name, ext)
+    return stem.startswith("AstrBot_") or stem.startswith("AstrBot-")
 
 
 def strip_nightly_suffix(stem: str) -> str:
@@ -202,12 +218,18 @@ def main() -> int:
             skipped_count += 1
             continue
 
+        ext = detect_artifact_extension(path)
+        if ext is None:
+            skipped_count += 1
+            continue
+
         original_name = path.name
-        original_stem = path.stem
-        ext = path.suffix.lower()
+        original_stem = strip_extension(original_name, ext)
 
         stripped_stem = strip_nightly_suffix(original_stem)
-        normalized_stem, matched = canonicalize_stem(stripped_stem, ext, warned_unknown_arches)
+        normalized_stem, matched = canonicalize_stem(
+            stripped_stem, canonicalization_extension(ext), warned_unknown_arches
+        )
 
         final_stem = normalized_stem
         if nightly_suffix and not final_stem.endswith(nightly_suffix):
