@@ -10,17 +10,25 @@ import sys
 NIGHTLY_DATE_PATTERN = re.compile(r"(?:-|_)nightly[._-][0-9]{8}[._-][0-9a-fA-F]{7,40}")
 NIGHTLY_HASH_PATTERN = re.compile(r"(?:-|_)nightly[-_][0-9a-fA-F]{7,40}")
 HEX_SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{8,64}$")
-ARTIFACT_EXTENSIONS: tuple[str, ...] = (
-    ".app.tar.gz.sig",
-    ".app.tar.gz",
-    ".exe.sig",
-    ".msi.sig",
-    ".zip.sig",
-    ".rpm",
-    ".deb",
-    ".exe",
-    ".msi",
-    ".zip",
+# Prefer longer, more specific suffixes first so multi-part artifacts such as
+# ".app.tar.gz.sig" win before shorter suffixes with overlapping endings.
+ARTIFACT_EXTENSIONS: tuple[str, ...] = tuple(
+    sorted(
+        (
+            ".app.tar.gz.sig",
+            ".app.tar.gz",
+            ".exe.sig",
+            ".msi.sig",
+            ".zip.sig",
+            ".rpm",
+            ".deb",
+            ".exe",
+            ".msi",
+            ".zip",
+        ),
+        key=len,
+        reverse=True,
+    )
 )
 
 VERSION_PATTERN = r"[0-9A-Za-z.+-]+"
@@ -137,7 +145,7 @@ def resolve_nightly_source_sha(source_git_ref: str) -> str:
 def detect_artifact_extension(path: pathlib.Path) -> str | None:
     lower_name = path.name.lower()
     for ext in ARTIFACT_EXTENSIONS:
-        if lower_name.endswith(ext.lower()):
+        if lower_name.endswith(ext):
             return ext
     return None
 
