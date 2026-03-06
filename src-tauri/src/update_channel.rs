@@ -4,10 +4,12 @@ use serde_json::{Map, Value};
 use std::{
     collections::HashMap,
     env, fs,
+    io::Write,
     path::{Path, PathBuf},
     sync::OnceLock,
 };
 
+#[cfg(test)]
 const UPDATE_CHANNEL_FIELD: &str = "updateChannel";
 const NIGHTLY_IDENTIFIER: &str = "nightly";
 const UPDATER_PLUGIN_KEY: &str = "updater";
@@ -186,6 +188,33 @@ struct NightlyVersionInfo {
     hash: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum NightlyParseError {
+    MissingDate,
+    MissingHash,
+    TooManySegments,
+    BadDate { digits: usize },
+    BadHash { digits: usize },
+    DateParse,
+}
+
+impl std::fmt::Display for NightlyParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingDate => write!(f, "missing date segment"),
+            Self::MissingHash => write!(f, "missing hash segment"),
+            Self::TooManySegments => write!(f, "too many prerelease identifiers"),
+            Self::BadDate { digits } => {
+                write!(f, "date segment is not {} ASCII digits", digits)
+            }
+            Self::BadHash { digits } => {
+                write!(f, "hash segment is not {} ASCII hex digits", digits)
+            }
+            Self::DateParse => write!(f, "failed to parse date as u32"),
+        }
+    }
+}
+
 fn log_nightly_parse_failure(version: &Version, reason: impl std::fmt::Display) {
     crate::append_desktop_log(&format!(
         "failed to parse nightly prerelease '{}' as '{}': {}",
@@ -195,68 +224,57 @@ fn log_nightly_parse_failure(version: &Version, reason: impl std::fmt::Display) 
     ));
 }
 
-fn parse_nightly_version_info(version: &Version) -> Option<NightlyVersionInfo> {
+fn parse_nightly_version_info_inner(
+    version: &Version,
+) -> Result<Option<NightlyVersionInfo>, NightlyParseError> {
     let spec = nightly_version_format_spec();
     let mut identifiers = version.pre.as_str().split('.');
 
-    let first = identifiers.next()?;
+    let Some(first) = identifiers.next() else {
+        return Ok(None);
+    };
     if !first.eq_ignore_ascii_case(NIGHTLY_IDENTIFIER) {
-        return None;
+        return Ok(None);
     }
 
-    let date_raw = match identifiers.next() {
-        Some(value) => value,
-        None => {
-            log_nightly_parse_failure(version, "missing date segment");
-            return None;
-        }
-    };
-
-    let hash_raw = match identifiers.next() {
-        Some(value) => value,
-        None => {
-            log_nightly_parse_failure(version, "missing hash segment");
-            return None;
-        }
-    };
+    let date_raw = identifiers.next().ok_or(NightlyParseError::MissingDate)?;
+    let hash_raw = identifiers.next().ok_or(NightlyParseError::MissingHash)?;
 
     if identifiers.next().is_some() {
-        log_nightly_parse_failure(version, "too many prerelease identifiers");
-        return None;
+        return Err(NightlyParseError::TooManySegments);
     }
 
     if date_raw.len() != spec.date_digits || !date_raw.chars().all(|ch| ch.is_ascii_digit()) {
-        log_nightly_parse_failure(
-            version,
-            format!("date segment is not {} ASCII digits", spec.date_digits),
-        );
-        return None;
+        return Err(NightlyParseError::BadDate {
+            digits: spec.date_digits,
+        });
     }
 
     if hash_raw.len() != spec.sha_hex_digits || !hash_raw.chars().all(|ch| ch.is_ascii_hexdigit()) {
-        log_nightly_parse_failure(
-            version,
-            format!(
-                "hash segment is not {} ASCII hex digits",
-                spec.sha_hex_digits
-            ),
-        );
-        return None;
+        return Err(NightlyParseError::BadHash {
+            digits: spec.sha_hex_digits,
+        });
     }
 
-    let date = match date_raw.parse::<u32>() {
-        Ok(value) => value,
-        Err(_) => {
-            log_nightly_parse_failure(version, "failed to parse date as u32");
-            return None;
-        }
-    };
+    let date = date_raw
+        .parse::<u32>()
+        .map_err(|_| NightlyParseError::DateParse)?;
 
-    Some(NightlyVersionInfo {
+    Ok(Some(NightlyVersionInfo {
         base: base_version(version),
         date,
         hash: hash_raw.to_ascii_lowercase(),
-    })
+    }))
+}
+
+fn parse_nightly_version_info(version: &Version) -> Option<NightlyVersionInfo> {
+    match parse_nightly_version_info_inner(version) {
+        Ok(info) => info,
+        Err(error) => {
+            log_nightly_parse_failure(version, error);
+            None
+        }
+    }
 }
 
 // Nightly-to-nightly comparisons only accept nightly remotes, then compare
@@ -300,9 +318,8 @@ pub(crate) fn read_cached_update_channel(
 ) -> Option<UpdateChannel> {
     let state_path = desktop_state_path(packaged_root_dir)?;
     let raw = fs::read_to_string(state_path).ok()?;
-    let parsed: Value = serde_json::from_str(&raw).ok()?;
-    let channel = parsed.get(UPDATE_CHANNEL_FIELD)?.as_str()?;
-    UpdateChannel::parse(channel)
+    let state: DesktopState = serde_json::from_str(&raw).ok()?;
+    UpdateChannel::parse(state.update_channel.as_deref()?)
 }
 
 fn ensure_parent_dir(path: &Path) -> Result<(), String> {
@@ -319,20 +336,20 @@ fn ensure_parent_dir(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn load_state(path: &Path) -> Result<Map<String, Value>, String> {
-    let raw_value = match fs::read_to_string(path) {
-        Ok(raw) => match serde_json::from_str::<Value>(&raw) {
-            Ok(value) => value,
-            Err(error) => {
-                crate::append_desktop_log(&format!(
-                    "failed to parse update channel state {}: {}. resetting state file",
-                    path.display(),
-                    error
-                ));
-                Value::Object(Map::new())
-            }
-        },
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Value::Object(Map::new()),
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct DesktopState {
+    #[serde(rename = "updateChannel")]
+    update_channel: Option<String>,
+    #[serde(flatten)]
+    other: Map<String, Value>,
+}
+
+fn load_state(path: &Path) -> Result<DesktopState, String> {
+    let raw = match fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(DesktopState::default());
+        }
         Err(error) => {
             return Err(format!(
                 "Failed to read update channel state {}: {}",
@@ -342,26 +359,51 @@ fn load_state(path: &Path) -> Result<Map<String, Value>, String> {
         }
     };
 
-    Ok(match raw_value {
-        Value::Object(object) => object,
-        _ => {
+    match serde_json::from_str::<DesktopState>(&raw) {
+        Ok(state) => Ok(state),
+        Err(error) => {
             crate::append_desktop_log(&format!(
-                "update channel state {} has non-object root; resetting state file",
-                path.display()
+                "failed to parse update channel state {}: {}. resetting state file",
+                path.display(),
+                error
             ));
-            Map::new()
+            Ok(DesktopState::default())
         }
-    })
+    }
 }
 
-fn save_state(path: &Path, state: &Map<String, Value>) -> Result<(), String> {
+fn save_state(path: &Path, state: &DesktopState) -> Result<(), String> {
     ensure_parent_dir(path)?;
 
     let serialized = serde_json::to_string_pretty(state)
         .map_err(|error| format!("Failed to serialize update channel state: {error}"))?;
-    fs::write(path, serialized).map_err(|error| {
+    let tmp_name = format!(
+        "{}.tmp",
+        path.file_name()
+            .map(|value| value.to_string_lossy())
+            .unwrap_or_default()
+    );
+    let tmp_path = path.with_file_name(tmp_name);
+
+    let mut file = fs::File::create(&tmp_path).map_err(|error| {
         format!(
-            "Failed to write update channel state {}: {}",
+            "Failed to create temporary update channel state file {}: {}",
+            tmp_path.display(),
+            error
+        )
+    })?;
+    file.write_all(serialized.as_bytes())
+        .and_then(|_| file.sync_all())
+        .map_err(|error| {
+            format!(
+                "Failed to write temporary update channel state file {}: {}",
+                tmp_path.display(),
+                error
+            )
+        })?;
+    fs::rename(&tmp_path, path).map_err(|error| {
+        format!(
+            "Failed to atomically replace update channel state file {}: {}",
             path.display(),
             error
         )
@@ -381,18 +423,7 @@ pub(crate) fn write_cached_update_channel(
     };
 
     let mut state = load_state(&state_path)?;
-    match channel {
-        Some(channel) => {
-            state.insert(
-                UPDATE_CHANNEL_FIELD.to_string(),
-                Value::String(channel.config_key().to_string()),
-            );
-        }
-        None => {
-            state.remove(UPDATE_CHANNEL_FIELD);
-        }
-    }
-
+    state.update_channel = channel.map(|value| value.config_key().to_string());
     save_state(&state_path, &state)
 }
 
@@ -517,6 +548,20 @@ mod tests {
                 .expect("invalid nightly example should still be semver-parseable");
             assert!(parse_nightly_version_info(&parsed).is_none(), "{raw}");
         }
+    }
+
+    #[test]
+    fn parse_nightly_version_info_inner_returns_none_for_non_nightly() {
+        assert!(parse_nightly_version_info_inner(&version("4.29.0"))
+            .expect("stable versions should not error")
+            .is_none());
+    }
+
+    #[test]
+    fn parse_nightly_version_info_inner_reports_malformed_nightly() {
+        let error = parse_nightly_version_info_inner(&version("4.29.0-nightly"))
+            .expect_err("malformed nightly should produce a parse error");
+        assert_eq!(error.to_string(), "missing date segment");
     }
 
     #[test]

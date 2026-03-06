@@ -33,61 +33,62 @@ def normalize_arch(arch: str) -> str:
     return normalize_arch_alias(arch) or arch
 
 
+def normalize_and_validate_arch(arch: str, platform: str) -> str:
+    normalized = normalize_arch(arch)
+    if normalized not in ("amd64", "arm64"):
+        raise ValueError(f"Unsupported {platform} arch: {arch}")
+    return normalized
+
+
 def platform_key_for_windows(arch: str) -> str:
-    arch = normalize_arch(arch)
-    if arch == "amd64":
-        return "windows-x86_64"
-    if arch == "arm64":
-        return "windows-aarch64"
-    raise ValueError(f"Unsupported Windows arch: {arch}")
+    arch = normalize_and_validate_arch(arch, "Windows")
+    return "windows-x86_64" if arch == "amd64" else "windows-aarch64"
 
 
 def platform_key_for_macos(arch: str) -> str:
-    arch = normalize_arch(arch)
-    if arch == "amd64":
-        return "darwin-x86_64"
-    if arch == "arm64":
-        return "darwin-aarch64"
-    raise ValueError(f"Unsupported macOS arch: {arch}")
+    arch = normalize_and_validate_arch(arch, "macOS")
+    return "darwin-x86_64" if arch == "amd64" else "darwin-aarch64"
+
+
+def derive_release_metadata(version: str, channel: str | None) -> tuple[str, str, str]:
+    inferred_channel = "nightly" if "nightly" in version.lower() else "stable"
+    effective_channel = channel or inferred_channel
+    match = NIGHTLY_VERSION_RE.match(version)
+
+    if effective_channel == "nightly":
+        if not match:
+            message = (
+                f"Nightly manifest version must match {NIGHTLY_CANONICAL_FORMAT}, "
+                f"got {version!r}"
+            )
+            if channel is None:
+                raise ValueError(
+                    f"Invalid nightly version {version!r}: expected format {NIGHTLY_CANONICAL_FORMAT}"
+                )
+            raise ValueError(message)
+        return effective_channel, match.group("base"), f"_nightly_{match.group('sha')[:8]}"
+
+    base_version = match.group("base") if match else version
+    return effective_channel, base_version, ""
 
 
 def infer_channel(version: str) -> str:
     """Infer the release channel from version using the same nightly semantics as helpers."""
-    if "nightly" not in version.lower():
-        return "stable"
-    if not NIGHTLY_VERSION_RE.match(version):
-        raise ValueError(
-            "Invalid nightly version "
-            f"{version!r}: expected format {NIGHTLY_CANONICAL_FORMAT}"
-        )
-    return "nightly"
+    return derive_release_metadata(version, None)[0]
 
 
 def derive_nightly_filename_suffix(version: str, channel: str) -> str:
-    if channel != "nightly":
-        return ""
-
-    match = NIGHTLY_VERSION_RE.match(version)
-    if not match:
-        raise ValueError(
-            f"Nightly manifest version must match {NIGHTLY_CANONICAL_FORMAT}, "
-            f"got {version!r}"
-        )
-    return f"_nightly_{match.group('sha')[:8]}"
+    return derive_release_metadata(version, channel)[2]
 
 
 def derive_base_version(version: str) -> str:
-    match = NIGHTLY_VERSION_RE.match(version)
-    if match:
-        return match.group("base")
-    return version
+    return derive_release_metadata(version, None)[1]
 
 
 def canonical_windows_filename(name: str, arch: str, version: str, channel: str) -> str:
-    base_version = derive_base_version(version)
+    _, base_version, nightly_suffix = derive_release_metadata(version, channel)
     arch = normalize_arch(arch)
-    suffix = derive_nightly_filename_suffix(version, channel)
-    return f"{name}_{base_version}_windows_{arch}_setup{suffix}.exe"
+    return f"{name}_{base_version}_windows_{arch}_setup{nightly_suffix}.exe"
 
 
 def canonical_macos_filename(
@@ -97,10 +98,39 @@ def canonical_macos_filename(
     channel: str,
     archive_ext: str,
 ) -> str:
-    base_version = derive_base_version(version)
+    _, base_version, nightly_suffix = derive_release_metadata(version, channel)
     arch = normalize_arch(arch)
-    suffix = derive_nightly_filename_suffix(version, channel)
-    return f"{name}_{base_version}_macos_{arch}{suffix}{archive_ext}"
+    return f"{name}_{base_version}_macos_{arch}{nightly_suffix}{archive_ext}"
+
+
+def parse_windows_artifact_name(source_name: str) -> re.Match[str]:
+    match = match_any(source_name, WINDOWS_UPDATER_PATTERNS)
+    if match:
+        return match
+    match = WINDOWS_PREFIX_ALIAS_RE.match(source_name)
+    if match:
+        return match
+    raise ValueError(
+        "Unexpected Windows artifact name: "
+        f"{source_name}. Expected format: "
+        "<name>_<version>_windows_<arch>_setup.exe or legacy "
+        "<name>_<version>_<arch>-setup.exe "
+        "(nightly builds may append _nightly_<sha> before .exe)."
+    )
+
+
+def parse_macos_artifact_name(source_name: str) -> tuple[re.Match[str], str]:
+    match = match_any(source_name, MACOS_UPDATER_ARCHIVE_PATTERNS)
+    if not match:
+        raise ValueError(
+            "Unexpected macOS artifact name: "
+            f"{source_name}. Expected format: "
+            "<name>_<version>_macos_<arch>.zip or "
+            "<name>_<version>_macos_<arch>.app.tar.gz "
+            "(nightly builds may append _nightly_<sha> before the extension)."
+        )
+    archive_ext = ".app.tar.gz" if source_name.endswith(".app.tar.gz") else ".zip"
+    return match, archive_ext
 
 
 def add_platform(
@@ -139,15 +169,7 @@ def collect_platforms(
         sig_name = sig_path.name
         if sig_name.endswith(".exe.sig"):
             source_name = sig_name[:-4]
-            match = match_any(source_name, WINDOWS_UPDATER_PATTERNS) or WINDOWS_PREFIX_ALIAS_RE.match(source_name)
-            if not match:
-                raise ValueError(
-                    "Unexpected Windows artifact name: "
-                    f"{source_name}. Expected format: "
-                    "<name>_<version>_windows_<arch>_setup.exe or legacy "
-                    "<name>_<version>_<arch>-setup.exe "
-                    "(nightly builds may append _nightly_<sha> before .exe)."
-                )
+            match = parse_windows_artifact_name(source_name)
             artifact_name = canonical_windows_filename(
                 match.group("name"),
                 match.group("arch"),
@@ -167,16 +189,7 @@ def collect_platforms(
 
         if sig_name.endswith(".app.tar.gz.sig") or sig_name.endswith(".zip.sig"):
             source_name = sig_name[:-4]
-            match = match_any(source_name, MACOS_UPDATER_ARCHIVE_PATTERNS)
-            if not match:
-                raise ValueError(
-                    "Unexpected macOS artifact name: "
-                    f"{source_name}. Expected format: "
-                    "<name>_<version>_macos_<arch>.zip or "
-                    "<name>_<version>_macos_<arch>.app.tar.gz "
-                    "(nightly builds may append _nightly_<sha> before the extension)."
-                )
-            archive_ext = ".app.tar.gz" if source_name.endswith(".app.tar.gz") else ".zip"
+            match, archive_ext = parse_macos_artifact_name(source_name)
             artifact_name = canonical_macos_filename(
                 match.group("name"),
                 match.group("arch"),
@@ -239,7 +252,10 @@ def main() -> int:
 
     root = Path(args.artifacts_root)
     try:
-        channel = args.channel or infer_channel(args.version)
+        channel, base_version, _nightly_suffix = derive_release_metadata(
+            args.version,
+            args.channel,
+        )
         platforms = collect_platforms(
             root,
             args.repo,
@@ -256,7 +272,7 @@ def main() -> int:
         version=args.version,
         notes=args.notes,
         channel=channel,
-        base_version=derive_base_version(args.version),
+        base_version=base_version,
         release_tag=args.tag,
         platforms=platforms,
     )

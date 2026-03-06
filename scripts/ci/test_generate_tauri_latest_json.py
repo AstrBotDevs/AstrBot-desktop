@@ -93,10 +93,63 @@ class GenerateTauriLatestJsonTests(unittest.TestCase):
         self.assertEqual(payload['releaseTag'], 'nightly')
 
 
+    def test_infer_channel_returns_expected_channels(self):
+        self.assertEqual(MODULE.infer_channel('4.29.0'), 'stable')
+        self.assertEqual(
+            MODULE.infer_channel('4.29.0-nightly.20260307.abcd1234'),
+            'nightly',
+        )
+
     def test_infer_channel_rejects_malformed_nightly_version(self):
         with self.assertRaisesRegex(ValueError, 'Invalid nightly version'):
             MODULE.infer_channel('4.29.0-nightly-beta')
 
+    def test_derive_release_metadata_returns_expected_values(self):
+        self.assertEqual(
+            MODULE.derive_release_metadata('4.29.0', None),
+            ('stable', '4.29.0', ''),
+        )
+        self.assertEqual(
+            MODULE.derive_release_metadata('4.29.0-nightly.20260307.abcd1234', None),
+            ('nightly', '4.29.0', '_nightly_abcd1234'),
+        )
+
+    def test_canonical_windows_filename_outputs_expected_names(self):
+        self.assertEqual(
+            MODULE.canonical_windows_filename('AstrBot', 'amd64', '4.29.0', 'stable'),
+            'AstrBot_4.29.0_windows_amd64_setup.exe',
+        )
+        self.assertEqual(
+            MODULE.canonical_windows_filename(
+                'AstrBot',
+                'amd64',
+                '4.29.0-nightly.20260307.abcd1234',
+                'nightly',
+            ),
+            'AstrBot_4.29.0_windows_amd64_setup_nightly_abcd1234.exe',
+        )
+
+    def test_canonical_macos_filename_outputs_expected_names(self):
+        self.assertEqual(
+            MODULE.canonical_macos_filename(
+                'AstrBot',
+                'arm64',
+                '4.29.0',
+                'stable',
+                '.app.tar.gz',
+            ),
+            'AstrBot_4.29.0_macos_arm64.app.tar.gz',
+        )
+        self.assertEqual(
+            MODULE.canonical_macos_filename(
+                'AstrBot',
+                'arm64',
+                '4.29.0-nightly.20260307.abcd1234',
+                'nightly',
+                '.zip',
+            ),
+            'AstrBot_4.29.0_macos_arm64_nightly_abcd1234.zip',
+        )
 
     def test_main_writes_expected_manifest_json(self):
         with tempfile.TemporaryDirectory() as tmpdir:
