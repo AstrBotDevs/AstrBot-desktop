@@ -82,6 +82,10 @@ const main = async () => {
 };
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  if (error instanceof Error) {
+    console.error(error.stack || error.message);
+  } else {
+    console.error(String(error));
+  }
   process.exit(1);
 });

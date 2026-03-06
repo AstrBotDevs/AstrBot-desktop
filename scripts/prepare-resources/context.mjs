@@ -46,6 +46,7 @@ export const createPrepareResourcesContext = ({ argv, env, projectRoot, cwd = pr
 
   return {
     mode,
+    projectRoot,
     pythonBuildStandaloneRelease,
     pythonBuildStandaloneVersion,
     desktopVersionInput,
