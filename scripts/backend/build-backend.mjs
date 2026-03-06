@@ -431,14 +431,6 @@ const prepareRuntimeExecutable = (runtimeSourceReal) => {
   return runtimePython;
 };
 
-const removePathIfExists = (candidatePath) => {
-  if (!fs.existsSync(candidatePath)) {
-    return false;
-  }
-  fs.rmSync(candidatePath, { recursive: true, force: true });
-  return true;
-};
-
 const SO_LIBRARY_NAME_PATTERN = /\.so(\.[0-9]+)*$/;
 const ELF_MAGIC_BYTES = Buffer.from([0x7f, 0x45, 0x4c, 0x46]);
 
@@ -479,9 +471,11 @@ const removeDirectoriesByPrefix = (rootDir, prefixes, { recursive = false } = {}
 
   let removedCount = 0;
   for (const candidatePath of candidates.sort((a, b) => b.length - a.length)) {
-    if (removePathIfExists(candidatePath)) {
-      removedCount += 1;
+    if (!fs.existsSync(candidatePath)) {
+      continue;
     }
+    fs.rmSync(candidatePath, { recursive: true, force: true });
+    removedCount += 1;
   }
   return removedCount;
 };
@@ -495,6 +489,9 @@ const walkFilesRecursively = (rootDir, predicate) => {
   while (stack.length > 0) {
     const current = stack.pop();
     for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) {
+        continue;
+      }
       const fullPath = path.join(current, entry.name);
       if (entry.isDirectory()) {
         stack.push(fullPath);
@@ -517,6 +514,9 @@ const walkDirectoriesRecursively = (rootDir, predicate) => {
   while (stack.length > 0) {
     const current = stack.pop();
     for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) {
+        continue;
+      }
       if (!entry.isDirectory()) {
         continue;
       }
@@ -550,6 +550,44 @@ const hasElfMagic = (filePath) => {
   }
 };
 
+const findPythonLibDynloadDirs = (runtimeLibDir) =>
+  walkDirectoriesRecursively(
+    runtimeLibDir,
+    (dirPath, dirName) =>
+      dirName === 'lib-dynload' && path.basename(path.dirname(dirPath)).startsWith('python'),
+  );
+
+const computeRpathSearchEntries = (soFile, sitePackagesRoots, libsDirsBySitePackages) => {
+  const searchEntries = [
+    '$ORIGIN',
+    '$ORIGIN/..',
+    '$ORIGIN/../..',
+    '$ORIGIN/../../..',
+    '$ORIGIN/../../../..',
+    '$ORIGIN/../.libs',
+  ];
+
+  for (const sitePackagesRoot of sitePackagesRoots) {
+    if (!soFile.startsWith(`${sitePackagesRoot}${path.sep}`)) {
+      continue;
+    }
+    const libsDirs = libsDirsBySitePackages.get(sitePackagesRoot) || [];
+    for (const libsDir of libsDirs) {
+      const relativePath = path.relative(path.dirname(soFile), libsDir);
+      if (!relativePath || relativePath === '.') {
+        searchEntries.push('$ORIGIN');
+        continue;
+      }
+      if (relativePath.startsWith('..')) {
+        searchEntries.push(`$ORIGIN/${relativePath.split(path.sep).join('/')}`);
+      }
+    }
+    break;
+  }
+
+  return searchEntries;
+};
+
 const pruneLinuxTkinterRuntime = () => {
   if (process.platform !== 'linux') {
     return;
@@ -567,11 +605,7 @@ const pruneLinuxTkinterRuntime = () => {
   removedCount += removeFilesByPrefix(runtimeLibDir, ['libtcl', 'libtk']);
   removedCount += removeDirectoriesByPrefix(runtimeLibDir, ['tcl8', 'tcl9', 'tk8', 'tk9', 'itcl']);
 
-  const pythonDynloadDirs = walkDirectoriesRecursively(
-    runtimeLibDir,
-    (dirPath, dirName) =>
-      dirName === 'lib-dynload' && path.basename(path.dirname(dirPath)).startsWith('python'),
-  );
+  const pythonDynloadDirs = findPythonLibDynloadDirs(runtimeLibDir);
   for (const libDynloadDir of pythonDynloadDirs) {
     removedCount += removeFilesByPrefix(libDynloadDir, ['_tkinter']);
   }
@@ -634,32 +668,7 @@ const patchLinuxRuntimeRpaths = () => {
       continue;
     }
 
-    const searchEntries = [
-      '$ORIGIN',
-      '$ORIGIN/..',
-      '$ORIGIN/../..',
-      '$ORIGIN/../../..',
-      '$ORIGIN/../../../..',
-      '$ORIGIN/../.libs',
-    ];
-
-    for (const sitePackagesRoot of sitePackagesRoots) {
-      if (!soFile.startsWith(`${sitePackagesRoot}${path.sep}`)) {
-        continue;
-      }
-      const libsDirs = libsDirsBySitePackages.get(sitePackagesRoot) || [];
-      for (const libsDir of libsDirs) {
-        const relativePath = path.relative(path.dirname(soFile), libsDir);
-        if (!relativePath || relativePath === '.') {
-          searchEntries.push('$ORIGIN');
-          continue;
-        }
-        if (relativePath.startsWith('..') || !path.isAbsolute(relativePath)) {
-          searchEntries.push(`$ORIGIN/${relativePath.split(path.sep).join('/')}`);
-        }
-      }
-      break;
-    }
+    const searchEntries = computeRpathSearchEntries(soFile, sitePackagesRoots, libsDirsBySitePackages);
 
     const existingRpathEntries = (printRpathResult.stdout || '')
       .trim()
@@ -667,6 +676,14 @@ const patchLinuxRuntimeRpaths = () => {
       .map((entry) => entry.trim())
       .filter(Boolean);
     const finalEntries = Array.from(new Set([...existingRpathEntries, ...searchEntries]));
+
+    const rpathUnchanged =
+      finalEntries.length === existingRpathEntries.length &&
+      finalEntries.every((entry, index) => entry === existingRpathEntries[index]);
+    if (rpathUnchanged) {
+      continue;
+    }
+
     const setRpathResult = spawnSync(
       'patchelf',
       ['--set-rpath', finalEntries.join(':'), soFile],
