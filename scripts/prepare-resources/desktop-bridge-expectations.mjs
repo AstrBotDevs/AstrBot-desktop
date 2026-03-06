@@ -64,7 +64,7 @@ const DESKTOP_BRIDGE_EXPECTATIONS = [
   },
 ];
 
-export const getDesktopBridgeExpectations = () => DESKTOP_BRIDGE_EXPECTATIONS;
+export const getDesktopBridgeExpectations = () => [...DESKTOP_BRIDGE_EXPECTATIONS];
 
 export const shouldEnforceDesktopBridgeExpectation = (
   expectation,

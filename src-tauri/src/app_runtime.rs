@@ -144,20 +144,24 @@ pub(crate) fn run() {
         )
         .display()
     ));
-    configure_setup(configure_page_load_events(configure_window_events(
-        configure_plugins(tauri::Builder::default()),
-    )))
-    .manage(BackendState::default())
-    .invoke_handler(tauri::generate_handler![
-        crate::bridge::commands::desktop_bridge_is_desktop_runtime,
-        crate::bridge::commands::desktop_bridge_get_backend_state,
-        crate::bridge::commands::desktop_bridge_set_auth_token,
-        crate::bridge::commands::desktop_bridge_set_shell_locale,
-        crate::bridge::commands::desktop_bridge_restart_backend,
-        crate::bridge::commands::desktop_bridge_stop_backend,
-        crate::bridge::commands::desktop_bridge_open_external_url
-    ])
-    .build(tauri::generate_context!())
-    .expect("error while building tauri application")
-    .run(handle_run_event);
+    let builder = tauri::Builder::default();
+    let builder = configure_plugins(builder);
+    let builder = configure_window_events(builder);
+    let builder = configure_page_load_events(builder);
+    let builder = configure_setup(builder);
+
+    builder
+        .manage(BackendState::default())
+        .invoke_handler(tauri::generate_handler![
+            crate::bridge::commands::desktop_bridge_is_desktop_runtime,
+            crate::bridge::commands::desktop_bridge_get_backend_state,
+            crate::bridge::commands::desktop_bridge_set_auth_token,
+            crate::bridge::commands::desktop_bridge_set_shell_locale,
+            crate::bridge::commands::desktop_bridge_restart_backend,
+            crate::bridge::commands::desktop_bridge_stop_backend,
+            crate::bridge::commands::desktop_bridge_open_external_url
+        ])
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(handle_run_event);
 }

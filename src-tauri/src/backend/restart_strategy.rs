@@ -12,13 +12,6 @@ pub(crate) enum GracefulRestartOutcome {
     RequestRejected,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum RestartExecution {
-    ReturnSuccess,
-    FallBackToManagedRestart { log_message: String },
-    ReturnError(String),
-}
-
 pub(crate) fn compute_restart_strategy(
     is_windows: bool,
     packaged_mode: bool,
@@ -47,53 +40,11 @@ pub(crate) fn map_graceful_restart_outcome(
     }
 }
 
-pub(crate) fn resolve_restart_execution(
-    strategy: RestartStrategy,
-    outcome: GracefulRestartOutcome,
-) -> RestartExecution {
-    match strategy {
-        RestartStrategy::ManagedSkipGraceful => RestartExecution::FallBackToManagedRestart {
-            log_message:
-                "skip graceful restart for packaged windows managed backend; using managed restart"
-                    .to_string(),
-        },
-        RestartStrategy::ManagedWithGracefulFallback => match outcome {
-            GracefulRestartOutcome::Completed => RestartExecution::ReturnSuccess,
-            GracefulRestartOutcome::WaitFailed(error) => {
-                RestartExecution::FallBackToManagedRestart {
-                    log_message: format!(
-                        "graceful restart did not complete, fallback to managed restart: {error}"
-                    ),
-                }
-            }
-            GracefulRestartOutcome::RequestRejected => RestartExecution::FallBackToManagedRestart {
-                log_message:
-                    "graceful restart request was rejected, fallback to managed restart"
-                        .to_string(),
-            },
-        },
-        RestartStrategy::UnmanagedWithGracefulProbe => match outcome {
-            GracefulRestartOutcome::Completed => RestartExecution::ReturnSuccess,
-            GracefulRestartOutcome::WaitFailed(error) => {
-                RestartExecution::FallBackToManagedRestart {
-                    log_message: format!(
-                        "graceful restart did not complete for unmanaged backend, bootstrap managed restart: {error}"
-                    ),
-                }
-            }
-            GracefulRestartOutcome::RequestRejected => RestartExecution::ReturnError(
-                "graceful restart request was rejected and backend is not desktop-managed."
-                    .to_string(),
-            ),
-        },
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        compute_restart_strategy, map_graceful_restart_outcome, resolve_restart_execution,
-        GracefulRestartOutcome, RestartExecution, RestartStrategy,
+        compute_restart_strategy, map_graceful_restart_outcome, GracefulRestartOutcome,
+        RestartStrategy,
     };
 
     #[test]
@@ -141,46 +92,6 @@ mod tests {
         assert_eq!(
             map_graceful_restart_outcome(true, Err("timeout".to_string())),
             GracefulRestartOutcome::WaitFailed("timeout".to_string())
-        );
-    }
-
-    #[test]
-    fn resolve_restart_execution_returns_success_on_completed_graceful_restart() {
-        assert_eq!(
-            resolve_restart_execution(
-                RestartStrategy::ManagedWithGracefulFallback,
-                GracefulRestartOutcome::Completed,
-            ),
-            RestartExecution::ReturnSuccess
-        );
-    }
-
-    #[test]
-    fn resolve_restart_execution_falls_back_for_managed_wait_failure() {
-        assert_eq!(
-            resolve_restart_execution(
-                RestartStrategy::ManagedWithGracefulFallback,
-                GracefulRestartOutcome::WaitFailed("timeout".to_string()),
-            ),
-            RestartExecution::FallBackToManagedRestart {
-                log_message:
-                    "graceful restart did not complete, fallback to managed restart: timeout"
-                        .to_string(),
-            }
-        );
-    }
-
-    #[test]
-    fn resolve_restart_execution_errors_for_unmanaged_request_rejection() {
-        assert_eq!(
-            resolve_restart_execution(
-                RestartStrategy::UnmanagedWithGracefulProbe,
-                GracefulRestartOutcome::RequestRejected,
-            ),
-            RestartExecution::ReturnError(
-                "graceful restart request was rejected and backend is not desktop-managed."
-                    .to_string(),
-            )
         );
     }
 }

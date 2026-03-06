@@ -15,11 +15,10 @@ test('createPrepareResourcesContext applies defaults and normalizes empty env va
   assert.equal(context.sourceRepoRef, '');
   assert.equal(context.isSourceRepoRefCommitSha, false);
   assert.equal(context.isSourceRepoRefVersionTag, false);
-  assert.equal(context.desktopVersionOverride, '');
   assert.equal(context.isDesktopBridgeExpectationStrict, false);
+  assert.equal(context.desktopVersionOverride, '');
   assert.equal(context.pythonBuildStandaloneRelease, '20260211');
   assert.equal(context.pythonBuildStandaloneVersion, '3.12.12');
-  assert.equal(context.sourceDirOverrideRaw, '');
   assert.equal(context.sourceDir, '/project/root/vendor/AstrBot');
 });
 
@@ -42,15 +41,12 @@ test('createPrepareResourcesContext normalizes source config and strict bridge e
 
   assert.equal(context.mode, 'backend');
   assert.equal(context.sourceRepoUrl, 'https://github.com/AstrBotDevs/AstrBot.git');
-  assert.equal(context.sourceRepoRefResolved, 'v4.19.2');
   assert.equal(context.sourceRepoRef, 'v4.19.2');
   assert.equal(context.isSourceRepoRefCommitSha, true);
   assert.equal(context.isSourceRepoRefVersionTag, true);
-  assert.equal(context.desktopVersionOverrideRaw, 'v9.9.9');
   assert.equal(context.desktopVersionOverride, '9.9.9');
   assert.equal(context.isDesktopBridgeExpectationStrict, true);
   assert.equal(context.pythonBuildStandaloneRelease, '20250101');
   assert.equal(context.pythonBuildStandaloneVersion, '3.12.1');
-  assert.equal(context.sourceDirOverrideRaw, 'custom/source');
   assert.equal(context.sourceDir, '/workspace/custom/source');
 });

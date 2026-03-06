@@ -16,47 +16,40 @@ const trimEnv = (env, key, fallback = '') => {
 };
 
 export const createPrepareResourcesContext = ({ argv, env, projectRoot, cwd = process.cwd() }) => {
-  const sourceRepoUrlRaw =
+  const sourceRepoUrlInput =
     trimEnv(env, 'ASTRBOT_SOURCE_GIT_URL') || DEFAULT_ASTRBOT_SOURCE_GIT_URL;
-  const sourceRepoRefRaw = trimEnv(env, 'ASTRBOT_SOURCE_GIT_REF');
-  const sourceRepoRefIsCommitRaw = trimEnv(env, 'ASTRBOT_SOURCE_GIT_REF_IS_COMMIT');
-  const sourceDirOverrideRaw = trimEnv(env, 'ASTRBOT_SOURCE_DIR');
-  const desktopVersionOverrideRaw = trimEnv(env, 'ASTRBOT_DESKTOP_VERSION');
+  const sourceRepoRefInput = trimEnv(env, 'ASTRBOT_SOURCE_GIT_REF');
+  const sourceRepoRefCommitHint = trimEnv(env, 'ASTRBOT_SOURCE_GIT_REF_IS_COMMIT');
+  const sourceDirOverride = trimEnv(env, 'ASTRBOT_SOURCE_DIR');
+  const desktopVersionInput = trimEnv(env, 'ASTRBOT_DESKTOP_VERSION');
   const pythonBuildStandaloneRelease = trimEnv(env, 'ASTRBOT_PBS_RELEASE', '20260211');
   const pythonBuildStandaloneVersion = trimEnv(env, 'ASTRBOT_PBS_VERSION', '3.12.12');
   const mode = argv[2] || 'all';
 
-  const desktopVersionOverride = normalizeDesktopVersionOverride(desktopVersionOverrideRaw);
+  const desktopVersionOverride = normalizeDesktopVersionOverride(desktopVersionInput);
   const isDesktopBridgeExpectationStrict = TRUTHY_ENV_VALUES.has(
     trimEnv(env, 'ASTRBOT_DESKTOP_STRICT_BRIDGE_EXPECTATIONS').toLowerCase(),
   );
 
-  const { repoUrl: sourceRepoUrl, repoRef: sourceRepoRefResolved } = normalizeSourceRepoConfig(
-    sourceRepoUrlRaw,
-    sourceRepoRefRaw,
+  const { repoUrl: sourceRepoUrl, repoRef: sourceRepoRef } = normalizeSourceRepoConfig(
+    sourceRepoUrlInput,
+    sourceRepoRefInput,
   );
 
   const {
-    ref: sourceRepoRef,
     isCommit: isSourceRepoRefCommitSha,
     isVersionTag: isSourceRepoRefVersionTag,
-  } = getSourceRefInfo(sourceRepoRefResolved, sourceRepoRefIsCommitRaw);
+  } = getSourceRefInfo(sourceRepoRef, sourceRepoRefCommitHint);
 
-  const sourceDir = resolveSourceDir(projectRoot, sourceDirOverrideRaw, cwd);
+  const sourceDir = resolveSourceDir(projectRoot, sourceDirOverride, cwd);
 
   return {
     mode,
-    sourceRepoUrlRaw,
-    sourceRepoRefRaw,
-    sourceRepoRefIsCommitRaw,
-    sourceDirOverrideRaw,
-    desktopVersionOverrideRaw,
     pythonBuildStandaloneRelease,
     pythonBuildStandaloneVersion,
     desktopVersionOverride,
     isDesktopBridgeExpectationStrict,
     sourceRepoUrl,
-    sourceRepoRefResolved,
     sourceRepoRef,
     isSourceRepoRefCommitSha,
     isSourceRepoRefVersionTag,

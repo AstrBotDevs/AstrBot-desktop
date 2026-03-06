@@ -181,18 +181,58 @@ impl BackendState {
             _ => self.try_graceful_restart_and_wait(auth_token, previous_start_time, packaged_mode),
         };
 
-        match backend::restart_strategy::resolve_restart_execution(strategy, outcome) {
-            backend::restart_strategy::RestartExecution::ReturnSuccess => {
+        match (strategy, outcome) {
+            (
+                backend::restart_strategy::RestartStrategy::ManagedWithGracefulFallback,
+                backend::restart_strategy::GracefulRestartOutcome::Completed,
+            )
+            | (
+                backend::restart_strategy::RestartStrategy::UnmanagedWithGracefulProbe,
+                backend::restart_strategy::GracefulRestartOutcome::Completed,
+            ) => {
                 append_restart_log("graceful restart completed via backend api");
                 Ok(())
             }
-            backend::restart_strategy::RestartExecution::FallBackToManagedRestart {
-                log_message,
-            } => {
-                append_restart_log(&log_message);
+            (backend::restart_strategy::RestartStrategy::ManagedSkipGraceful, _) => {
+                append_restart_log(
+                    "skip graceful restart for packaged windows managed backend; using managed restart",
+                );
                 self.stop_backend_for_restart_flow()
             }
-            backend::restart_strategy::RestartExecution::ReturnError(error) => Err(error),
+            (
+                backend::restart_strategy::RestartStrategy::ManagedWithGracefulFallback,
+                backend::restart_strategy::GracefulRestartOutcome::WaitFailed(error),
+            ) => {
+                append_restart_log(&format!(
+                    "graceful restart did not complete, fallback to managed restart: {error}"
+                ));
+                self.stop_backend_for_restart_flow()
+            }
+            (
+                backend::restart_strategy::RestartStrategy::ManagedWithGracefulFallback,
+                backend::restart_strategy::GracefulRestartOutcome::RequestRejected,
+            ) => {
+                append_restart_log(
+                    "graceful restart request was rejected, fallback to managed restart",
+                );
+                self.stop_backend_for_restart_flow()
+            }
+            (
+                backend::restart_strategy::RestartStrategy::UnmanagedWithGracefulProbe,
+                backend::restart_strategy::GracefulRestartOutcome::WaitFailed(error),
+            ) => {
+                append_restart_log(&format!(
+                    "graceful restart did not complete for unmanaged backend, bootstrap managed restart: {error}"
+                ));
+                self.stop_backend_for_restart_flow()
+            }
+            (
+                backend::restart_strategy::RestartStrategy::UnmanagedWithGracefulProbe,
+                backend::restart_strategy::GracefulRestartOutcome::RequestRejected,
+            ) => Err(
+                "graceful restart request was rejected and backend is not desktop-managed."
+                    .to_string(),
+            ),
         }
     }
 
