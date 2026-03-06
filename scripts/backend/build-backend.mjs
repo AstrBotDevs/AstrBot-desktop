@@ -439,6 +439,11 @@ const removePathIfExists = (candidatePath) => {
   return true;
 };
 
+const SO_LIBRARY_NAME_PATTERN = /\.so(\.[0-9]+)*$/;
+const ELF_MAGIC_BYTES = Buffer.from([0x7f, 0x45, 0x4c, 0x46]);
+
+const isSharedObjectFileName = (fileName) => SO_LIBRARY_NAME_PATTERN.test(fileName);
+
 const removeFilesByPrefix = (directory, prefixes) => {
   if (!fs.existsSync(directory)) {
     return 0;
@@ -453,6 +458,30 @@ const removeFilesByPrefix = (directory, prefixes) => {
     }
     fs.rmSync(path.join(directory, entry.name), { force: true });
     removedCount += 1;
+  }
+  return removedCount;
+};
+
+const removeDirectoriesByPrefix = (rootDir, prefixes, { recursive = false } = {}) => {
+  if (!fs.existsSync(rootDir)) {
+    return 0;
+  }
+
+  const candidates = recursive
+    ? walkDirectoriesRecursively(
+        rootDir,
+        (_fullPath, dirName) => prefixes.some((prefix) => dirName.startsWith(prefix)),
+      )
+    : fs
+        .readdirSync(rootDir, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && prefixes.some((prefix) => entry.name.startsWith(prefix)))
+        .map((entry) => path.join(rootDir, entry.name));
+
+  let removedCount = 0;
+  for (const candidatePath of candidates.sort((a, b) => b.length - a.length)) {
+    if (removePathIfExists(candidatePath)) {
+      removedCount += 1;
+    }
   }
   return removedCount;
 };
@@ -501,6 +530,26 @@ const walkDirectoriesRecursively = (rootDir, predicate) => {
   return collected;
 };
 
+const hasElfMagic = (filePath) => {
+  let fd;
+  try {
+    fd = fs.openSync(filePath, 'r');
+    const header = Buffer.alloc(ELF_MAGIC_BYTES.length);
+    const bytesRead = fs.readSync(fd, header, 0, header.length, 0);
+    return bytesRead === ELF_MAGIC_BYTES.length && header.equals(ELF_MAGIC_BYTES);
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        // Ignore close errors on best-effort ELF detection.
+      }
+    }
+  }
+};
+
 const pruneLinuxTkinterRuntime = () => {
   if (process.platform !== 'linux') {
     return;
@@ -515,35 +564,15 @@ const pruneLinuxTkinterRuntime = () => {
 
   // Tk/Tcl artifacts are not required by the desktop backend and can break
   // AppImage dependency resolution on some Linux hosts.
-  for (const entry of fs.readdirSync(runtimeLibDir, { withFileTypes: true })) {
-    if (!entry.isFile()) {
-      continue;
-    }
-    if (!entry.name.startsWith('libtcl') && !entry.name.startsWith('libtk')) {
-      continue;
-    }
-    fs.rmSync(path.join(runtimeLibDir, entry.name), { force: true });
-    removedCount += 1;
-  }
+  removedCount += removeFilesByPrefix(runtimeLibDir, ['libtcl', 'libtk']);
+  removedCount += removeDirectoriesByPrefix(runtimeLibDir, ['tcl8', 'tcl9', 'tk8', 'tk9', 'itcl']);
 
-  const removableDirs = ['tcl8', 'tcl9', 'tk8', 'tk9', 'itcl'];
-  for (const entry of fs.readdirSync(runtimeLibDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-    if (!removableDirs.some((prefix) => entry.name.startsWith(prefix))) {
-      continue;
-    }
-    if (removePathIfExists(path.join(runtimeLibDir, entry.name))) {
-      removedCount += 1;
-    }
-  }
-
-  for (const entry of fs.readdirSync(runtimeLibDir, { withFileTypes: true })) {
-    if (!entry.isDirectory() || !entry.name.startsWith('python')) {
-      continue;
-    }
-    const libDynloadDir = path.join(runtimeLibDir, entry.name, 'lib-dynload');
+  const pythonDynloadDirs = walkDirectoriesRecursively(
+    runtimeLibDir,
+    (dirPath, dirName) =>
+      dirName === 'lib-dynload' && path.basename(path.dirname(dirPath)).startsWith('python'),
+  );
+  for (const libDynloadDir of pythonDynloadDirs) {
     removedCount += removeFilesByPrefix(libDynloadDir, ['_tkinter']);
   }
 
@@ -588,11 +617,15 @@ const patchLinuxRuntimeRpaths = () => {
 
   const soFiles = walkFilesRecursively(
     runtimeDir,
-    (_fullPath, fileName) => fileName.endsWith('.so') || fileName.includes('.so.'),
+    (_fullPath, fileName) => isSharedObjectFileName(fileName),
   );
 
   let patchedCount = 0;
   for (const soFile of soFiles) {
+    if (!hasElfMagic(soFile)) {
+      continue;
+    }
+
     const printRpathResult = spawnSync('patchelf', ['--print-rpath', soFile], {
       encoding: 'utf8',
       windowsHide: true,
