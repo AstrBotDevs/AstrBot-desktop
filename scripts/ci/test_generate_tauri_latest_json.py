@@ -2,6 +2,7 @@ import importlib.util
 import json
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -87,6 +88,79 @@ class GenerateTauriLatestJsonTests(unittest.TestCase):
         self.assertEqual(payload['channel'], 'nightly')
         self.assertEqual(payload['baseVersion'], '4.29.0')
         self.assertEqual(payload['releaseTag'], 'nightly')
+
+
+    def test_main_writes_expected_manifest_json(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            output = root / 'latest-nightly.json'
+            (root / 'AstrBot_4.29.0-nightly.20260307.abcd1234_x64-setup.exe.sig').write_text('sig-win')
+
+            argv = [
+                str(SCRIPT_PATH),
+                '--artifacts-root',
+                str(root),
+                '--repo',
+                'AstrBotDevs/AstrBot-desktop',
+                '--tag',
+                'nightly',
+                '--version',
+                '4.29.0-nightly.20260307.abcd1234',
+                '--channel',
+                'nightly',
+                '--output',
+                str(output),
+                '--notes',
+                'nightly build',
+            ]
+
+            with mock.patch('sys.argv', argv):
+                exit_code = MODULE.main()
+
+            payload = json.loads(output.read_text())
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload['version'], '4.29.0-nightly.20260307.abcd1234')
+        self.assertEqual(payload['notes'], 'nightly build')
+        self.assertEqual(payload['channel'], 'nightly')
+        self.assertEqual(payload['baseVersion'], '4.29.0')
+        self.assertEqual(payload['releaseTag'], 'nightly')
+        self.assertIn('platforms', payload)
+        self.assertEqual(
+            payload['platforms']['windows-x86_64']['url'],
+            'https://github.com/AstrBotDevs/AstrBot-desktop/releases/download/nightly/'
+            'AstrBot_4.29.0_windows_amd64_setup_nightly_abcd1234.exe',
+        )
+        self.assertEqual(
+            payload['platforms']['windows-x86_64']['signature'],
+            'sig-win',
+        )
+
+    def test_main_fails_when_no_signatures_found(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            output = root / 'latest-stable.json'
+            argv = [
+                str(SCRIPT_PATH),
+                '--artifacts-root',
+                str(root),
+                '--repo',
+                'AstrBotDevs/AstrBot-desktop',
+                '--tag',
+                'v4.29.0',
+                '--version',
+                '4.29.0',
+                '--channel',
+                'stable',
+                '--output',
+                str(output),
+            ]
+
+            with mock.patch('sys.argv', argv):
+                with self.assertRaisesRegex(SystemExit, 'No updater signatures found under artifacts root'):
+                    MODULE.main()
+
+            self.assertFalse(output.exists())
 
     def test_collect_platforms_normalizes_nightly_release_filenames(self):
         with tempfile.TemporaryDirectory() as tmpdir:
