@@ -16,7 +16,7 @@ use crate::{
 const DESKTOP_UPDATER_UNSUPPORTED_REASON: &str =
     "Desktop app updater is not available on this platform yet.";
 pub(crate) const DESKTOP_UPDATER_MANUAL_DOWNLOAD_REASON: &str =
-    "当前 Linux 安装方式不支持自动升级，请前往 GitHub Releases 下载最新安装包。";
+    "This Linux installation method does not support automatic updates. Please download the latest package from GitHub Releases.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DesktopUpdateMode {

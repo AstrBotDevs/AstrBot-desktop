@@ -208,7 +208,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -n "${TAURI_SIGNING_PRIVATE_KEY}" && -n "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD}" ]]; then
+          if [[ -n "${TAURI_SIGNING_PRIVATE_KEY-}" && -n "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD-}" ]]; then
             echo "TAURI signing secrets detected; building deb, rpm, and AppImage bundles."
             cargo tauri build --bundles deb,rpm,appimage
           else
