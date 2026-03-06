@@ -249,7 +249,7 @@ mod tests {
                 if self.index >= self.chunks.len() {
                     return Ok(0);
                 }
-                let chunk = self.chunks[self.index].clone();
+                let chunk = self.chunks[self.index];
                 self.index += 1;
                 match chunk {
                     Ok(bytes) => {
