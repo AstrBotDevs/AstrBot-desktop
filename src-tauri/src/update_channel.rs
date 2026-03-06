@@ -210,14 +210,15 @@ fn parse_nightly_version_info(version: &Version) -> Option<NightlyVersionInfo> {
     })
 }
 
-// Nightly-to-nightly comparisons sort by base version first, then nightly date,
-// and finally hash so same-date upstream rebuilds still advance.
+// Nightly-to-nightly comparisons only accept nightly remotes, then sort by
+// base version, nightly date, and finally hash so same-date upstream rebuilds
+// still advance without silently switching channels.
 fn should_offer_nightly_update(current_version: &Version, remote_version: &Version) -> bool {
     let Some(current) = parse_nightly_version_info(current_version) else {
-        return remote_version > current_version;
+        return false;
     };
     let Some(remote) = parse_nightly_version_info(remote_version) else {
-        return remote_version > current_version;
+        return false;
     };
 
     if remote.base > current.base {
@@ -631,6 +632,24 @@ mod tests {
             &version("4.29.0-nightly.20260307.ffffffff"),
             UpdateChannel::Nightly,
             &version("4.29.0-nightly.20260307.11111111")
+        ));
+    }
+
+    #[test]
+    fn nightly_channel_rejects_stable_remote_same_base_version() {
+        assert!(!should_offer_update(
+            &version("4.29.0-nightly.20260307.abcd1234"),
+            UpdateChannel::Nightly,
+            &version("4.29.0")
+        ));
+    }
+
+    #[test]
+    fn nightly_channel_rejects_stable_remote_higher_base_version() {
+        assert!(!should_offer_update(
+            &version("4.29.0-nightly.20260307.abcd1234"),
+            UpdateChannel::Nightly,
+            &version("4.30.0")
         ));
     }
 
