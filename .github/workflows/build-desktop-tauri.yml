@@ -390,11 +390,32 @@ jobs:
       - name: Collect macOS updater artifacts
         env:
           ASTRBOT_VERSION: ${{ needs.resolve_build_context.outputs.astrbot_version }}
+          RESOLVED_APP_BUNDLE_NAME: ${{ steps.resolve_macos_app_bundle.outputs.app_bundle_name }}
+          RESOLVED_APP_BUNDLE_NAME_SOURCE: ${{ steps.resolve_macos_app_bundle.outputs.app_bundle_name_source }}
         shell: bash
         run: |
           set -euo pipefail
-          bundle_dir="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
-          release_dir="src-tauri/target/${{ matrix.target }}/release/bundle/release-artifacts"
+          bundle_root="src-tauri/target/${{ matrix.target }}/release/bundle"
+          bundle_dir="${bundle_root}/macos"
+          release_dir="${bundle_root}/release-artifacts"
+          app_bundle_name="${RESOLVED_APP_BUNDLE_NAME}"
+          app_bundle_name_source="${RESOLVED_APP_BUNDLE_NAME_SOURCE}"
+          if [ -z "${app_bundle_name}" ]; then
+            echo "Resolved app bundle name is empty (source=${app_bundle_name_source})." >&2
+            exit 1
+          fi
+          # Tauri currently emits macOS updater archives under bundle/macos and this step stages
+          # renamed copies under bundle/release-artifacts. Fail loudly if that layout changes.
+          if [ ! -d "${bundle_root}" ]; then
+            echo "Expected Tauri bundle root not found: ${bundle_root}" >&2
+            ls -la "src-tauri/target/${{ matrix.target }}/release" || true
+            exit 1
+          fi
+          if [ ! -d "${bundle_dir}" ]; then
+            echo "Expected Tauri macOS bundle directory not found: ${bundle_dir}" >&2
+            ls -la "${bundle_root}" || true
+            exit 1
+          fi
           mkdir -p "${release_dir}"
 
           expected_updater_archive="${bundle_dir}/${app_bundle_name}.app.tar.gz"
