@@ -22,7 +22,7 @@ WINDOWS_RE = re.compile(
 # AstrBot_4.19.2_macos_arm64_nightly_abcd1234.zip
 # AstrBot_4.19.2-nightly.20260307.abcd1234_macos_aarch64.zip
 MACOS_RE = re.compile(
-    r"(?P<name>.+?)_(?P<version>[^_]+)_(?:macos_)?(?P<arch>[A-Za-z0-9_]+)"
+    r"(?P<name>.+?)_(?P<version>[^_]+)_macos_(?P<arch>[A-Za-z0-9_]+)"
     r"(?:_nightly_[0-9A-Fa-f]{7,40})?\.zip$"
 )
 NIGHTLY_VERSION_RE = re.compile(

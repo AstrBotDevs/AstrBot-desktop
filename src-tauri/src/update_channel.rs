@@ -180,6 +180,14 @@ struct NightlyVersionInfo {
     hash: String,
 }
 
+fn log_malformed_nightly(version: &Version, reason: &str) -> Option<NightlyVersionInfo> {
+    crate::append_desktop_log(&format!(
+        "failed to parse nightly prerelease '{}' as 'nightly.<YYYYMMDD>.<sha8>': {}",
+        version, reason
+    ));
+    None
+}
+
 fn parse_nightly_version_info(version: &Version) -> Option<NightlyVersionInfo> {
     let mut identifiers = version.pre.as_str().split('.');
     let first = identifiers.next()?;
@@ -187,20 +195,29 @@ fn parse_nightly_version_info(version: &Version) -> Option<NightlyVersionInfo> {
         return None;
     }
 
-    let date_raw = identifiers.next()?;
-    let hash_raw = identifiers.next()?;
+    let date_raw = match identifiers.next() {
+        Some(date) => date,
+        None => return log_malformed_nightly(version, "missing date segment"),
+    };
+    let hash_raw = match identifiers.next() {
+        Some(hash) => hash,
+        None => return log_malformed_nightly(version, "missing hash segment"),
+    };
     if identifiers.next().is_some() {
-        return None;
+        return log_malformed_nightly(version, "too many prerelease identifiers");
     }
 
     if date_raw.len() != 8 || !date_raw.chars().all(|ch| ch.is_ascii_digit()) {
-        return None;
+        return log_malformed_nightly(version, "date segment is not 8 ASCII digits");
     }
     if hash_raw.len() != 8 || !hash_raw.chars().all(|ch| ch.is_ascii_hexdigit()) {
-        return None;
+        return log_malformed_nightly(version, "hash segment is not 8 ASCII hex digits");
     }
 
-    let date = date_raw.parse::<u32>().ok()?;
+    let date = match date_raw.parse::<u32>() {
+        Ok(parsed) => parsed,
+        Err(_) => return log_malformed_nightly(version, "failed to parse date as u32"),
+    };
     let hash = hash_raw.to_ascii_lowercase();
 
     Some(NightlyVersionInfo {
@@ -432,6 +449,10 @@ mod tests {
     fn infer_channel_from_version_detects_nightly_versions() {
         assert_eq!(
             infer_channel_from_version(&version("4.29.0-nightly.20260307.abcd1234")),
+            UpdateChannel::Nightly
+        );
+        assert_eq!(
+            infer_channel_from_version(&version("4.29.0-nightly.20260307.abcd1234.extra")),
             UpdateChannel::Nightly
         );
         assert_eq!(

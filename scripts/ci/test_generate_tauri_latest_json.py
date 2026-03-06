@@ -277,6 +277,20 @@ class GenerateTauriLatestJsonTests(unittest.TestCase):
                     channel='stable',
                 )
 
+    def test_collect_platforms_rejects_macos_name_without_macos_prefix(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / 'AstrBot_4.29.0_arm64.zip.sig').write_text('sig-mac')
+
+            with self.assertRaisesRegex(ValueError, 'Unexpected macOS artifact name'):
+                MODULE.collect_platforms(
+                    root,
+                    'AstrBotDevs/AstrBot-desktop',
+                    'v4.29.0',
+                    version='4.29.0',
+                    channel='stable',
+                )
+
 
 if __name__ == '__main__':
     unittest.main()
