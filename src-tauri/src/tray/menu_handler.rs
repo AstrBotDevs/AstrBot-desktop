@@ -2,7 +2,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::{
     append_desktop_log, append_restart_log, append_shutdown_log, restart_backend_flow,
-    tray_actions, tray_bridge_event, ui_dispatch, window_actions, BackendState,
+    tray::{actions, bridge_event}, ui_dispatch, window, BackendState,
     DEFAULT_SHELL_LOCALE, TRAY_RESTART_BACKEND_EVENT,
 };
 
@@ -21,14 +21,14 @@ fn decide_tray_restart(backend_action_in_progress: bool) -> TrayRestartDecision 
 }
 
 pub fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
-    match tray_actions::action_from_menu_id(menu_id) {
-        Some(tray_actions::TrayMenuAction::ToggleWindow) => {
-            window_actions::toggle_main_window(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log)
+    match actions::action_from_menu_id(menu_id) {
+        Some(actions::TrayMenuAction::ToggleWindow) => {
+            window::actions::toggle_main_window(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log)
         }
-        Some(tray_actions::TrayMenuAction::ReloadWindow) => {
-            window_actions::reload_main_window(app_handle, append_desktop_log)
+        Some(actions::TrayMenuAction::ReloadWindow) => {
+            window::actions::reload_main_window(app_handle, append_desktop_log)
         }
-        Some(tray_actions::TrayMenuAction::RestartBackend) => {
+        Some(actions::TrayMenuAction::RestartBackend) => {
             let state = app_handle.state::<BackendState>();
             match decide_tray_restart(restart_backend_flow::is_backend_action_in_progress(&state)) {
                 TrayRestartDecision::IgnoreBecauseBackendActionInProgress => {
@@ -38,8 +38,8 @@ pub fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
                 TrayRestartDecision::ProceedWithRestart => {}
             }
             append_restart_log("tray requested backend restart");
-            window_actions::show_main_window(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log);
-            tray_bridge_event::emit_tray_restart_backend_event(
+            window::actions::show_main_window(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log);
+            bridge_event::emit_tray_restart_backend_event(
                 app_handle,
                 TRAY_RESTART_BACKEND_EVENT,
                 append_restart_log,
@@ -56,7 +56,7 @@ pub fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
                         &app_handle_cloned,
                         "reload main window after tray restart",
                         move |main_app| {
-                            window_actions::reload_main_window(main_app, append_desktop_log);
+                            window::actions::reload_main_window(main_app, append_desktop_log);
                         },
                     ) {
                         append_restart_log(&format!(
@@ -69,7 +69,7 @@ pub fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
                 }
             });
         }
-        Some(tray_actions::TrayMenuAction::Quit) => {
+        Some(actions::TrayMenuAction::Quit) => {
             let state = app_handle.state::<BackendState>();
             state.mark_quitting();
             append_shutdown_log("tray quit requested, exiting desktop process");

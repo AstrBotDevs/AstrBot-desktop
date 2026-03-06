@@ -1,10 +1,138 @@
-use tauri::{webview::PageLoadEvent, Manager, RunEvent, WindowEvent};
+use tauri::{
+    webview::{PageLoadEvent, PageLoadPayload},
+    Builder, Manager, RunEvent, WindowEvent,
+};
 
 use crate::{
-    append_desktop_log, append_startup_log, desktop_bridge, exit_events, startup_loading,
-    startup_task, tray_setup, window_actions, BackendState, DEFAULT_SHELL_LOCALE, DESKTOP_LOG_FILE,
-    STARTUP_MODE_ENV,
+    app_runtime_events, append_desktop_log, append_startup_log, bridge, lifecycle, startup_task,
+    tray, window, BackendState, DEFAULT_SHELL_LOCALE, DESKTOP_LOG_FILE, STARTUP_MODE_ENV,
 };
+
+fn configure_plugins(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
+    builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        append_desktop_log("detected second instance launch, focusing existing main window");
+        window::actions::show_main_window(app, DEFAULT_SHELL_LOCALE, append_desktop_log);
+    }))
+}
+
+fn configure_window_events(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
+    builder.on_window_event(|window, event| {
+        let is_quitting = window.app_handle().state::<BackendState>().is_quitting();
+        let action = match event {
+            WindowEvent::CloseRequested { .. } => app_runtime_events::main_window_action(
+                window.label(),
+                is_quitting,
+                false,
+                true,
+                false,
+            ),
+            WindowEvent::Focused(false) => app_runtime_events::main_window_action(
+                window.label(),
+                is_quitting,
+                matches!(window.is_minimized(), Ok(true)),
+                false,
+                true,
+            ),
+            _ => app_runtime_events::MainWindowAction::None,
+        };
+
+        match action {
+            app_runtime_events::MainWindowAction::PreventCloseAndHide => {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                }
+                window::actions::hide_main_window(
+                    window.app_handle(),
+                    DEFAULT_SHELL_LOCALE,
+                    append_desktop_log,
+                );
+            }
+            app_runtime_events::MainWindowAction::HideIfMinimized => {
+                window::actions::hide_main_window(
+                    window.app_handle(),
+                    DEFAULT_SHELL_LOCALE,
+                    append_desktop_log,
+                );
+            }
+            app_runtime_events::MainWindowAction::None => {}
+        }
+    })
+}
+
+fn handle_page_load_started(webview: &tauri::Webview<tauri::Wry>, payload: &PageLoadPayload<'_>) {
+    append_desktop_log(&format!("page-load started: {}", payload.url()));
+    let state = webview.app_handle().state::<BackendState>();
+    let action = app_runtime_events::page_load_action(
+        PageLoadEvent::Started,
+        bridge::desktop::should_inject_desktop_bridge(&state.backend_url, payload.url()),
+        false,
+    );
+
+    if action == app_runtime_events::PageLoadAction::InjectDesktopBridge {
+        crate::inject_desktop_bridge(webview);
+    }
+}
+
+fn handle_page_load_finished(webview: &tauri::Webview<tauri::Wry>, payload: &PageLoadPayload<'_>) {
+    append_desktop_log(&format!("page-load finished: {}", payload.url()));
+    let state = webview.app_handle().state::<BackendState>();
+    let action = app_runtime_events::page_load_action(
+        PageLoadEvent::Finished,
+        bridge::desktop::should_inject_desktop_bridge(&state.backend_url, payload.url()),
+        window::startup_loading::should_apply_startup_loading_mode(
+            webview.window().label(),
+            payload.url(),
+        ),
+    );
+
+    match action {
+        app_runtime_events::PageLoadAction::InjectDesktopBridge => {
+            crate::inject_desktop_bridge(webview);
+        }
+        app_runtime_events::PageLoadAction::ApplyStartupLoadingMode => {
+            window::startup_loading::apply_startup_loading_mode(
+                webview.app_handle(),
+                webview,
+                STARTUP_MODE_ENV,
+                append_startup_log,
+            );
+        }
+        app_runtime_events::PageLoadAction::None => {}
+    }
+}
+
+fn configure_page_load_events(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
+    builder.on_page_load(|webview, payload| match payload.event() {
+        PageLoadEvent::Started => handle_page_load_started(webview, payload),
+        PageLoadEvent::Finished => handle_page_load_finished(webview, payload),
+    })
+}
+
+fn configure_setup(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
+    builder.setup(|app| {
+        let app_handle = app.handle().clone();
+        if let Err(error) = tray::setup::setup_tray(&app_handle) {
+            append_startup_log(&format!("failed to initialize tray: {error}"));
+        }
+
+        startup_task::spawn_startup_task(app_handle.clone(), append_startup_log);
+        Ok(())
+    })
+}
+
+fn handle_run_event(app_handle: &tauri::AppHandle, event: RunEvent) {
+    match app_runtime_events::run_event_action(&event) {
+        app_runtime_events::RunEventAction::HandleExitRequested => {
+            if let RunEvent::ExitRequested { api, .. } = event {
+                lifecycle::events::handle_exit_requested(app_handle, &api);
+            }
+        }
+        app_runtime_events::RunEventAction::HandleExit => {
+            lifecycle::events::handle_exit_event(app_handle);
+        }
+        app_runtime_events::RunEventAction::None => {}
+    }
+}
 
 pub(crate) fn run() {
     append_startup_log("desktop process starting");
@@ -16,101 +144,20 @@ pub(crate) fn run() {
         )
         .display()
     ));
-    tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            append_desktop_log("detected second instance launch, focusing existing main window");
-            window_actions::show_main_window(app, DEFAULT_SHELL_LOCALE, append_desktop_log);
-        }))
-        .manage(BackendState::default())
-        .invoke_handler(tauri::generate_handler![
-            crate::desktop_bridge_commands::desktop_bridge_is_desktop_runtime,
-            crate::desktop_bridge_commands::desktop_bridge_get_backend_state,
-            crate::desktop_bridge_commands::desktop_bridge_set_auth_token,
-            crate::desktop_bridge_commands::desktop_bridge_set_shell_locale,
-            crate::desktop_bridge_commands::desktop_bridge_restart_backend,
-            crate::desktop_bridge_commands::desktop_bridge_stop_backend,
-            crate::desktop_bridge_commands::desktop_bridge_open_external_url
-        ])
-        .on_window_event(|window, event| {
-            if window.label() != "main" {
-                return;
-            }
-
-            match event {
-                WindowEvent::CloseRequested { api, .. } => {
-                    let app_handle = window.app_handle();
-                    let state = app_handle.state::<BackendState>();
-                    if state.is_quitting() {
-                        return;
-                    }
-
-                    api.prevent_close();
-                    window_actions::hide_main_window(
-                        app_handle,
-                        DEFAULT_SHELL_LOCALE,
-                        append_desktop_log,
-                    );
-                }
-                WindowEvent::Focused(false) => {
-                    if let Ok(true) = window.is_minimized() {
-                        let app_handle = window.app_handle();
-                        let state = app_handle.state::<BackendState>();
-                        if !state.is_quitting() {
-                            window_actions::hide_main_window(
-                                app_handle,
-                                DEFAULT_SHELL_LOCALE,
-                                append_desktop_log,
-                            );
-                        }
-                    }
-                }
-                _ => {}
-            }
-        })
-        .on_page_load(|webview, payload| match payload.event() {
-            PageLoadEvent::Started => {
-                append_desktop_log(&format!("page-load started: {}", payload.url()));
-                let state = webview.app_handle().state::<BackendState>();
-                if desktop_bridge::should_inject_desktop_bridge(&state.backend_url, payload.url()) {
-                    crate::inject_desktop_bridge(webview);
-                }
-            }
-            PageLoadEvent::Finished => {
-                append_desktop_log(&format!("page-load finished: {}", payload.url()));
-                let state = webview.app_handle().state::<BackendState>();
-                if desktop_bridge::should_inject_desktop_bridge(&state.backend_url, payload.url()) {
-                    crate::inject_desktop_bridge(webview);
-                } else if startup_loading::should_apply_startup_loading_mode(
-                    webview.window().label(),
-                    payload.url(),
-                ) {
-                    startup_loading::apply_startup_loading_mode(
-                        webview.app_handle(),
-                        webview,
-                        STARTUP_MODE_ENV,
-                        append_startup_log,
-                    );
-                }
-            }
-        })
-        .setup(|app| {
-            let app_handle = app.handle().clone();
-            if let Err(error) = tray_setup::setup_tray(&app_handle) {
-                append_startup_log(&format!("failed to initialize tray: {error}"));
-            }
-
-            startup_task::spawn_startup_task(app_handle.clone(), append_startup_log);
-            Ok(())
-        })
-        .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(|app_handle, event| match event {
-            RunEvent::ExitRequested { api, .. } => {
-                exit_events::handle_exit_requested(app_handle, &api);
-            }
-            RunEvent::Exit => {
-                exit_events::handle_exit_event(app_handle);
-            }
-            _ => {}
-        });
+    configure_setup(configure_page_load_events(configure_window_events(
+        configure_plugins(tauri::Builder::default()),
+    )))
+    .manage(BackendState::default())
+    .invoke_handler(tauri::generate_handler![
+        crate::bridge::commands::desktop_bridge_is_desktop_runtime,
+        crate::bridge::commands::desktop_bridge_get_backend_state,
+        crate::bridge::commands::desktop_bridge_set_auth_token,
+        crate::bridge::commands::desktop_bridge_set_shell_locale,
+        crate::bridge::commands::desktop_bridge_restart_backend,
+        crate::bridge::commands::desktop_bridge_stop_backend,
+        crate::bridge::commands::desktop_bridge_open_external_url
+    ])
+    .build(tauri::generate_context!())
+    .expect("error while building tauri application")
+    .run(handle_run_event);
 }

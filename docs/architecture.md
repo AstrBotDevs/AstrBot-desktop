@@ -19,6 +19,25 @@
 
 ## 2. Rust 模块边界
 
+### 2.0 当前分组方向（进行中）
+
+Rust 侧正在从“顶层平铺模块”逐步迁移到“按子系统分组”的结构，当前已落地的方向包括：
+
+- `tray/`
+  - 托盘菜单动作、文案刷新、事件处理、tray icon 初始化、tray bridge 事件
+- `window/`
+  - 主窗口操作、窗口动作编排、startup loading 注入逻辑
+- `lifecycle/`
+  - 退出事件编排、退出清理、BackendState 的退出状态包装方法
+- `bridge/`
+  - desktop bridge 注入、bridge IPC 命令、同源判定策略
+- `backend/`
+  - backend 配置、PATH 组装、启动、生命周期、HTTP 请求、HTTP 响应解析、运行时参数、readiness、restart 能力
+- `app_runtime_events.rs`
+  - 从 `app_runtime.rs` 中抽出的窗口/页面加载/退出事件纯决策逻辑
+
+迁移策略保持增量推进：先抽纯逻辑与 seam，再做目录迁移，最后同步文档与流程说明。
+
 ### 2.1 `src-tauri/src/main.rs`
 
 入口与编排层，主要保留：
@@ -35,6 +54,8 @@
 - timeout clamp 与默认值策略
 - readiness config 聚合（含 `BackendReadinessConfig`）
 - backend URL 归一化
+
+已迁移到：`src-tauri/src/backend/config.rs`
 
 ### 2.3 `src-tauri/src/logging.rs`
 
@@ -60,6 +81,8 @@
 - 去重与合并
 - 诊断日志输出
 
+已迁移到：`src-tauri/src/backend/path.rs`
+
 ### 2.6 `src-tauri/src/webui_paths.rs`
 
 打包模式 WebUI 回退路径逻辑：
@@ -84,6 +107,8 @@ HTTP 响应解析模块：
 - JSON 响应提取（仅 2xx 状态码）
 - 后端 `start_time` 字段解析
 
+已迁移到：`src-tauri/src/backend/http_response.rs`
+
 ### 2.9 `src-tauri/src/process_control.rs`
 
 进程停止控制模块：
@@ -100,6 +125,8 @@ HTTP 响应解析模块：
 - loopback host 判定
 - tray bridge 注入来源决策
 
+已迁移到：`src-tauri/src/bridge/origin_policy.rs`
+
 ### 2.11 `src-tauri/src/tray_actions.rs`
 
 托盘菜单动作映射模块：
@@ -107,6 +134,8 @@ HTTP 响应解析模块：
 - 菜单 ID 常量集中定义
 - 菜单 ID 到动作枚举映射
 - 托盘事件分发入口去字符串硬编码
+
+已迁移到：`src-tauri/src/tray/actions.rs`
 
 ### 2.12 `src-tauri/src/shell_locale.rs`
 
@@ -123,6 +152,8 @@ HTTP 响应解析模块：
 - main window show/hide/reload
 - 导航到 backend dashboard
 - 主窗口异常处理日志收敛
+
+已迁移到：`src-tauri/src/window/main_window.rs`
 
 ### 2.14 `src-tauri/src/runtime_paths.rs`
 
@@ -156,6 +187,8 @@ UI 分发模块：
 - 向主窗口发射重启事件
 - 事件发送失败日志收敛
 
+已迁移到：`src-tauri/src/tray/bridge_event.rs`
+
 ### 2.18 `src-tauri/src/startup_loading.rs`
 
 启动 loading 模块：
@@ -163,6 +196,8 @@ UI 分发模块：
 - 是否应用 startup loading 的 URL/窗口判定
 - startup mode 解析与缓存读写
 - startup mode 前端注入脚本执行
+
+已迁移到：`src-tauri/src/window/startup_loading.rs`
 
 ### 2.19 `src-tauri/src/desktop_bridge.rs`
 
@@ -173,6 +208,8 @@ desktop bridge 模块：
 - bridge script 注入执行
 - bridge 注入判定（backend/page URL）
 
+已迁移到：`src-tauri/src/bridge/desktop.rs`
+
 ### 2.20 `src-tauri/src/tray_labels.rs`
 
 托盘文案模块：
@@ -181,6 +218,8 @@ desktop bridge 模块：
 - 主窗口可见性与 toggle 文案联动
 - `set_text` 失败日志收敛
 
+已迁移到：`src-tauri/src/tray/labels.rs`
+
 ### 2.21 `src-tauri/src/exit_cleanup.rs`
 
 退出清理模块：
@@ -188,6 +227,8 @@ desktop bridge 模块：
 - 退出清理并发判定
 - ExitRequested/Exit fallback 分支日志语义
 - backend stop 后续退出放行日志
+
+已迁移到：`src-tauri/src/lifecycle/cleanup.rs`
 
 ### 2.22 `src-tauri/src/restart_backend_flow.rs`
 
@@ -205,6 +246,8 @@ desktop bridge 模块：
 - tray 触发重启流程的编排
 - tray quit 退出路径收敛
 
+已迁移到：`src-tauri/src/tray/menu_handler.rs`
+
 ### 2.24 `src-tauri/src/window_actions.rs`
 
 窗口动作模块：
@@ -213,6 +256,8 @@ desktop bridge 模块：
 - 主窗口动作与 tray label 刷新联动
 - 主窗口可见性判定日志收敛
 
+已迁移到：`src-tauri/src/window/actions.rs`
+
 ### 2.25 `src-tauri/src/tray_setup.rs`
 
 托盘初始化模块：
@@ -220,6 +265,8 @@ desktop bridge 模块：
 - tray 菜单项构建与状态注册
 - tray icon 事件绑定
 - tray setup 失败错误收敛
+
+已迁移到：`src-tauri/src/tray/setup.rs`
 
 ### 2.26 `src-tauri/src/launch_plan.rs`
 
@@ -245,6 +292,8 @@ desktop bridge 模块：
 - Exit fallback 分支编排
 - 退出分支与清理模块解耦
 
+已迁移到：`src-tauri/src/lifecycle/events.rs`
+
 ### 2.29 `src-tauri/src/backend_runtime.rs`
 
 后端运行时参数模块：
@@ -253,6 +302,8 @@ desktop bridge 模块：
 - readiness 配置解析
 - backend/bridge ping timeout 解析与缓存
 
+已迁移到：`src-tauri/src/backend/runtime.rs`
+
 ### 2.30 `src-tauri/src/backend_http.rs`
 
 后端 HTTP 能力模块：
@@ -260,6 +311,8 @@ desktop bridge 模块：
 - backend TCP 探活（ping）
 - 原始 HTTP 请求封装（method/path/body/token）
 - status/json/start_time 响应提取调用链
+
+已迁移到：`src-tauri/src/backend/http.rs`
 
 ### 2.31 `src-tauri/src/backend_restart.rs`
 
@@ -270,6 +323,8 @@ desktop bridge 模块：
 - managed/unmanaged 重启策略决策
 - bridge backend state 组装
 
+已迁移到：`src-tauri/src/backend/restart.rs`
+
 ### 2.32 `src-tauri/src/backend_launch.rs`
 
 后端启动计划与拉起模块：
@@ -277,6 +332,8 @@ desktop bridge 模块：
 - 启动计划解析（custom/packaged/dev）
 - 子进程启动参数与环境注入
 - backend 进程拉起与日志输出重定向
+
+已迁移到：`src-tauri/src/backend/launch.rs`
 
 ### 2.33 `src-tauri/src/backend_readiness.rs`
 
@@ -286,6 +343,8 @@ desktop bridge 模块：
 - readiness 轮询与超时控制
 - HTTP/TCP 探测结果日志收敛
 
+已迁移到：`src-tauri/src/backend/readiness.rs`
+
 ### 2.34 `src-tauri/src/backend_process_lifecycle.rs`
 
 后端进程生命周期模块：
@@ -293,6 +352,8 @@ desktop bridge 模块：
 - backend graceful stop
 - backend 日志轮转 worker 启停
 - child PID 存活判定与轮转退出协同
+
+已迁移到：`src-tauri/src/backend/process_lifecycle.rs`
 
 ### 2.35 `src-tauri/src/backend_exit_state.rs`
 
@@ -302,6 +363,8 @@ desktop bridge 模块：
 - 退出流程状态方法迁移（mark/is_quitting/cleanup allow）
 - 锁异常日志语义统一
 
+已迁移到：`src-tauri/src/lifecycle/backend_exit_state.rs`
+
 ### 2.36 `src-tauri/src/desktop_bridge_commands.rs`
 
 bridge 命令模块：
@@ -310,6 +373,8 @@ bridge 命令模块：
 - backend action 并发判定与返回结构统一
 - bridge 命令与运行编排解耦
 
+已迁移到：`src-tauri/src/bridge/commands.rs`
+
 ### 2.37 `src-tauri/src/app_runtime.rs`
 
 应用运行编排模块：
@@ -317,6 +382,22 @@ bridge 命令模块：
 - Tauri Builder 构建与 invoke handler 挂载
 - window/page load/setup/run 事件绑定
 - 启动日志与退出事件分支编排
+
+### 2.37.1 `src-tauri/src/app_runtime_events.rs`
+
+运行时事件决策模块：
+
+- main window close/focus-lost 行为判定
+- page load started/finished 行为判定
+- run event 退出分支判定
+
+### 2.37.2 `src-tauri/src/backend/restart_strategy.rs`
+
+后端重启策略模块：
+
+- managed/unmanaged/windows packaged restart 策略判定
+- graceful restart 请求/等待结果映射
+- graceful restart 后续执行决策（success/fallback/error）
 
 ### 2.38 `src-tauri/src/app_types.rs`
 

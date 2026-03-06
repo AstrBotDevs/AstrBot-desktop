@@ -3,42 +3,29 @@
 mod app_constants;
 mod app_helpers;
 mod app_runtime;
+mod app_runtime_events;
 mod app_types;
-mod backend_config;
-mod backend_exit_state;
-mod backend_http;
-mod backend_launch;
-mod backend_path;
-mod backend_process_lifecycle;
-mod backend_readiness;
-mod backend_restart;
-mod backend_runtime;
-mod desktop_bridge;
-mod desktop_bridge_commands;
-mod exit_cleanup;
-mod exit_events;
+
+mod backend;
+mod bridge;
+
 mod exit_state;
-mod http_response;
+mod lifecycle;
+
 mod launch_plan;
 mod logging;
-mod main_window;
-mod origin_policy;
 mod packaged_webui;
 mod process_control;
 mod restart_backend_flow;
 mod runtime_paths;
 mod shell_locale;
-mod startup_loading;
 mod startup_mode;
 mod startup_task;
-mod tray_actions;
-mod tray_bridge_event;
-mod tray_labels;
-mod tray_menu_handler;
-mod tray_setup;
+
+mod tray;
 mod ui_dispatch;
 mod webui_paths;
-mod window_actions;
+mod window;
 
 pub(crate) use app_constants::*;
 pub(crate) use app_helpers::{

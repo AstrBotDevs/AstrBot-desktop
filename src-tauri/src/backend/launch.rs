@@ -90,7 +90,6 @@ impl BackendState {
         }
         #[cfg(target_os = "windows")]
         {
-            // Keep packaged backend fully backgrounded; keep console visible for local/dev debugging.
             if plan.packaged_mode {
                 command.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
             }

@@ -1,7 +1,7 @@
 # AstrBot Desktop 环境变量清单（Phase 1）
 
 更新时间：2026-02-22  
-范围：`src-tauri/src/main.rs`、`src-tauri/src/backend_config.rs`、`scripts/prepare-resources*.mjs`
+范围：`src-tauri/src/main.rs`、`src-tauri/src/backend/config.rs`、`scripts/prepare-resources*.mjs`
 
 ## 1. 运行时（Tauri / Rust）
 
@@ -50,4 +50,4 @@
 ## 3. 维护约定
 
 - 新增 `ASTRBOT_*` 变量时，必须同步更新本文件与对应模块注释。
-- 变量解析与边界逻辑建议集中在 `src-tauri/src/backend_config.rs` 或 `scripts/prepare-resources/*` 子模块，避免散落在入口文件。
+- 变量解析与边界逻辑建议集中在 `src-tauri/src/backend/config.rs` 或 `scripts/prepare-resources/*` 子模块，避免散落在入口文件。

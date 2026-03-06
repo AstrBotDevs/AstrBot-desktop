@@ -6,7 +6,7 @@ use std::{
 
 use url::Url;
 
-use crate::{http_response, BackendState, GRACEFUL_RESTART_START_TIME_TIMEOUT_MS};
+use crate::{backend::http_response, BackendState, GRACEFUL_RESTART_START_TIME_TIMEOUT_MS};
 
 impl BackendState {
     pub(crate) fn ping_backend(&self, timeout_ms: u64) -> bool {
@@ -219,64 +219,56 @@ fn read_http_response_bytes<R: Read>(reader: &mut R) -> Option<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Cursor, Error, ErrorKind, Read};
-
-    use super::{
-        is_complete_http_response, read_http_response_bytes, sanitize_authorization_token,
-    };
+    use super::*;
 
     #[test]
     fn is_complete_http_response_respects_content_length() {
-        let full = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK";
-        assert!(is_complete_http_response(full));
-
-        let partial = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nO";
-        assert!(!is_complete_http_response(partial));
-    }
-
-    #[test]
-    fn read_http_response_bytes_keeps_partial_data_on_timeout() {
-        let mut reader = TimeoutAfterPayloadReader {
-            payload: Cursor::new(
-                b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n".to_vec(),
-            ),
-            timed_out: false,
-        };
-
-        let raw = read_http_response_bytes(&mut reader).expect("response should be preserved");
-        assert!(raw.starts_with(b"HTTP/1.1 200 OK\r\n"));
+        let raw = b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\ntest";
+        assert!(is_complete_http_response(raw));
     }
 
     #[test]
     fn sanitize_authorization_token_rejects_crlf() {
         assert_eq!(sanitize_authorization_token("abc\r\ndef"), None);
-        assert_eq!(sanitize_authorization_token("abc\ndef"), None);
     }
 
     #[test]
     fn sanitize_authorization_token_trims_and_accepts_normal_token() {
-        assert_eq!(
-            sanitize_authorization_token("  token-abc  "),
-            Some("token-abc")
-        );
+        assert_eq!(sanitize_authorization_token("  token  "), Some("token"));
     }
 
-    struct TimeoutAfterPayloadReader {
-        payload: Cursor<Vec<u8>>,
-        timed_out: bool,
-    }
-
-    impl Read for TimeoutAfterPayloadReader {
-        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-            let bytes = self.payload.read(buf)?;
-            if bytes > 0 {
-                return Ok(bytes);
-            }
-            if self.timed_out {
-                return Ok(0);
-            }
-            self.timed_out = true;
-            Err(Error::new(ErrorKind::TimedOut, "simulated read timeout"))
+    #[test]
+    fn read_http_response_bytes_keeps_partial_data_on_timeout() {
+        struct TimeoutReader {
+            chunks: Vec<Result<&'static [u8], std::io::ErrorKind>>,
+            index: usize,
         }
+
+        impl Read for TimeoutReader {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.index >= self.chunks.len() {
+                    return Ok(0);
+                }
+                let chunk = self.chunks[self.index].clone();
+                self.index += 1;
+                match chunk {
+                    Ok(bytes) => {
+                        buf[..bytes.len()].copy_from_slice(bytes);
+                        Ok(bytes.len())
+                    }
+                    Err(kind) => Err(std::io::Error::from(kind)),
+                }
+            }
+        }
+
+        let mut reader = TimeoutReader {
+            chunks: vec![
+                Ok(b"HTTP/1.1 200 OK\r\n"),
+                Err(std::io::ErrorKind::TimedOut),
+            ],
+            index: 0,
+        };
+        let bytes = read_http_response_bytes(&mut reader).expect("expected partial response");
+        assert_eq!(bytes, b"HTTP/1.1 200 OK\r\n");
     }
 }

@@ -6,8 +6,8 @@ use std::{
 use tauri::{AppHandle, Manager};
 
 use crate::{
-    backend_path, desktop_bridge, logging, main_window, runtime_paths, BackendState, LaunchPlan,
-    DESKTOP_LOG_FILE, DESKTOP_LOG_MAX_BYTES, LOG_BACKUP_COUNT, TRAY_RESTART_BACKEND_EVENT,
+    backend, bridge, logging, runtime_paths, window, BackendState, LaunchPlan, DESKTOP_LOG_FILE,
+    DESKTOP_LOG_MAX_BYTES, LOG_BACKUP_COUNT, TRAY_RESTART_BACKEND_EVENT,
 };
 
 static DESKTOP_LOG_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -15,17 +15,17 @@ static BACKEND_PATH_OVERRIDE: OnceLock<Option<OsString>> = OnceLock::new();
 
 pub(crate) fn navigate_main_window_to_backend(app_handle: &AppHandle) -> Result<(), String> {
     let state = app_handle.state::<BackendState>();
-    main_window::navigate_main_window_to_backend(app_handle, &state.backend_url)
+    window::main_window::navigate_main_window_to_backend(app_handle, &state.backend_url)
 }
 
 pub(crate) fn inject_desktop_bridge(webview: &tauri::Webview<tauri::Wry>) {
-    desktop_bridge::inject_desktop_bridge(webview, TRAY_RESTART_BACKEND_EVENT, append_desktop_log);
+    bridge::desktop::inject_desktop_bridge(webview, TRAY_RESTART_BACKEND_EVENT, append_desktop_log);
 }
 
 pub(crate) fn backend_path_override() -> Option<OsString> {
     BACKEND_PATH_OVERRIDE
         .get_or_init(|| {
-            backend_path::build_backend_path_override(|message| append_desktop_log(&message))
+            backend::path::build_backend_path_override(|message| append_desktop_log(&message))
         })
         .clone()
 }

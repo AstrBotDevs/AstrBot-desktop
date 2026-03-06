@@ -2,9 +2,9 @@ use std::sync::OnceLock;
 
 use url::Url;
 
-use crate::origin_policy;
+use crate::bridge::origin_policy;
 
-static DESKTOP_BRIDGE_BOOTSTRAP_TEMPLATE: &str = include_str!("bridge_bootstrap.js");
+static DESKTOP_BRIDGE_BOOTSTRAP_TEMPLATE: &str = include_str!("../bridge_bootstrap.js");
 static DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: OnceLock<String> = OnceLock::new();
 
 fn desktop_bridge_bootstrap_script(event_name: &str) -> &'static str {

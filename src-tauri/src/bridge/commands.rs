@@ -3,7 +3,7 @@ use tauri::{AppHandle, Manager};
 use url::Url;
 
 use crate::{
-    append_desktop_log, restart_backend_flow, runtime_paths, shell_locale, tray_labels,
+    append_desktop_log, restart_backend_flow, runtime_paths, shell_locale, tray,
     BackendBridgeResult, BackendBridgeState, BackendState, DEFAULT_SHELL_LOCALE,
 };
 
@@ -157,7 +157,7 @@ pub(crate) fn desktop_bridge_set_shell_locale(
     let packaged_root_dir = runtime_paths::default_packaged_root_dir();
     match shell_locale::write_cached_shell_locale(locale.as_deref(), packaged_root_dir.as_deref()) {
         Ok(()) => {
-            tray_labels::update_tray_menu_labels(
+            tray::labels::update_tray_menu_labels(
                 &app_handle,
                 DEFAULT_SHELL_LOCALE,
                 append_desktop_log,

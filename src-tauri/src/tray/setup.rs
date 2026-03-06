@@ -5,8 +5,9 @@ use tauri::{
 };
 
 use crate::{
-    append_desktop_log, runtime_paths, shell_locale, tray_actions, tray_labels, tray_menu_handler,
-    window_actions, TrayMenuState, DEFAULT_SHELL_LOCALE, TRAY_ID,
+    append_desktop_log, runtime_paths, shell_locale,
+    tray::{actions, labels, menu_handler},
+    window, TrayMenuState, DEFAULT_SHELL_LOCALE, TRAY_ID,
 };
 
 pub fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
@@ -27,7 +28,7 @@ pub fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
 
     let toggle_item = MenuItem::with_id(
         app_handle,
-        tray_actions::TRAY_MENU_TOGGLE_WINDOW,
+        actions::TRAY_MENU_TOGGLE_WINDOW,
         toggle_label,
         true,
         None::<&str>,
@@ -35,7 +36,7 @@ pub fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
     .map_err(|error| format!("Failed to create tray toggle menu item: {error}"))?;
     let reload_item = MenuItem::with_id(
         app_handle,
-        tray_actions::TRAY_MENU_RELOAD_WINDOW,
+        actions::TRAY_MENU_RELOAD_WINDOW,
         shell_texts.tray_reload,
         true,
         None::<&str>,
@@ -43,7 +44,7 @@ pub fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
     .map_err(|error| format!("Failed to create tray reload menu item: {error}"))?;
     let restart_backend_item = MenuItem::with_id(
         app_handle,
-        tray_actions::TRAY_MENU_RESTART_BACKEND,
+        actions::TRAY_MENU_RESTART_BACKEND,
         shell_texts.tray_restart_backend,
         true,
         None::<&str>,
@@ -51,7 +52,7 @@ pub fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
     .map_err(|error| format!("Failed to create tray restart menu item: {error}"))?;
     let quit_item = MenuItem::with_id(
         app_handle,
-        tray_actions::TRAY_MENU_QUIT,
+        actions::TRAY_MENU_QUIT,
         shell_texts.tray_quit,
         true,
         None::<&str>,
@@ -86,9 +87,7 @@ pub fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
         .tooltip("AstrBot")
         .icon(tauri::include_image!("./icons/tray.png"))
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| {
-            tray_menu_handler::handle_tray_menu_event(app, event.id().as_ref())
-        })
+        .on_menu_event(|app, event| menu_handler::handle_tray_menu_event(app, event.id().as_ref()))
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
                 button,
@@ -96,13 +95,13 @@ pub fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
                 ..
             } = event
             {
-                tray_labels::update_tray_menu_labels(
+                labels::update_tray_menu_labels(
                     tray.app_handle(),
                     DEFAULT_SHELL_LOCALE,
                     append_desktop_log,
                 );
                 if button == MouseButton::Left {
-                    window_actions::toggle_main_window(
+                    window::actions::toggle_main_window(
                         tray.app_handle(),
                         DEFAULT_SHELL_LOCALE,
                         append_desktop_log,
@@ -118,6 +117,6 @@ pub fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
         .build(app_handle)
         .map_err(|error| format!("Failed to create tray icon: {error}"))?;
 
-    tray_labels::update_tray_menu_labels(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log);
+    labels::update_tray_menu_labels(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log);
     Ok(())
 }

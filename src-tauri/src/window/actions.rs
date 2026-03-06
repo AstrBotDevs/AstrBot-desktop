@@ -1,13 +1,13 @@
 use tauri::{AppHandle, Manager};
 
-use crate::{main_window, tray_labels};
+use crate::{tray, window::main_window};
 
 pub fn show_main_window<F>(app_handle: &AppHandle, default_shell_locale: &'static str, log: F)
 where
     F: Fn(&str),
 {
     main_window::show_main_window(app_handle, &log);
-    tray_labels::update_tray_menu_labels_with_visibility(
+    tray::labels::update_tray_menu_labels_with_visibility(
         app_handle,
         default_shell_locale,
         Some(true),
@@ -20,7 +20,7 @@ where
     F: Fn(&str),
 {
     main_window::hide_main_window(app_handle, &log);
-    tray_labels::update_tray_menu_labels_with_visibility(
+    tray::labels::update_tray_menu_labels_with_visibility(
         app_handle,
         default_shell_locale,
         Some(false),

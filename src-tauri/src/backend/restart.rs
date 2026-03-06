@@ -7,24 +7,10 @@ use std::{
 use tauri::AppHandle;
 
 use crate::{
-    append_desktop_log, append_restart_log, backend_runtime, AtomicFlagGuard, BackendBridgeState,
+    append_desktop_log, append_restart_log, backend, AtomicFlagGuard, BackendBridgeState,
     BackendState, LaunchPlan, GRACEFUL_RESTART_POLL_INTERVAL_MS,
     GRACEFUL_RESTART_REQUEST_TIMEOUT_MS,
 };
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RestartStrategy {
-    ManagedSkipGraceful,
-    ManagedWithGracefulFallback,
-    UnmanagedWithGracefulProbe,
-}
-
-#[derive(Debug)]
-enum GracefulRestartOutcome {
-    Completed,
-    WaitFailed(String),
-    RequestRejected,
-}
 
 impl BackendState {
     fn sanitize_auth_token(auth_token: Option<&str>) -> Option<String> {
@@ -93,7 +79,7 @@ impl BackendState {
         previous_start_time: Option<i64>,
         packaged_mode: bool,
     ) -> Result<(), String> {
-        let max_wait = backend_runtime::backend_wait_timeout(packaged_mode);
+        let max_wait = backend::runtime::backend_wait_timeout(packaged_mode);
         let start = Instant::now();
         let mut saw_backend_down = false;
 
@@ -133,7 +119,9 @@ impl BackendState {
             return self.stop_backend();
         }
 
-        if self.ping_backend(backend_runtime::backend_ping_timeout_ms(append_desktop_log)) {
+        if self.ping_backend(backend::runtime::backend_ping_timeout_ms(
+            append_desktop_log,
+        )) {
             return Err("Backend is running but not managed by desktop process.".to_string());
         }
         Ok(())
@@ -152,26 +140,16 @@ impl BackendState {
             })
     }
 
-    fn restart_strategy(&self, plan: &LaunchPlan, has_managed_child: bool) -> RestartStrategy {
-        Self::compute_restart_strategy(
+    fn restart_strategy(
+        &self,
+        plan: &LaunchPlan,
+        has_managed_child: bool,
+    ) -> backend::restart_strategy::RestartStrategy {
+        backend::restart_strategy::compute_restart_strategy(
             cfg!(target_os = "windows"),
             plan.packaged_mode,
             has_managed_child,
         )
-    }
-
-    fn compute_restart_strategy(
-        is_windows: bool,
-        packaged_mode: bool,
-        has_managed_child: bool,
-    ) -> RestartStrategy {
-        if is_windows && packaged_mode && has_managed_child {
-            RestartStrategy::ManagedSkipGraceful
-        } else if has_managed_child {
-            RestartStrategy::ManagedWithGracefulFallback
-        } else {
-            RestartStrategy::UnmanagedWithGracefulProbe
-        }
     }
 
     fn try_graceful_restart_and_wait(
@@ -179,15 +157,57 @@ impl BackendState {
         auth_token: Option<&str>,
         previous_start_time: Option<i64>,
         packaged_mode: bool,
-    ) -> GracefulRestartOutcome {
-        if !self.request_graceful_restart(auth_token) {
-            return GracefulRestartOutcome::RequestRejected;
-        }
+    ) -> backend::restart_strategy::GracefulRestartOutcome {
+        let request_accepted = self.request_graceful_restart(auth_token);
+        let wait_result = if request_accepted {
+            self.wait_for_graceful_restart(previous_start_time, packaged_mode)
+        } else {
+            Ok(())
+        };
+        backend::restart_strategy::map_graceful_restart_outcome(request_accepted, wait_result)
+    }
 
-        match self.wait_for_graceful_restart(previous_start_time, packaged_mode) {
-            Ok(()) => GracefulRestartOutcome::Completed,
-            Err(error) => GracefulRestartOutcome::WaitFailed(error),
+    fn execute_graceful_restart_strategy(
+        &self,
+        strategy: backend::restart_strategy::RestartStrategy,
+        auth_token: Option<&str>,
+        previous_start_time: Option<i64>,
+        packaged_mode: bool,
+    ) -> Result<(), String> {
+        let outcome = match strategy {
+            backend::restart_strategy::RestartStrategy::ManagedSkipGraceful => {
+                backend::restart_strategy::GracefulRestartOutcome::RequestRejected
+            }
+            _ => self.try_graceful_restart_and_wait(auth_token, previous_start_time, packaged_mode),
+        };
+
+        match backend::restart_strategy::resolve_restart_execution(strategy, outcome) {
+            backend::restart_strategy::RestartExecution::ReturnSuccess => {
+                append_restart_log("graceful restart completed via backend api");
+                Ok(())
+            }
+            backend::restart_strategy::RestartExecution::FallBackToManagedRestart {
+                log_message,
+            } => {
+                append_restart_log(&log_message);
+                self.stop_backend_for_restart_flow()
+            }
+            backend::restart_strategy::RestartExecution::ReturnError(error) => Err(error),
         }
+    }
+
+    fn stop_backend_for_restart_flow(&self) -> Result<(), String> {
+        self.stop_backend()
+    }
+
+    fn launch_backend_after_restart(
+        &self,
+        app: &AppHandle,
+        plan: &LaunchPlan,
+    ) -> Result<(), String> {
+        let _spawn_guard = AtomicFlagGuard::set(&self.is_spawning);
+        self.start_backend_process(app, plan)?;
+        self.wait_for_backend(plan)
     }
 
     pub(crate) fn restart_backend(
@@ -208,55 +228,22 @@ impl BackendState {
         }
         let restart_auth_token = normalized_param.or_else(|| self.get_restart_auth_token());
         let previous_start_time = self.fetch_backend_start_time();
-        match strategy {
-            RestartStrategy::ManagedSkipGraceful => append_restart_log(
-                "skip graceful restart for packaged windows managed backend; using managed restart",
-            ),
-            RestartStrategy::ManagedWithGracefulFallback => {
-                match self.try_graceful_restart_and_wait(
-                    restart_auth_token.as_deref(),
-                    previous_start_time,
-                    plan.packaged_mode,
-                ) {
-                    GracefulRestartOutcome::Completed => {
-                        append_restart_log("graceful restart completed via backend api");
-                        return Ok(());
-                    }
-                    GracefulRestartOutcome::WaitFailed(error) => append_restart_log(&format!(
-                        "graceful restart did not complete, fallback to managed restart: {error}"
-                    )),
-                    GracefulRestartOutcome::RequestRejected => append_restart_log(
-                        "graceful restart request was rejected, fallback to managed restart",
-                    ),
-                }
+        match self.execute_graceful_restart_strategy(
+            strategy,
+            restart_auth_token.as_deref(),
+            previous_start_time,
+            plan.packaged_mode,
+        ) {
+            Ok(())
+                if strategy != backend::restart_strategy::RestartStrategy::ManagedSkipGraceful =>
+            {
+                return Ok(());
             }
-            RestartStrategy::UnmanagedWithGracefulProbe => {
-                match self.try_graceful_restart_and_wait(
-                    restart_auth_token.as_deref(),
-                    previous_start_time,
-                    plan.packaged_mode,
-                ) {
-                    GracefulRestartOutcome::Completed => {
-                        append_restart_log("graceful restart completed via backend api");
-                        return Ok(());
-                    }
-                    GracefulRestartOutcome::WaitFailed(error) => append_restart_log(&format!(
-                        "graceful restart did not complete for unmanaged backend, bootstrap managed restart: {error}"
-                    )),
-                    GracefulRestartOutcome::RequestRejected => {
-                        return Err(
-                            "graceful restart request was rejected and backend is not desktop-managed."
-                                .to_string(),
-                        );
-                    }
-                }
-            }
+            Ok(()) => {}
+            Err(error) => return Err(error),
         }
 
-        self.stop_backend()?;
-        let _spawn_guard = AtomicFlagGuard::set(&self.is_spawning);
-        self.start_backend_process(app, &plan)?;
-        self.wait_for_backend(&plan)
+        self.launch_backend_after_restart(app, &plan)
     }
 
     pub(crate) fn bridge_state(&self, app: &AppHandle) -> BackendBridgeState {
@@ -272,7 +259,7 @@ impl BackendState {
             });
         let can_manage = has_managed_child || self.resolve_launch_plan(app).is_ok();
         BackendBridgeState {
-            running: self.ping_backend(backend_runtime::bridge_backend_ping_timeout_ms(
+            running: self.ping_backend(backend::runtime::bridge_backend_ping_timeout_ms(
                 append_desktop_log,
             )),
             spawning: self.is_spawning.load(Ordering::Relaxed),
@@ -284,7 +271,8 @@ impl BackendState {
 
 #[cfg(test)]
 mod tests {
-    use super::{BackendState, RestartStrategy};
+    use super::BackendState;
+    use crate::backend::restart_strategy::RestartStrategy;
 
     #[test]
     fn sanitize_auth_token_rejects_empty_and_newline_tokens() {
@@ -303,26 +291,20 @@ mod tests {
     }
 
     #[test]
-    fn compute_restart_strategy_windows_packaged_managed_skips_graceful() {
-        assert_eq!(
-            BackendState::compute_restart_strategy(true, true, true),
-            RestartStrategy::ManagedSkipGraceful
-        );
-    }
+    fn restart_strategy_delegates_to_strategy_module() {
+        let plan = crate::LaunchPlan {
+            cmd: "python".to_string(),
+            args: vec![],
+            cwd: std::path::PathBuf::from("."),
+            root_dir: None,
+            webui_dir: None,
+            packaged_mode: true,
+        };
+        let state = BackendState::default();
 
-    #[test]
-    fn compute_restart_strategy_managed_uses_graceful_fallback() {
         assert_eq!(
-            BackendState::compute_restart_strategy(false, true, true),
+            state.restart_strategy(&plan, true),
             RestartStrategy::ManagedWithGracefulFallback
-        );
-    }
-
-    #[test]
-    fn compute_restart_strategy_unmanaged_uses_graceful_probe() {
-        assert_eq!(
-            BackendState::compute_restart_strategy(false, false, false),
-            RestartStrategy::UnmanagedWithGracefulProbe
         );
     }
 }

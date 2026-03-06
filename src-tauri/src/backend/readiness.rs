@@ -6,13 +6,15 @@ use std::{
 use tauri::AppHandle;
 
 use crate::{
-    append_desktop_log, backend_config, backend_runtime, AtomicFlagGuard, BackendState,
-    BACKEND_TIMEOUT_ENV, PACKAGED_BACKEND_TIMEOUT_FALLBACK_MS,
+    append_desktop_log, backend, AtomicFlagGuard, BackendState, BACKEND_TIMEOUT_ENV,
+    PACKAGED_BACKEND_TIMEOUT_FALLBACK_MS,
 };
 
 impl BackendState {
     pub(crate) fn ensure_backend_ready(&self, app: &AppHandle) -> Result<(), String> {
-        if self.ping_backend(backend_runtime::backend_ping_timeout_ms(append_desktop_log)) {
+        if self.ping_backend(backend::runtime::backend_ping_timeout_ms(
+            append_desktop_log,
+        )) {
             append_desktop_log("backend already reachable, skip spawn");
             return Ok(());
         }
@@ -32,15 +34,13 @@ impl BackendState {
     }
 
     pub(crate) fn wait_for_backend(&self, plan: &crate::LaunchPlan) -> Result<(), String> {
-        // This uses blocking polling intentionally and is called from spawn_blocking
-        // startup/restart workers, not directly on the UI thread.
-        let timeout_ms = backend_config::resolve_backend_timeout_ms(
+        let timeout_ms = backend::config::resolve_backend_timeout_ms(
             plan.packaged_mode,
             BACKEND_TIMEOUT_ENV,
             20_000,
             PACKAGED_BACKEND_TIMEOUT_FALLBACK_MS,
         );
-        let readiness = backend_runtime::backend_readiness_config(append_desktop_log);
+        let readiness = backend::runtime::backend_readiness_config(append_desktop_log);
         let start_time = Instant::now();
         let mut tcp_ready_logged = false;
         let mut ever_tcp_reachable = false;

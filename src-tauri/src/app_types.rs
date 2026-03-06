@@ -10,7 +10,7 @@ use std::{
 };
 use tauri::menu::MenuItem;
 
-use crate::{backend_config, exit_state, DEFAULT_BACKEND_URL};
+use crate::{backend, exit_state, DEFAULT_BACKEND_URL};
 
 #[derive(Clone)]
 pub(crate) struct TrayMenuState {
@@ -90,7 +90,7 @@ impl Default for BackendState {
     fn default() -> Self {
         Self {
             child: Mutex::new(None),
-            backend_url: backend_config::normalize_backend_url(
+            backend_url: backend::config::normalize_backend_url(
                 &env::var("ASTRBOT_BACKEND_URL")
                     .unwrap_or_else(|_| DEFAULT_BACKEND_URL.to_string()),
                 DEFAULT_BACKEND_URL,

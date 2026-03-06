@@ -1,12 +1,12 @@
 use std::{env, sync::OnceLock, time::Duration};
 
-use crate::backend_config;
+use crate::backend;
 
 static BACKEND_PING_TIMEOUT_MS: OnceLock<u64> = OnceLock::new();
 static BRIDGE_BACKEND_PING_TIMEOUT_MS: OnceLock<u64> = OnceLock::new();
 
 pub fn backend_wait_timeout(packaged_mode: bool) -> Duration {
-    backend_config::resolve_backend_timeout_ms(
+    backend::config::resolve_backend_timeout_ms(
         packaged_mode,
         crate::BACKEND_TIMEOUT_ENV,
         20_000,
@@ -15,12 +15,12 @@ pub fn backend_wait_timeout(packaged_mode: bool) -> Duration {
     .unwrap_or(Duration::from_millis(20_000))
 }
 
-pub fn backend_readiness_config<F>(log: F) -> backend_config::BackendReadinessConfig
+pub fn backend_readiness_config<F>(log: F) -> backend::config::BackendReadinessConfig
 where
     F: Fn(&str) + Copy,
 {
     let probe_timeout_fallback = backend_ping_timeout_ms(log);
-    backend_config::backend_readiness_config(
+    backend::config::backend_readiness_config(
         crate::BACKEND_READY_HTTP_PATH_ENV,
         crate::DEFAULT_BACKEND_READY_HTTP_PATH,
         crate::BACKEND_READY_PROBE_TIMEOUT_ENV,
@@ -40,7 +40,7 @@ where
     F: Fn(&str) + Copy,
 {
     *BACKEND_PING_TIMEOUT_MS.get_or_init(|| match env::var(crate::BACKEND_PING_TIMEOUT_ENV) {
-        Ok(raw) => backend_config::parse_ping_timeout_env(
+        Ok(raw) => backend::config::parse_ping_timeout_env(
             &raw,
             crate::BACKEND_PING_TIMEOUT_ENV,
             crate::DEFAULT_BACKEND_PING_TIMEOUT_MS,
@@ -59,7 +59,7 @@ where
     *BRIDGE_BACKEND_PING_TIMEOUT_MS.get_or_init(|| {
         let fallback = backend_ping_timeout_ms(log);
         match env::var(crate::BRIDGE_BACKEND_PING_TIMEOUT_ENV) {
-            Ok(raw) => backend_config::parse_ping_timeout_env(
+            Ok(raw) => backend::config::parse_ping_timeout_env(
                 &raw,
                 crate::BRIDGE_BACKEND_PING_TIMEOUT_ENV,
                 fallback,
