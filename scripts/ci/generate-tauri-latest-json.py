@@ -96,10 +96,12 @@ def collect_platforms(root: Path, repo: str, tag: str) -> dict[str, dict[str, st
             appimage_name = sig_name[:-4]
             match = LINUX_APPIMAGE_RE.match(appimage_name)
             if not match:
-                raise ValueError(
-                    "Unexpected Linux AppImage artifact name: "
-                    f"{appimage_name}. Expected format: <name>_<version>_linux_<arch>.AppImage"
+                print(
+                    "[generate-tauri-latest-json] Ignoring unrecognized Linux AppImage signature file: "
+                    f"{appimage_name}. Expected format: <name>_<version>_linux_<arch>.AppImage",
+                    file=sys.stderr,
                 )
+                continue
             platform_key = platform_key_for_linux_appimage(match.group("arch"))
             platforms[platform_key] = {
                 "signature": read_signature(sig_path),

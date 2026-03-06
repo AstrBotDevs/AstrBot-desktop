@@ -221,16 +221,22 @@ pub(crate) async fn desktop_bridge_check_app_update(
     match resolve_desktop_update_mode() {
         DesktopUpdateMode::NativeUpdater => {}
         DesktopUpdateMode::ManualDownload => {
+            append_desktop_log(
+                "desktop updater check routed to manual-download mode for current Linux install",
+            );
             return map_manual_download_result(
                 &current_version,
                 DESKTOP_UPDATER_MANUAL_DOWNLOAD_REASON,
-            )
+            );
         }
         DesktopUpdateMode::Unsupported => {
+            append_desktop_log(
+                "desktop updater check is unsupported on the current platform/runtime mode",
+            );
             return map_update_check_error(
                 Some(current_version),
                 DESKTOP_UPDATER_UNSUPPORTED_REASON,
-            )
+            );
         }
     }
 
@@ -263,10 +269,16 @@ pub(crate) async fn desktop_bridge_install_app_update(
     match resolve_desktop_update_mode() {
         DesktopUpdateMode::NativeUpdater => {}
         DesktopUpdateMode::ManualDownload => {
-            return map_update_install_error(DESKTOP_UPDATER_MANUAL_DOWNLOAD_REASON)
+            append_desktop_log(
+                "desktop updater install routed to manual-download mode for current Linux install",
+            );
+            return map_update_install_error(DESKTOP_UPDATER_MANUAL_DOWNLOAD_REASON);
         }
         DesktopUpdateMode::Unsupported => {
-            return map_update_install_error(DESKTOP_UPDATER_UNSUPPORTED_REASON)
+            append_desktop_log(
+                "desktop updater install is unsupported on the current platform/runtime mode",
+            );
+            return map_update_install_error(DESKTOP_UPDATER_UNSUPPORTED_REASON);
         }
     }
 
