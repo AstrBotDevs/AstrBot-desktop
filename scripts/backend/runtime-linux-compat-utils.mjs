@@ -140,17 +140,23 @@ const buildPatchContext = (runtimeDir) => {
   };
 };
 
-const isPathInside = (candidatePath, rootPath) =>
-  candidatePath === rootPath || candidatePath.startsWith(`${rootPath}${path.sep}`);
-
-const shouldPatchRuntimeSoFile = (soFile, runtimeLibDir, pythonLibDirs) =>
-  path.dirname(soFile) === runtimeLibDir ||
-  pythonLibDirs.some((pythonLibDir) => isPathInside(soFile, pythonLibDir));
+const shouldPatchRuntimeSoFile = (soFile, runtimeLibDir, pythonLibDirs) => {
+  if (path.dirname(soFile) === runtimeLibDir) {
+    return true;
+  }
+  return pythonLibDirs.some(
+    (pythonLibDir) =>
+      soFile === pythonLibDir || soFile.startsWith(`${pythonLibDir}${path.sep}`),
+  );
+};
 
 const collectLibsDirsForSo = (soFile, libsDirsBySitePackages) => {
   const libsDirs = [];
   for (const [sitePackagesRoot, siteLibsDirs] of libsDirsBySitePackages.entries()) {
-    if (!isPathInside(soFile, sitePackagesRoot)) {
+    if (
+      soFile !== sitePackagesRoot &&
+      !soFile.startsWith(`${sitePackagesRoot}${path.sep}`)
+    ) {
       continue;
     }
     libsDirs.push(...siteLibsDirs);
@@ -181,13 +187,6 @@ const computeRpathSearchEntries = (soFile, libsDirs) => {
 
   return searchEntries;
 };
-
-const parseRpathEntries = (rawRpath) =>
-  (rawRpath || '')
-    .trim()
-    .split(':')
-    .map((entry) => entry.trim())
-    .filter(Boolean);
 
 const logPatchelfFailure = (operation, soFile, spawnResult) => {
   let summary;
@@ -229,7 +228,11 @@ const patchRuntimeSoFile = (
   const libsDirs = collectLibsDirsForSo(soFile, libsDirsBySitePackages);
   const searchEntries = computeRpathSearchEntries(soFile, libsDirs);
 
-  const existingRpathEntries = parseRpathEntries(printRpathResult.stdout);
+  const existingRpathEntries = (printRpathResult.stdout || '')
+    .trim()
+    .split(':')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
   const finalEntries = Array.from(new Set([...existingRpathEntries, ...searchEntries]));
 
   const rpathUnchanged =
@@ -252,6 +255,9 @@ const patchRuntimeSoFile = (
 };
 
 const isTruthyEnv = (value) => ['1', 'true'].includes((value || '').trim().toLowerCase());
+const requirePatchelf = () =>
+  isTruthyEnv(process.env.BUILD_BACKEND_REQUIRE_PATCHELF) ||
+  isTruthyEnv(process.env.CI);
 
 export const pruneLinuxTkinterRuntime = (runtimeDir) => {
   if (process.platform !== 'linux') {
@@ -301,20 +307,16 @@ export const patchLinuxRuntimeRpaths = (runtimeDir) => {
     windowsHide: true,
   });
   if (patchelfProbe.error || patchelfProbe.status !== 0) {
-    const requirePatchelf =
-      isTruthyEnv(process.env.BUILD_BACKEND_REQUIRE_PATCHELF) ||
-      isTruthyEnv(process.env.BUILD_BACKEND_STRICT) ||
-      isTruthyEnv(process.env.CI);
-    if (requirePatchelf) {
+    if (requirePatchelf()) {
       throw new Error(
         '[build-backend] patchelf is required to normalize Linux runtime rpaths. ' +
-          'Install patchelf, or disable strict mode by unsetting BUILD_BACKEND_REQUIRE_PATCHELF/BUILD_BACKEND_STRICT for local-only builds.',
+          'Install patchelf, or unset BUILD_BACKEND_REQUIRE_PATCHELF / CI for local-only builds.',
       );
     }
 
     console.warn(
       '[build-backend] patchelf is unavailable; skipping Linux runtime rpath normalization. ' +
-        'Set BUILD_BACKEND_REQUIRE_PATCHELF=1 to enforce this check.',
+        'Set BUILD_BACKEND_REQUIRE_PATCHELF=1 or CI=1 to enforce this check.',
     );
     return;
   }
