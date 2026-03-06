@@ -58,21 +58,6 @@ fn desktop_state_path(packaged_root_dir: Option<&Path>) -> Option<PathBuf> {
     packaged_root_dir.map(|root| root.join("data").join("desktop_state.json"))
 }
 
-fn empty_state_object() -> Value {
-    Value::Object(Map::new())
-}
-
-fn ensure_object(value: &mut Value) -> &mut Map<String, Value> {
-    if let Value::Object(map) = value {
-        return map;
-    }
-
-    *value = empty_state_object();
-    value
-        .as_object_mut()
-        .expect("value was just normalized into a JSON object")
-}
-
 fn version_is_nightly(version: &Version) -> bool {
     version
         .pre
@@ -88,15 +73,6 @@ fn base_version(version: &Version) -> Version {
     base
 }
 
-fn non_empty_string(raw: Option<&str>) -> Option<String> {
-    let value = raw?.trim();
-    if value.is_empty() {
-        None
-    } else {
-        Some(value.to_string())
-    }
-}
-
 fn configured_channel_endpoint(
     updater_config: &Map<String, Value>,
     channel: UpdateChannel,
@@ -106,7 +82,14 @@ fn configured_channel_endpoint(
         .and_then(Value::as_object)
         .and_then(|channels| channels.get(channel.config_key()))
         .and_then(Value::as_str)
-        .and_then(|value| non_empty_string(Some(value)))
+        .and_then(|raw| {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        })
 }
 
 pub(crate) fn resolve_manifest_endpoint_from_sources(
@@ -123,7 +106,14 @@ pub(crate) fn resolve_manifest_endpoint_from_sources(
             .and_then(Value::as_array)
             .and_then(|endpoints| endpoints.first())
             .and_then(Value::as_str)
-            .and_then(|value| non_empty_string(Some(value)))
+            .and_then(|raw| {
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            })
         {
             return Ok(endpoint);
         }
@@ -149,9 +139,11 @@ pub(crate) fn resolve_manifest_endpoint(
     plugins_config: &HashMap<String, Value>,
     channel: UpdateChannel,
 ) -> Result<String, String> {
-    let env_override = env::var(channel.env_override_key()).ok();
-    if let Some(endpoint) = non_empty_string(env_override.as_deref()) {
-        return Ok(endpoint);
+    if let Ok(value) = env::var(channel.env_override_key()) {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return Ok(trimmed.to_string());
+        }
     }
 
     let updater_config = plugins_config
@@ -244,9 +236,10 @@ fn parse_nightly_version_info(version: &Version) -> Option<NightlyVersionInfo> {
     })
 }
 
-// Nightly-to-nightly comparisons only accept nightly remotes, then sort by
-// base version, nightly date, and finally hash so same-date upstream rebuilds
-// still advance without silently switching channels.
+// Nightly-to-nightly comparisons only accept nightly remotes, then compare
+// base version and nightly date. If both are equal, any differing hash is
+// treated as a newer same-date rebuild so upstream rebuilds still advance
+// without silently switching channels.
 fn should_offer_nightly_update(current_version: &Version, remote_version: &Version) -> bool {
     let Some(current) = parse_nightly_version_info(current_version) else {
         return false;
@@ -320,10 +313,10 @@ pub(crate) fn write_cached_update_channel(
                     state_path.display(),
                     error
                 ));
-                empty_state_object()
+                Value::Object(Map::new())
             }
         },
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => empty_state_object(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Value::Object(Map::new()),
         Err(error) => {
             return Err(format!(
                 "Failed to read update channel state {}: {}",
@@ -337,8 +330,11 @@ pub(crate) fn write_cached_update_channel(
             "update channel state {} has non-object root; resetting state file",
             state_path.display()
         ));
+        parsed = Value::Object(Map::new());
     }
-    let object = ensure_object(&mut parsed);
+    let object = parsed
+        .as_object_mut()
+        .expect("state value was just normalized into a JSON object");
 
     if let Some(channel) = channel {
         let value = match channel {
