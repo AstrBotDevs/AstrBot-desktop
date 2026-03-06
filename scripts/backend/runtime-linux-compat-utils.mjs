@@ -55,13 +55,27 @@ const resolveSitePackagesRootForPath = (candidatePath) => {
   return candidatePath.slice(0, markerIndex + `${path.sep}site-packages`.length);
 };
 
-const scanRuntimeTree = (runtimeLibDir) => {
+const scanRuntimeTree = (runtimeDir) => {
+  const runtimeLibDir = path.join(runtimeDir, 'lib');
   const soFiles = [];
   const pythonDynloadDirs = [];
   const libsDirsBySitePackages = new Map();
+  const pythonLibDirs = [];
 
   if (!fs.existsSync(runtimeLibDir)) {
-    return { soFiles, pythonDynloadDirs, libsDirsBySitePackages };
+    return {
+      runtimeLibDir,
+      soFiles,
+      pythonDynloadDirs,
+      libsDirsBySitePackages,
+      pythonLibDirs,
+    };
+  }
+
+  for (const entry of fs.readdirSync(runtimeLibDir, { withFileTypes: true })) {
+    if (entry.isDirectory() && entry.name.startsWith('python')) {
+      pythonLibDirs.push(path.join(runtimeLibDir, entry.name));
+    }
   }
 
   const stack = [runtimeLibDir];
@@ -109,34 +123,12 @@ const scanRuntimeTree = (runtimeLibDir) => {
     }
   }
 
-  return { soFiles, pythonDynloadDirs, libsDirsBySitePackages };
-};
-
-const buildPatchContext = (runtimeDir) => {
-  const runtimeLibDir = path.join(runtimeDir, 'lib');
-  if (!fs.existsSync(runtimeLibDir)) {
-    return {
-      runtimeLibDir,
-      pythonLibDirs: [],
-      libsDirsBySitePackages: new Map(),
-      soFiles: [],
-      pythonDynloadDirs: [],
-    };
-  }
-
-  const pythonLibDirs = fs
-    .readdirSync(runtimeLibDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name.startsWith('python'))
-    .map((entry) => path.join(runtimeLibDir, entry.name));
-
-  const { soFiles, pythonDynloadDirs, libsDirsBySitePackages } = scanRuntimeTree(runtimeLibDir);
-
   return {
     runtimeLibDir,
-    pythonLibDirs,
-    libsDirsBySitePackages,
     soFiles,
     pythonDynloadDirs,
+    libsDirsBySitePackages,
+    pythonLibDirs,
   };
 };
 
@@ -264,7 +256,7 @@ export const pruneLinuxTkinterRuntime = (runtimeDir) => {
     return;
   }
 
-  const { runtimeLibDir, pythonDynloadDirs } = buildPatchContext(runtimeDir);
+  const { runtimeLibDir, pythonDynloadDirs } = scanRuntimeTree(runtimeDir);
   if (!fs.existsSync(runtimeLibDir)) {
     return;
   }
@@ -321,7 +313,7 @@ export const patchLinuxRuntimeRpaths = (runtimeDir) => {
     return;
   }
 
-  const { runtimeLibDir, pythonLibDirs, libsDirsBySitePackages, soFiles } = buildPatchContext(runtimeDir);
+  const { runtimeLibDir, pythonLibDirs, libsDirsBySitePackages, soFiles } = scanRuntimeTree(runtimeDir);
 
   const patchContext = {
     runtimeLibDir,
