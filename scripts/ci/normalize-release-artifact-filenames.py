@@ -10,13 +10,18 @@ import sys
 NIGHTLY_DATE_PATTERN = re.compile(r"(?:-|_)nightly[._-][0-9]{8}[._-][0-9a-fA-F]{7,40}")
 NIGHTLY_HASH_PATTERN = re.compile(r"(?:-|_)nightly[-_][0-9a-fA-F]{7,40}")
 HEX_SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{8,64}$")
-ARTIFACT_EXTENSIONS: set[str] = {
+ARTIFACT_EXTENSIONS: tuple[str, ...] = (
+    ".app.tar.gz.sig",
+    ".app.tar.gz",
+    ".exe.sig",
+    ".msi.sig",
+    ".zip.sig",
     ".rpm",
     ".deb",
     ".exe",
     ".msi",
     ".zip",
-}
+)
 
 VERSION_PATTERN = r"[0-9A-Za-z.+-]+"
 ARCH_PATTERN = r"[A-Za-z0-9_]+"
@@ -65,6 +70,14 @@ CANONICALIZE_RULES: dict[str, tuple[tuple[re.Pattern[str], str], ...]] = {
         ),
     ),
     ".zip": (
+        (
+            re.compile(
+                rf"^AstrBot_(?P<version>{VERSION_PATTERN})_macos_(?P<arch>{ARCH_PATTERN})$"
+            ),
+            "AstrBot_{version}_macos_{arch}",
+        ),
+    ),
+    ".app.tar.gz": (
         (
             re.compile(
                 rf"^AstrBot_(?P<version>{VERSION_PATTERN})_macos_(?P<arch>{ARCH_PATTERN})$"
@@ -121,11 +134,30 @@ def resolve_nightly_source_sha(source_git_ref: str) -> str:
     )
 
 
+def detect_artifact_extension(path: pathlib.Path) -> str | None:
+    lower_name = path.name.lower()
+    for ext in ARTIFACT_EXTENSIONS:
+        if lower_name.endswith(ext.lower()):
+            return ext
+    return None
+
+
+def strip_extension(name: str, ext: str) -> str:
+    return name[: -len(ext)] if ext else name
+
+
+def canonicalization_extension(ext: str) -> str:
+    if ext.endswith(".sig"):
+        return ext[:-4]
+    return ext
+
+
 def should_normalize_file(path: pathlib.Path) -> bool:
-    ext = path.suffix.lower()
-    if ext not in ARTIFACT_EXTENSIONS:
+    ext = detect_artifact_extension(path)
+    if ext is None:
         return False
-    return path.stem.startswith("AstrBot_") or path.stem.startswith("AstrBot-")
+    stem = strip_extension(path.name, ext)
+    return stem.startswith("AstrBot_") or stem.startswith("AstrBot-")
 
 
 def strip_nightly_suffix(stem: str) -> str:
@@ -202,12 +234,18 @@ def main() -> int:
             skipped_count += 1
             continue
 
+        ext = detect_artifact_extension(path)
+        if ext is None:
+            skipped_count += 1
+            continue
+
         original_name = path.name
-        original_stem = path.stem
-        ext = path.suffix.lower()
+        original_stem = strip_extension(original_name, ext)
 
         stripped_stem = strip_nightly_suffix(original_stem)
-        normalized_stem, matched = canonicalize_stem(stripped_stem, ext, warned_unknown_arches)
+        normalized_stem, matched = canonicalize_stem(
+            stripped_stem, canonicalization_extension(ext), warned_unknown_arches
+        )
 
         final_stem = normalized_stem
         if nightly_suffix and not final_stem.endswith(nightly_suffix):

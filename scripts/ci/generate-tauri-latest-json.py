@@ -8,14 +8,36 @@ import re
 import sys
 from pathlib import Path
 
-# Matches Windows NSIS installer assets normalized by the release workflow, e.g.
-# AstrBot_4.19.2_windows_amd64-setup.exe
-WINDOWS_RE = re.compile(
-    r"(?P<name>.+?)_(?P<version>[^_]+)_windows_(?P<arch>[^.]+)-setup\.exe$"
+WINDOWS_PATTERNS = (
+    re.compile(
+        r"(?P<name>.+?)_(?P<version>[^_]+)_windows_(?P<arch>[^_]+)(?:-setup|_setup(?:_nightly_[0-9a-fA-F]{8})?)\.exe$"
+    ),
+    re.compile(r"(?P<name>.+?)_(?P<version>.+?)_(?P<arch>x64|amd64|arm64)-setup\.exe$"),
 )
-# Matches macOS updater archives normalized by the release workflow, e.g.
-# AstrBot_4.19.2_macos_arm64.zip
-MACOS_RE = re.compile(r"(?P<name>.+?)_(?P<version>[^_]+)_macos_(?P<arch>[^.]+)\.zip$")
+MACOS_ARCHIVE_PATTERNS = (
+    re.compile(
+        r"(?P<name>.+?)_(?P<version>[^_]+)_macos_(?P<arch>[^_]+)(?:_nightly_[0-9a-fA-F]{8})?\.app\.tar\.gz$"
+    ),
+    re.compile(r"(?P<name>.+?)_(?P<version>.+?)_macos_(?P<arch>[^.]+)\.app\.tar\.gz$"),
+    re.compile(
+        r"(?P<name>.+?)_(?P<version>[^_]+)_macos_(?P<arch>[^_]+)(?:_nightly_[0-9a-fA-F]{8})?\.zip$"
+    ),
+    re.compile(r"(?P<name>.+?)_(?P<version>.+?)_macos_(?P<arch>[^.]+)\.zip$"),
+)
+
+WINDOWS_ARCH_ALIASES = {
+    "x64": "amd64",
+    "amd64": "amd64",
+    "arm64": "arm64",
+    "aarch64": "arm64",
+}
+
+MACOS_ARCH_ALIASES = {
+    "x86_64": "amd64",
+    "amd64": "amd64",
+    "arm64": "arm64",
+    "aarch64": "arm64",
+}
 
 
 def read_signature(path: Path) -> str:
@@ -26,7 +48,15 @@ def asset_url(repo: str, tag: str, filename: str) -> str:
     return f"https://github.com/{repo}/releases/download/{tag}/{filename}"
 
 
+def normalize_arch(arch: str, aliases: dict[str, str], platform: str) -> str:
+    normalized = aliases.get(arch)
+    if normalized is None:
+        raise ValueError(f"Unsupported {platform} arch: {arch}")
+    return normalized
+
+
 def platform_key_for_windows(arch: str) -> str:
+    arch = normalize_arch(arch, WINDOWS_ARCH_ALIASES, "Windows")
     if arch == "amd64":
         return "windows-x86_64"
     if arch == "arm64":
@@ -35,11 +65,20 @@ def platform_key_for_windows(arch: str) -> str:
 
 
 def platform_key_for_macos(arch: str) -> str:
+    arch = normalize_arch(arch, MACOS_ARCH_ALIASES, "macOS")
     if arch == "amd64":
         return "darwin-x86_64"
     if arch == "arm64":
         return "darwin-aarch64"
     raise ValueError(f"Unsupported macOS arch: {arch}")
+
+
+def match_any(filename: str, patterns: tuple[re.Pattern[str], ...]) -> re.Match[str] | None:
+    for pattern in patterns:
+        match = pattern.match(filename)
+        if match:
+            return match
+    return None
 
 
 def collect_platforms(root: Path, repo: str, tag: str) -> dict[str, dict[str, str]]:
@@ -49,11 +88,11 @@ def collect_platforms(root: Path, repo: str, tag: str) -> dict[str, dict[str, st
         sig_name = sig_path.name
         if sig_name.endswith(".exe.sig"):
             exe_name = sig_name[:-4]
-            match = WINDOWS_RE.match(exe_name)
+            match = match_any(exe_name, WINDOWS_PATTERNS)
             if not match:
                 raise ValueError(
                     "Unexpected Windows artifact name: "
-                    f"{exe_name}. Expected format: <name>_<version>_windows_<arch>-setup.exe"
+                    f"{exe_name}. Expected canonical or legacy NSIS installer format."
                 )
             arch = match.group("arch")
             platform_key = platform_key_for_windows(arch)
@@ -63,18 +102,18 @@ def collect_platforms(root: Path, repo: str, tag: str) -> dict[str, dict[str, st
             }
             continue
 
-        if sig_name.endswith(".zip.sig"):
-            zip_name = sig_name[:-4]
-            match = MACOS_RE.match(zip_name)
+        if sig_name.endswith(".app.tar.gz.sig") or sig_name.endswith(".zip.sig"):
+            archive_name = sig_name[:-4]
+            match = match_any(archive_name, MACOS_ARCHIVE_PATTERNS)
             if not match:
                 raise ValueError(
                     "Unexpected macOS artifact name: "
-                    f"{zip_name}. Expected format: <name>_<version>_macos_<arch>.zip"
+                    f"{archive_name}. Expected canonical or legacy macOS updater archive format."
                 )
             platform_key = platform_key_for_macos(match.group("arch"))
             platforms[platform_key] = {
                 "signature": read_signature(sig_path),
-                "url": asset_url(repo, tag, zip_name),
+                "url": asset_url(repo, tag, archive_name),
             }
             continue
 

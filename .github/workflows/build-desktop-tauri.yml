@@ -387,6 +387,37 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "${app_path}" "${zip_path}"
           echo "Created ${zip_path}"
 
+      - name: Collect macOS updater artifacts
+        env:
+          ASTRBOT_VERSION: ${{ needs.resolve_build_context.outputs.astrbot_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle_dir="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
+          release_dir="src-tauri/target/${{ matrix.target }}/release/bundle/release-artifacts"
+          mkdir -p "${release_dir}"
+
+          shopt -s nullglob
+          updater_archives=("${bundle_dir}"/*.app.tar.gz)
+          if [ "${#updater_archives[@]}" -ne 1 ]; then
+            echo "Expected exactly one macOS updater archive in ${bundle_dir}, found ${#updater_archives[@]}." >&2
+            ls -la "${bundle_dir}" || true
+            exit 1
+          fi
+
+          updater_archive="${updater_archives[0]}"
+          updater_signature="${updater_archive}.sig"
+          if [ ! -f "${updater_signature}" ]; then
+            echo "Expected macOS updater signature not found: ${updater_signature}" >&2
+            ls -la "${bundle_dir}" || true
+            exit 1
+          fi
+
+          release_base="AstrBot_${ASTRBOT_VERSION}_macos_${{ matrix.arch }}.app.tar.gz"
+          cp "${updater_archive}" "${release_dir}/${release_base}"
+          cp "${updater_signature}" "${release_dir}/${release_base}.sig"
+          echo "Collected ${release_dir}/${release_base}"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v6.0.0
         with:
@@ -394,6 +425,8 @@ jobs:
           if-no-files-found: error
           path: |
             src-tauri/target/${{ matrix.target }}/release/bundle/zip/*.zip
+            src-tauri/target/${{ matrix.target }}/release/bundle/release-artifacts/*.app.tar.gz
+            src-tauri/target/${{ matrix.target }}/release/bundle/release-artifacts/*.app.tar.gz.sig
 
   build-windows:
     needs:
@@ -465,6 +498,7 @@ jobs:
           # A broad **/*.exe pattern also matches bundled Python runtime helpers.
           path: |
             ${{ env.WINDOWS_INSTALLER_EXE_GLOBS }}
+            src-tauri/target/release/bundle/nsis/*.exe.sig
 
   release:
     name: Publish GitHub Release
