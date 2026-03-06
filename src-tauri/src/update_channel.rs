@@ -112,12 +112,7 @@ fn configured_channel_endpoint(
 pub(crate) fn resolve_manifest_endpoint_from_sources(
     channel: UpdateChannel,
     updater_config: &Map<String, Value>,
-    env_override: Option<&str>,
 ) -> Result<String, String> {
-    if let Some(endpoint) = non_empty_string(env_override) {
-        return Ok(endpoint);
-    }
-
     if let Some(endpoint) = configured_channel_endpoint(updater_config, channel) {
         return Ok(endpoint);
     }
@@ -170,7 +165,7 @@ pub(crate) fn resolve_manifest_endpoint(
             )
         })?;
 
-    resolve_manifest_endpoint_from_sources(channel, updater_config, None)
+    resolve_manifest_endpoint_from_sources(channel, updater_config)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -178,14 +173,6 @@ struct NightlyVersionInfo {
     base: Version,
     date: u32,
     hash: String,
-}
-
-fn log_malformed_nightly(version: &Version, reason: &str) -> Option<NightlyVersionInfo> {
-    crate::append_desktop_log(&format!(
-        "failed to parse nightly prerelease '{}' as 'nightly.<YYYYMMDD>.<sha8>': {}",
-        version, reason
-    ));
-    None
 }
 
 fn parse_nightly_version_info(version: &Version) -> Option<NightlyVersionInfo> {
@@ -197,26 +184,56 @@ fn parse_nightly_version_info(version: &Version) -> Option<NightlyVersionInfo> {
 
     let date_raw = match identifiers.next() {
         Some(date) => date,
-        None => return log_malformed_nightly(version, "missing date segment"),
+        None => {
+            crate::append_desktop_log(&format!(
+                "failed to parse nightly prerelease '{}' as 'nightly.<YYYYMMDD>.<sha8>': missing date segment",
+                version
+            ));
+            return None;
+        }
     };
     let hash_raw = match identifiers.next() {
         Some(hash) => hash,
-        None => return log_malformed_nightly(version, "missing hash segment"),
+        None => {
+            crate::append_desktop_log(&format!(
+                "failed to parse nightly prerelease '{}' as 'nightly.<YYYYMMDD>.<sha8>': missing hash segment",
+                version
+            ));
+            return None;
+        }
     };
     if identifiers.next().is_some() {
-        return log_malformed_nightly(version, "too many prerelease identifiers");
+        crate::append_desktop_log(&format!(
+            "failed to parse nightly prerelease '{}' as 'nightly.<YYYYMMDD>.<sha8>': too many prerelease identifiers",
+            version
+        ));
+        return None;
     }
 
     if date_raw.len() != 8 || !date_raw.chars().all(|ch| ch.is_ascii_digit()) {
-        return log_malformed_nightly(version, "date segment is not 8 ASCII digits");
+        crate::append_desktop_log(&format!(
+            "failed to parse nightly prerelease '{}' as 'nightly.<YYYYMMDD>.<sha8>': date segment is not 8 ASCII digits",
+            version
+        ));
+        return None;
     }
     if hash_raw.len() != 8 || !hash_raw.chars().all(|ch| ch.is_ascii_hexdigit()) {
-        return log_malformed_nightly(version, "hash segment is not 8 ASCII hex digits");
+        crate::append_desktop_log(&format!(
+            "failed to parse nightly prerelease '{}' as 'nightly.<YYYYMMDD>.<sha8>': hash segment is not 8 ASCII hex digits",
+            version
+        ));
+        return None;
     }
 
     let date = match date_raw.parse::<u32>() {
         Ok(parsed) => parsed,
-        Err(_) => return log_malformed_nightly(version, "failed to parse date as u32"),
+        Err(_) => {
+            crate::append_desktop_log(&format!(
+                "failed to parse nightly prerelease '{}' as 'nightly.<YYYYMMDD>.<sha8>': failed to parse date as u32",
+                version
+            ));
+            return None;
+        }
     };
     let hash = hash_raw.to_ascii_lowercase();
 
@@ -357,7 +374,7 @@ pub(crate) fn resolve_preferred_channel(
 
 /// Cross-channel update policy:
 /// - stable -> stable: only strictly newer semver releases.
-/// - stable -> nightly: allow same-base or newer-base nightly builds after an explicit channel switch.
+/// - stable -> nightly: allow same-base or newer-base nightly builds after an explicit channel switch, but only when the remote itself is nightly.
 /// - nightly -> nightly: compare base version, then nightly date, then hash.
 /// - nightly -> stable: only newer stable base versions; same-base stable is treated as a downgrade.
 pub(crate) fn should_offer_update(
@@ -372,7 +389,8 @@ pub(crate) fn should_offer_update(
             should_offer_nightly_update(current_version, remote_version)
         }
         (UpdateChannel::Stable, UpdateChannel::Nightly) => {
-            base_version(remote_version) >= base_version(current_version)
+            version_is_nightly(remote_version)
+                && base_version(remote_version) >= base_version(current_version)
         }
         (UpdateChannel::Nightly, UpdateChannel::Stable) => {
             base_version(remote_version) > base_version(current_version)
@@ -480,6 +498,12 @@ mod tests {
 
     #[test]
     fn resolve_manifest_endpoint_prefers_environment_override() {
+        let _guard = EnvVarGuard::clear(UpdateChannel::Nightly.env_override_key());
+        std::env::set_var(
+            UpdateChannel::Nightly.env_override_key(),
+            "https://env.example/nightly.json",
+        );
+
         let updater_config = json!({
             "channelEndpoints": {
                 "stable": "https://config.example/stable.json",
@@ -487,13 +511,11 @@ mod tests {
             },
             "endpoints": ["https://config.example/stable.json"]
         });
+        let mut plugins = HashMap::new();
+        plugins.insert(UPDATER_PLUGIN_KEY.to_string(), updater_config);
 
-        let endpoint = resolve_manifest_endpoint_from_sources(
-            UpdateChannel::Nightly,
-            updater_config.as_object().expect("object config"),
-            Some("https://env.example/nightly.json"),
-        )
-        .expect("nightly endpoint should resolve");
+        let endpoint = resolve_manifest_endpoint(&plugins, UpdateChannel::Nightly)
+            .expect("nightly endpoint should resolve");
 
         assert_eq!(endpoint, "https://env.example/nightly.json");
     }
@@ -511,13 +533,11 @@ mod tests {
         let stable = resolve_manifest_endpoint_from_sources(
             UpdateChannel::Stable,
             updater_config.as_object().expect("object config"),
-            None,
         )
         .expect("stable endpoint should resolve");
         let nightly = resolve_manifest_endpoint_from_sources(
             UpdateChannel::Nightly,
             updater_config.as_object().expect("object config"),
-            None,
         )
         .expect("nightly endpoint should resolve");
 
@@ -534,7 +554,6 @@ mod tests {
         let stable = resolve_manifest_endpoint_from_sources(
             UpdateChannel::Stable,
             updater_config.as_object().expect("object config"),
-            None,
         )
         .expect("stable endpoint should resolve");
 
@@ -548,7 +567,6 @@ mod tests {
         let error = resolve_manifest_endpoint_from_sources(
             UpdateChannel::Stable,
             updater_config.as_object().expect("object config"),
-            None,
         )
         .expect_err("stable endpoint should be missing");
 
@@ -626,6 +644,24 @@ mod tests {
             &version("4.29.0"),
             UpdateChannel::Nightly,
             &version("4.29.0-nightly.20260307.abcd1234")
+        ));
+    }
+
+    #[test]
+    fn stable_channel_preferring_nightly_rejects_stable_remote() {
+        assert!(!should_offer_update(
+            &version("4.29.0"),
+            UpdateChannel::Nightly,
+            &version("4.30.0")
+        ));
+    }
+
+    #[test]
+    fn stable_channel_preferring_nightly_rejects_same_base_stable_remote() {
+        assert!(!should_offer_update(
+            &version("4.29.0"),
+            UpdateChannel::Nightly,
+            &version("4.29.0")
         ));
     }
 

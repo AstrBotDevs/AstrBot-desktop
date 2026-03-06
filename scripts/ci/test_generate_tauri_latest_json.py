@@ -87,6 +87,11 @@ class GenerateTauriLatestJsonTests(unittest.TestCase):
         self.assertEqual(payload['releaseTag'], 'nightly')
 
 
+    def test_infer_channel_rejects_malformed_nightly_version(self):
+        with self.assertRaisesRegex(ValueError, 'Invalid nightly version'):
+            MODULE.infer_channel('4.29.0-nightly-beta')
+
+
     def test_main_writes_expected_manifest_json(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -158,6 +163,56 @@ class GenerateTauriLatestJsonTests(unittest.TestCase):
                     MODULE.main()
 
             self.assertFalse(output.exists())
+
+
+    def test_main_fails_when_inferred_nightly_version_is_malformed(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            output = root / 'latest-nightly.json'
+            argv = [
+                str(SCRIPT_PATH),
+                '--artifacts-root',
+                str(root),
+                '--repo',
+                'AstrBotDevs/AstrBot-desktop',
+                '--tag',
+                'nightly',
+                '--version',
+                '4.29.0-nightly-beta',
+                '--output',
+                str(output),
+            ]
+
+            with mock.patch('sys.argv', argv):
+                with self.assertRaisesRegex(SystemExit, 'Invalid nightly version'):
+                    MODULE.main()
+
+            self.assertFalse(output.exists())
+
+    def test_collect_platforms_preserves_canonical_nightly_filenames(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / 'AstrBot_4.29.0_windows_amd64_setup_nightly_abcd1234.exe.sig').write_text('sig-win')
+            (root / 'AstrBot_4.29.0_macos_arm64_nightly_abcd1234.zip.sig').write_text('sig-mac')
+
+            platforms = MODULE.collect_platforms(
+                root,
+                'AstrBotDevs/AstrBot-desktop',
+                'nightly',
+                version='4.29.0-nightly.20260307.abcd1234',
+                channel='nightly',
+            )
+
+        self.assertEqual(
+            platforms['windows-x86_64']['url'],
+            'https://github.com/AstrBotDevs/AstrBot-desktop/releases/download/nightly/'
+            'AstrBot_4.29.0_windows_amd64_setup_nightly_abcd1234.exe',
+        )
+        self.assertEqual(
+            platforms['darwin-aarch64']['url'],
+            'https://github.com/AstrBotDevs/AstrBot-desktop/releases/download/nightly/'
+            'AstrBot_4.29.0_macos_arm64_nightly_abcd1234.zip',
+        )
 
     def test_collect_platforms_normalizes_nightly_release_filenames(self):
         with tempfile.TemporaryDirectory() as tmpdir:

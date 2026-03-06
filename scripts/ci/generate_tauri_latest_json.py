@@ -55,7 +55,15 @@ def platform_key_for_macos(arch: str) -> str:
 
 
 def infer_channel(version: str) -> str:
-    return "nightly" if "nightly" in version.lower() else "stable"
+    """Infer the release channel from version using the same nightly semantics as helpers."""
+    if "nightly" not in version.lower():
+        return "stable"
+    if not NIGHTLY_VERSION_RE.match(version):
+        raise ValueError(
+            "Invalid nightly version "
+            f"{version!r}: expected format <base>-nightly.<YYYYMMDD>.<sha8>"
+        )
+    return "nightly"
 
 
 def derive_nightly_filename_suffix(version: str, channel: str) -> str:
@@ -232,9 +240,9 @@ def main() -> int:
     parser.add_argument("--notes", default="")
     args = parser.parse_args()
 
-    channel = args.channel or infer_channel(args.version)
     root = Path(args.artifacts_root)
     try:
+        channel = args.channel or infer_channel(args.version)
         platforms = collect_platforms(
             root,
             args.repo,
