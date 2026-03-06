@@ -230,7 +230,7 @@ const patchRuntimeSoFile = (
     .split(':')
     .map((entry) => entry.trim())
     .filter(Boolean);
-  const finalEntries = Array.from(new Set([...existingRpathEntries, ...searchEntries]));
+  const finalEntries = Array.from(new Set([...searchEntries, ...existingRpathEntries]));
 
   const rpathUnchanged =
     finalEntries.length === existingRpathEntries.length &&
