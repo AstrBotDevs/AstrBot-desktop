@@ -80,7 +80,9 @@ pub(crate) fn map_manual_download_result(
         reason: Some(reason.into()),
         current_version: Some(current_version.to_string()),
         latest_version: None,
-        has_update: false,
+        // Manual-download mode should still trigger update UI even though
+        // we cannot determine an exact remote latest version here.
+        has_update: true,
         manual_download_required: true,
     }
 }
@@ -136,7 +138,7 @@ mod tests {
         assert!(result.ok);
         assert_eq!(result.current_version.as_deref(), Some("4.19.2"));
         assert_eq!(result.latest_version, None);
-        assert!(!result.has_update);
+        assert!(result.has_update);
         assert!(result.manual_download_required);
         assert_eq!(
             result.reason.as_deref(),

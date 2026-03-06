@@ -55,49 +55,12 @@ const resolveSitePackagesRootForPath = (candidatePath) => {
   return candidatePath.slice(0, markerIndex + `${path.sep}site-packages`.length);
 };
 
-const scanRuntimeTree = (
-  runtimeDir,
-  {
-    wantSoFiles = false,
-    wantPythonDynloadDirs = false,
-    wantLibsDirsBySitePackages = false,
-    wantPythonLibDirs = false,
-  } = {},
-) => {
+const walkRuntimeLibTree = (runtimeDir) => {
   const runtimeLibDir = path.join(runtimeDir, 'lib');
-  const soFiles = [];
-  const pythonDynloadDirs = [];
-  const libsDirsBySitePackages = new Map();
-  const pythonLibDirs = [];
+  const entries = [];
 
   if (!fs.existsSync(runtimeLibDir)) {
-    return {
-      runtimeLibDir,
-      soFiles,
-      pythonDynloadDirs,
-      libsDirsBySitePackages,
-      pythonLibDirs,
-    };
-  }
-
-  if (wantPythonLibDirs) {
-    for (const entry of fs.readdirSync(runtimeLibDir, { withFileTypes: true })) {
-      if (entry.isDirectory() && entry.name.startsWith('python')) {
-        pythonLibDirs.push(path.join(runtimeLibDir, entry.name));
-      }
-    }
-  }
-
-  const shouldTraverseRecursively =
-    wantSoFiles || wantPythonDynloadDirs || wantLibsDirsBySitePackages;
-  if (!shouldTraverseRecursively) {
-    return {
-      runtimeLibDir,
-      soFiles,
-      pythonDynloadDirs,
-      libsDirsBySitePackages,
-      pythonLibDirs,
-    };
+    return { runtimeLibDir, entries };
   }
 
   const stack = [runtimeLibDir];
@@ -105,54 +68,81 @@ const scanRuntimeTree = (
     const current = stack.pop();
     for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
       const fullPath = path.join(current, entry.name);
-      if (entry.isSymbolicLink()) {
-        if (wantSoFiles && isSharedObjectFileName(entry.name)) {
-          try {
-            if (fs.statSync(fullPath).isFile()) {
-              soFiles.push(fullPath);
-            }
-          } catch {
-            // Ignore broken symlinks or inaccessible targets.
-          }
-        }
-        continue;
-      }
-
-      if (entry.isDirectory()) {
-        if (
-          wantPythonDynloadDirs &&
-          entry.name === 'lib-dynload' &&
-          path.basename(path.dirname(fullPath)).startsWith('python')
-        ) {
-          pythonDynloadDirs.push(fullPath);
-        }
-
-        if (wantLibsDirsBySitePackages && entry.name.endsWith('.libs')) {
-          const sitePackagesRoot = resolveSitePackagesRootForPath(fullPath);
-          if (sitePackagesRoot) {
-            const existing = libsDirsBySitePackages.get(sitePackagesRoot) || [];
-            existing.push(fullPath);
-            libsDirsBySitePackages.set(sitePackagesRoot, existing);
-          }
-        }
-
+      entries.push({ entry, fullPath });
+      if (entry.isDirectory() && !entry.isSymbolicLink()) {
         stack.push(fullPath);
-        continue;
-      }
-
-      if (wantSoFiles && entry.isFile() && isSharedObjectFileName(entry.name)) {
-        soFiles.push(fullPath);
       }
     }
   }
 
-  return {
-    runtimeLibDir,
-    soFiles,
-    pythonDynloadDirs,
-    libsDirsBySitePackages,
-    pythonLibDirs,
-  };
+  return { runtimeLibDir, entries };
+};
+
+const findPythonLibDirs = (runtimeLibDir) => {
+  if (!fs.existsSync(runtimeLibDir)) {
+    return [];
+  }
+
+  return fs
+    .readdirSync(runtimeLibDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith('python'))
+    .map((entry) => path.join(runtimeLibDir, entry.name));
+};
+
+const findPythonDynloadDirs = (entries) =>
+  entries
+    .filter(
+      ({ entry, fullPath }) =>
+        entry.isDirectory() &&
+        entry.name === 'lib-dynload' &&
+        path.basename(path.dirname(fullPath)).startsWith('python'),
+    )
+    .map(({ fullPath }) => fullPath);
+
+const findSoFiles = (entries) => {
+  const soFiles = [];
+
+  for (const { entry, fullPath } of entries) {
+    if (entry.isFile() && isSharedObjectFileName(entry.name)) {
+      soFiles.push(fullPath);
+      continue;
+    }
+
+    if (!entry.isSymbolicLink() || !isSharedObjectFileName(entry.name)) {
+      continue;
+    }
+
+    try {
+      if (fs.statSync(fullPath).isFile()) {
+        soFiles.push(fullPath);
+      }
+    } catch {
+      // Ignore broken symlinks or inaccessible targets.
+    }
+  }
+
+  return soFiles;
+};
+
+const findLibsDirsBySitePackages = (entries) => {
+  const libsDirsBySitePackages = new Map();
+
+  for (const { entry, fullPath } of entries) {
+    if (!entry.isDirectory() || !entry.name.endsWith('.libs')) {
+      continue;
+    }
+
+    const sitePackagesRoot = resolveSitePackagesRootForPath(fullPath);
+    if (!sitePackagesRoot) {
+      continue;
+    }
+
+    const existing = libsDirsBySitePackages.get(sitePackagesRoot) || [];
+    existing.push(fullPath);
+    libsDirsBySitePackages.set(sitePackagesRoot, existing);
+  }
+
+  return libsDirsBySitePackages;
 };
 
 const collectLibsDirsForSo = (soFile, libsDirsBySitePackages) => {
@@ -169,15 +159,17 @@ const collectLibsDirsForSo = (soFile, libsDirsBySitePackages) => {
   return libsDirs;
 };
 
+const BASE_RPATH_ENTRIES = [
+  '$ORIGIN',
+  '$ORIGIN/..',
+  '$ORIGIN/../..',
+  '$ORIGIN/../../..',
+  '$ORIGIN/../../../..',
+  '$ORIGIN/../.libs',
+];
+
 const computeRpathSearchEntries = (soFile, libsDirs) => {
-  const searchEntries = [
-    '$ORIGIN',
-    '$ORIGIN/..',
-    '$ORIGIN/../..',
-    '$ORIGIN/../../..',
-    '$ORIGIN/../../../..',
-    '$ORIGIN/../.libs',
-  ];
+  const searchEntries = [...BASE_RPATH_ENTRIES];
 
   for (const libsDir of libsDirs) {
     const relativePath = path.relative(path.dirname(soFile), libsDir);
@@ -210,15 +202,15 @@ const logPatchelfFailure = (operation, soFile, spawnResult) => {
   );
 };
 
-const resolvePatchelfCommand = () => {
-  const configuredPath = (process.env.BUILD_BACKEND_PATCHELF_PATH || '').trim();
-  return configuredPath || 'patchelf';
-};
+const isTruthyEnv = (value) => ['1', 'true'].includes((value || '').trim().toLowerCase());
+const resolvePatchelfConfig = () => ({
+  command: (process.env.BUILD_BACKEND_PATCHELF_PATH || '').trim() || 'patchelf',
+  required:
+    isTruthyEnv(process.env.BUILD_BACKEND_REQUIRE_PATCHELF) ||
+    isTruthyEnv(process.env.CI),
+});
 
-const patchRuntimeSoFile = (
-  soFile,
-  { runtimeLibDir, pythonLibDirs, libsDirsBySitePackages, patchelfCommand },
-) => {
+const shouldPatchSoFile = (soFile, { runtimeLibDir, pythonLibDirs }) => {
   const underPythonLib = pythonLibDirs.some(
     (pythonLibDir) =>
       soFile === pythonLibDir || soFile.startsWith(`${pythonLibDir}${path.sep}`),
@@ -227,6 +219,16 @@ const patchRuntimeSoFile = (
     return false;
   }
   if (!hasElfMagic(soFile)) {
+    return false;
+  }
+  return true;
+};
+
+const patchRuntimeSoFile = (
+  soFile,
+  { runtimeLibDir, pythonLibDirs, libsDirsBySitePackages, patchelfCommand },
+) => {
+  if (!shouldPatchSoFile(soFile, { runtimeLibDir, pythonLibDirs })) {
     return false;
   }
 
@@ -272,22 +274,16 @@ const patchRuntimeSoFile = (
   return true;
 };
 
-const isTruthyEnv = (value) => ['1', 'true'].includes((value || '').trim().toLowerCase());
-const requirePatchelf = () =>
-  isTruthyEnv(process.env.BUILD_BACKEND_REQUIRE_PATCHELF) ||
-  isTruthyEnv(process.env.CI);
-
 export const pruneLinuxTkinterRuntime = (runtimeDir) => {
   if (process.platform !== 'linux') {
     return;
   }
 
-  const { runtimeLibDir, pythonDynloadDirs } = scanRuntimeTree(runtimeDir, {
-    wantPythonDynloadDirs: true,
-  });
+  const { runtimeLibDir, entries } = walkRuntimeLibTree(runtimeDir);
   if (!fs.existsSync(runtimeLibDir)) {
     return;
   }
+  const pythonDynloadDirs = findPythonDynloadDirs(entries);
 
   let removedCount = 0;
 
@@ -322,13 +318,13 @@ export const patchLinuxRuntimeRpaths = (runtimeDir) => {
     return;
   }
 
-  const patchelfCommand = resolvePatchelfCommand();
+  const { command: patchelfCommand, required: requirePatchelf } = resolvePatchelfConfig();
   const patchelfProbe = spawnSync(patchelfCommand, ['--version'], {
     encoding: 'utf8',
     windowsHide: true,
   });
   if (patchelfProbe.error || patchelfProbe.status !== 0) {
-    if (requirePatchelf()) {
+    if (requirePatchelf) {
       throw new Error(
         `[build-backend] ${patchelfCommand} is required to normalize Linux runtime rpaths. ` +
           'Install patchelf, or unset BUILD_BACKEND_REQUIRE_PATCHELF / CI for local-only builds.',
@@ -342,14 +338,10 @@ export const patchLinuxRuntimeRpaths = (runtimeDir) => {
     return;
   }
 
-  const { runtimeLibDir, pythonLibDirs, libsDirsBySitePackages, soFiles } = scanRuntimeTree(
-    runtimeDir,
-    {
-      wantSoFiles: true,
-      wantLibsDirsBySitePackages: true,
-      wantPythonLibDirs: true,
-    },
-  );
+  const { runtimeLibDir, entries } = walkRuntimeLibTree(runtimeDir);
+  const pythonLibDirs = findPythonLibDirs(runtimeLibDir);
+  const soFiles = findSoFiles(entries);
+  const libsDirsBySitePackages = findLibsDirsBySitePackages(entries);
 
   const patchContext = {
     runtimeLibDir,
