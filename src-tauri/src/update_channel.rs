@@ -146,6 +146,11 @@ pub(crate) fn resolve_manifest_endpoint(
     plugins_config: &HashMap<String, Value>,
     channel: UpdateChannel,
 ) -> Result<String, String> {
+    let env_override = env::var(channel.env_override_key()).ok();
+    if let Some(endpoint) = non_empty_string(env_override.as_deref()) {
+        return Ok(endpoint);
+    }
+
     let updater_config = plugins_config
         .get(UPDATER_PLUGIN_KEY)
         .and_then(Value::as_object)
@@ -157,8 +162,7 @@ pub(crate) fn resolve_manifest_endpoint(
             )
         })?;
 
-    let env_override = env::var(channel.env_override_key()).ok();
-    resolve_manifest_endpoint_from_sources(channel, updater_config, env_override.as_deref())
+    resolve_manifest_endpoint_from_sources(channel, updater_config, None)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -475,6 +479,25 @@ mod tests {
         .expect("stable endpoint should resolve");
 
         assert_eq!(stable, "https://config.example/stable-fallback.json");
+    }
+
+    #[test]
+    fn resolve_manifest_endpoint_allows_env_override_without_updater_config() {
+        let env_key = UpdateChannel::Nightly.env_override_key();
+        let previous = std::env::var(env_key).ok();
+        std::env::set_var(env_key, "https://env.example/nightly.json");
+
+        let result = resolve_manifest_endpoint(&HashMap::new(), UpdateChannel::Nightly);
+
+        match previous {
+            Some(value) => std::env::set_var(env_key, value),
+            None => std::env::remove_var(env_key),
+        }
+
+        assert_eq!(
+            result.expect("env override should resolve without updater config"),
+            "https://env.example/nightly.json"
+        );
     }
 
     #[test]
