@@ -73,6 +73,19 @@ fn base_version(version: &Version) -> Version {
     base
 }
 
+fn non_empty_trimmed(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn non_empty_str(value: &Value) -> Option<String> {
+    value.as_str().and_then(non_empty_trimmed)
+}
+
 fn configured_channel_endpoint(
     updater_config: &Map<String, Value>,
     channel: UpdateChannel,
@@ -81,15 +94,7 @@ fn configured_channel_endpoint(
         .get(CHANNEL_ENDPOINTS_KEY)
         .and_then(Value::as_object)
         .and_then(|channels| channels.get(channel.config_key()))
-        .and_then(Value::as_str)
-        .and_then(|raw| {
-            let trimmed = raw.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            }
-        })
+        .and_then(non_empty_str)
 }
 
 pub(crate) fn resolve_manifest_endpoint_from_sources(
@@ -105,15 +110,7 @@ pub(crate) fn resolve_manifest_endpoint_from_sources(
             .get(ENDPOINTS_KEY)
             .and_then(Value::as_array)
             .and_then(|endpoints| endpoints.first())
-            .and_then(Value::as_str)
-            .and_then(|raw| {
-                let trimmed = raw.trim();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(trimmed.to_string())
-                }
-            })
+            .and_then(non_empty_str)
         {
             return Ok(endpoint);
         }
@@ -140,9 +137,8 @@ pub(crate) fn resolve_manifest_endpoint(
     channel: UpdateChannel,
 ) -> Result<String, String> {
     if let Ok(value) = env::var(channel.env_override_key()) {
-        let trimmed = value.trim();
-        if !trimmed.is_empty() {
-            return Ok(trimmed.to_string());
+        if let Some(endpoint) = non_empty_trimmed(&value) {
+            return Ok(endpoint);
         }
     }
 
@@ -167,73 +163,78 @@ struct NightlyVersionInfo {
     hash: String,
 }
 
-fn parse_nightly_version_info(version: &Version) -> Option<NightlyVersionInfo> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NightlyParseError {
+    NotNightly,
+    MissingDate,
+    MissingHash,
+    TooManyIdentifiers,
+    BadDateFormat,
+    BadHashFormat,
+    DateParseFailed,
+}
+
+fn parse_nightly_version_info_inner(
+    version: &Version,
+) -> Result<NightlyVersionInfo, NightlyParseError> {
     let mut identifiers = version.pre.as_str().split('.');
-    let first = identifiers.next()?;
+    let Some(first) = identifiers.next() else {
+        return Err(NightlyParseError::NotNightly);
+    };
     if !first.eq_ignore_ascii_case(NIGHTLY_IDENTIFIER) {
-        return None;
+        return Err(NightlyParseError::NotNightly);
     }
 
-    let date_raw = match identifiers.next() {
-        Some(date) => date,
-        None => {
-            crate::append_desktop_log(&format!(
-                "failed to parse nightly prerelease '{}' as 'nightly.<YYYYMMDD>.<sha8>': missing date segment",
-                version
-            ));
-            return None;
-        }
-    };
-    let hash_raw = match identifiers.next() {
-        Some(hash) => hash,
-        None => {
-            crate::append_desktop_log(&format!(
-                "failed to parse nightly prerelease '{}' as 'nightly.<YYYYMMDD>.<sha8>': missing hash segment",
-                version
-            ));
-            return None;
-        }
-    };
+    let date_raw = identifiers.next().ok_or(NightlyParseError::MissingDate)?;
+    let hash_raw = identifiers.next().ok_or(NightlyParseError::MissingHash)?;
     if identifiers.next().is_some() {
-        crate::append_desktop_log(&format!(
-            "failed to parse nightly prerelease '{}' as 'nightly.<YYYYMMDD>.<sha8>': too many prerelease identifiers",
-            version
-        ));
-        return None;
+        return Err(NightlyParseError::TooManyIdentifiers);
     }
 
     if date_raw.len() != 8 || !date_raw.chars().all(|ch| ch.is_ascii_digit()) {
-        crate::append_desktop_log(&format!(
-            "failed to parse nightly prerelease '{}' as 'nightly.<YYYYMMDD>.<sha8>': date segment is not 8 ASCII digits",
-            version
-        ));
-        return None;
+        return Err(NightlyParseError::BadDateFormat);
     }
     if hash_raw.len() != 8 || !hash_raw.chars().all(|ch| ch.is_ascii_hexdigit()) {
-        crate::append_desktop_log(&format!(
-            "failed to parse nightly prerelease '{}' as 'nightly.<YYYYMMDD>.<sha8>': hash segment is not 8 ASCII hex digits",
-            version
-        ));
-        return None;
+        return Err(NightlyParseError::BadHashFormat);
     }
 
-    let date = match date_raw.parse::<u32>() {
-        Ok(parsed) => parsed,
-        Err(_) => {
-            crate::append_desktop_log(&format!(
-                "failed to parse nightly prerelease '{}' as 'nightly.<YYYYMMDD>.<sha8>': failed to parse date as u32",
-                version
-            ));
-            return None;
-        }
-    };
+    let date = date_raw
+        .parse::<u32>()
+        .map_err(|_| NightlyParseError::DateParseFailed)?;
     let hash = hash_raw.to_ascii_lowercase();
 
-    Some(NightlyVersionInfo {
+    Ok(NightlyVersionInfo {
         base: base_version(version),
         date,
         hash,
     })
+}
+
+fn log_nightly_parse_error(version: &Version, error: NightlyParseError) {
+    let reason = match error {
+        NightlyParseError::NotNightly => return,
+        NightlyParseError::MissingDate => "missing date segment",
+        NightlyParseError::MissingHash => "missing hash segment",
+        NightlyParseError::TooManyIdentifiers => "too many prerelease identifiers",
+        NightlyParseError::BadDateFormat => "date segment is not 8 ASCII digits",
+        NightlyParseError::BadHashFormat => "hash segment is not 8 ASCII hex digits",
+        NightlyParseError::DateParseFailed => "failed to parse date as u32",
+    };
+
+    crate::append_desktop_log(&format!(
+        "failed to parse nightly prerelease '{}' as 'nightly.<YYYYMMDD>.<sha8>': {}",
+        version, reason,
+    ));
+}
+
+fn parse_nightly_version_info(version: &Version) -> Option<NightlyVersionInfo> {
+    match parse_nightly_version_info_inner(version) {
+        Ok(info) => Some(info),
+        Err(error) => {
+            log_nightly_parse_error(version, error);
+            None
+        }
+    }
 }
 
 // Nightly-to-nightly comparisons only accept nightly remotes, then compare
@@ -282,6 +283,81 @@ pub(crate) fn read_cached_update_channel(
     UpdateChannel::parse(channel)
 }
 
+fn ensure_parent_dir(path: &Path) -> Result<(), String> {
+    if let Some(parent_dir) = path.parent() {
+        fs::create_dir_all(parent_dir).map_err(|error| {
+            format!(
+                "Failed to create update channel directory {}: {}",
+                parent_dir.display(),
+                error
+            )
+        })?;
+    }
+
+    Ok(())
+}
+
+fn load_state_value(path: &Path) -> Result<Value, String> {
+    match fs::read_to_string(path) {
+        Ok(raw) => match serde_json::from_str::<Value>(&raw) {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                crate::append_desktop_log(&format!(
+                    "failed to parse update channel state {}: {}. resetting state file",
+                    path.display(),
+                    error
+                ));
+                Ok(Value::Object(Map::new()))
+            }
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Value::Object(Map::new())),
+        Err(error) => Err(format!(
+            "Failed to read update channel state {}: {}",
+            path.display(),
+            error
+        )),
+    }
+}
+
+fn normalize_state_object(value: Value, path: &Path) -> Map<String, Value> {
+    match value {
+        Value::Object(object) => object,
+        _ => {
+            crate::append_desktop_log(&format!(
+                "update channel state {} has non-object root; resetting state file",
+                path.display()
+            ));
+            Map::new()
+        }
+    }
+}
+
+fn apply_cached_update_channel(state: &mut Map<String, Value>, channel: Option<UpdateChannel>) {
+    match channel {
+        Some(channel) => {
+            state.insert(
+                UPDATE_CHANNEL_FIELD.to_string(),
+                Value::String(channel.config_key().to_string()),
+            );
+        }
+        None => {
+            state.remove(UPDATE_CHANNEL_FIELD);
+        }
+    }
+}
+
+fn write_state_value(path: &Path, value: &Value) -> Result<(), String> {
+    let serialized = serde_json::to_string_pretty(value)
+        .map_err(|error| format!("Failed to serialize update channel state: {error}"))?;
+    fs::write(path, serialized).map_err(|error| {
+        format!(
+            "Failed to write update channel state {}: {}",
+            path.display(),
+            error
+        )
+    })
+}
+
 pub(crate) fn write_cached_update_channel(
     channel: Option<UpdateChannel>,
     packaged_root_dir: Option<&Path>,
@@ -294,70 +370,14 @@ pub(crate) fn write_cached_update_channel(
         return Err(message);
     };
 
-    if let Some(parent_dir) = state_path.parent() {
-        fs::create_dir_all(parent_dir).map_err(|error| {
-            format!(
-                "Failed to create update channel directory {}: {}",
-                parent_dir.display(),
-                error
-            )
-        })?;
-    }
+    ensure_parent_dir(&state_path)?;
 
-    let mut parsed = match fs::read_to_string(&state_path) {
-        Ok(raw) => match serde_json::from_str::<Value>(&raw) {
-            Ok(value) => value,
-            Err(error) => {
-                crate::append_desktop_log(&format!(
-                    "failed to parse update channel state {}: {}. resetting state file",
-                    state_path.display(),
-                    error
-                ));
-                Value::Object(Map::new())
-            }
-        },
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Value::Object(Map::new()),
-        Err(error) => {
-            return Err(format!(
-                "Failed to read update channel state {}: {}",
-                state_path.display(),
-                error
-            ));
-        }
-    };
-    if !parsed.is_object() {
-        crate::append_desktop_log(&format!(
-            "update channel state {} has non-object root; resetting state file",
-            state_path.display()
-        ));
-        parsed = Value::Object(Map::new());
-    }
-    let object = parsed
-        .as_object_mut()
-        .expect("state value was just normalized into a JSON object");
+    let current_state = load_state_value(&state_path)?;
+    let mut state = normalize_state_object(current_state, &state_path);
+    apply_cached_update_channel(&mut state, channel);
 
-    if let Some(channel) = channel {
-        let value = match channel {
-            UpdateChannel::Stable => "stable",
-            UpdateChannel::Nightly => "nightly",
-        };
-        object.insert(
-            UPDATE_CHANNEL_FIELD.to_string(),
-            Value::String(value.to_string()),
-        );
-    } else {
-        object.remove(UPDATE_CHANNEL_FIELD);
-    }
-
-    let serialized = serde_json::to_string_pretty(&parsed)
-        .map_err(|error| format!("Failed to serialize update channel state: {error}"))?;
-    fs::write(&state_path, serialized).map_err(|error| {
-        format!(
-            "Failed to write update channel state {}: {}",
-            state_path.display(),
-            error
-        )
-    })
+    let value = Value::Object(state);
+    write_state_value(&state_path, &value)
 }
 
 pub(crate) fn resolve_preferred_channel(
@@ -397,66 +417,72 @@ pub(crate) fn should_offer_update(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde::Deserialize;
     use serde_json::json;
-    use std::{
-        fs,
-        path::PathBuf,
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use std::fs;
 
-    #[derive(Debug, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct NightlyVersionFormatSpec {
-        canonical_format: String,
-        valid_examples: Vec<String>,
-        invalid_examples: Vec<String>,
+    mod test_support {
+        use serde::Deserialize;
+        use std::{
+            fs,
+            path::PathBuf,
+            time::{SystemTime, UNIX_EPOCH},
+        };
+
+        #[derive(Debug, Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub(super) struct NightlyVersionFormatSpec {
+            pub(super) canonical_format: String,
+            pub(super) valid_examples: Vec<String>,
+            pub(super) invalid_examples: Vec<String>,
+        }
+
+        pub(super) fn nightly_version_format_spec() -> NightlyVersionFormatSpec {
+            serde_json::from_str(include_str!("../nightly-version-format.json"))
+                .expect("nightly version format spec should parse")
+        }
+
+        pub(super) fn create_temp_case_dir(name: &str) -> PathBuf {
+            let ts = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time before unix epoch")
+                .as_nanos();
+            let dir = std::env::temp_dir().join(format!(
+                "astrbot-desktop-update-channel-test-{}-{}-{}",
+                std::process::id(),
+                ts,
+                name
+            ));
+            fs::create_dir_all(&dir).expect("create temp case dir");
+            dir
+        }
+
+        pub(super) struct EnvVarGuard {
+            key: &'static str,
+            previous: Option<String>,
+        }
+
+        impl EnvVarGuard {
+            pub(super) fn clear(key: &'static str) -> Self {
+                let previous = std::env::var(key).ok();
+                std::env::remove_var(key);
+                Self { key, previous }
+            }
+        }
+
+        impl Drop for EnvVarGuard {
+            fn drop(&mut self) {
+                match self.previous.as_deref() {
+                    Some(value) => std::env::set_var(self.key, value),
+                    None => std::env::remove_var(self.key),
+                }
+            }
+        }
     }
 
-    fn nightly_version_format_spec() -> NightlyVersionFormatSpec {
-        serde_json::from_str(include_str!("../nightly-version-format.json"))
-            .expect("nightly version format spec should parse")
-    }
+    use test_support::{create_temp_case_dir, nightly_version_format_spec, EnvVarGuard};
 
     fn version(raw: &str) -> Version {
         Version::parse(raw).expect("version should parse")
-    }
-
-    fn create_temp_case_dir(name: &str) -> PathBuf {
-        let ts = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time before unix epoch")
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!(
-            "astrbot-desktop-update-channel-test-{}-{}-{}",
-            std::process::id(),
-            ts,
-            name
-        ));
-        fs::create_dir_all(&dir).expect("create temp case dir");
-        dir
-    }
-
-    struct EnvVarGuard {
-        key: &'static str,
-        previous: Option<String>,
-    }
-
-    impl EnvVarGuard {
-        fn clear(key: &'static str) -> Self {
-            let previous = std::env::var(key).ok();
-            std::env::remove_var(key);
-            Self { key, previous }
-        }
-    }
-
-    impl Drop for EnvVarGuard {
-        fn drop(&mut self) {
-            match self.previous.as_deref() {
-                Some(value) => std::env::set_var(self.key, value),
-                None => std::env::remove_var(self.key),
-            }
-        }
     }
 
     #[test]
@@ -616,6 +642,47 @@ mod tests {
         assert_eq!(
             read_cached_update_channel(Some(&dir)),
             Some(UpdateChannel::Nightly)
+        );
+
+        fs::remove_dir_all(&dir).expect("cleanup temp case dir");
+    }
+
+    #[test]
+    fn write_cached_channel_preserves_unrelated_state_fields() {
+        let _root_guard = EnvVarGuard::clear("ASTRBOT_ROOT");
+        let dir = create_temp_case_dir("preserve-fields");
+        let state_path = dir.join("data").join("desktop_state.json");
+        fs::create_dir_all(state_path.parent().expect("state dir")).expect("create state dir");
+        fs::write(
+            &state_path,
+            serde_json::to_string_pretty(&json!({
+                "shellLocale": "en-US",
+                "windowBounds": { "width": 1280, "height": 720 }
+            }))
+            .expect("serialize existing state"),
+        )
+        .expect("write existing state");
+
+        write_cached_update_channel(Some(UpdateChannel::Nightly), Some(&dir))
+            .expect("write cached channel");
+
+        let raw = fs::read_to_string(&state_path).expect("read state");
+        let parsed: Value = serde_json::from_str(&raw).expect("parse state");
+        assert_eq!(
+            parsed.get("shellLocale").and_then(Value::as_str),
+            Some("en-US")
+        );
+        assert_eq!(
+            parsed
+                .get("windowBounds")
+                .and_then(Value::as_object)
+                .and_then(|bounds| bounds.get("width"))
+                .and_then(Value::as_i64),
+            Some(1280)
+        );
+        assert_eq!(
+            parsed.get(UPDATE_CHANNEL_FIELD).and_then(Value::as_str),
+            Some("nightly")
         );
 
         fs::remove_dir_all(&dir).expect("cleanup temp case dir");

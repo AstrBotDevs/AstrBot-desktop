@@ -344,5 +344,38 @@ class GenerateTauriLatestJsonTests(unittest.TestCase):
                 )
 
 
+    def test_collect_platforms_rejects_duplicate_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / 'AstrBot_4.29.0_windows_amd64_setup.exe.sig').write_text('sig-win-1')
+            (root / 'AstrBot_4.29.0_x64-setup.exe.sig').write_text('sig-win-2')
+
+            with self.assertRaisesRegex(ValueError, r'Duplicate .* artifact for platform'):
+                MODULE.collect_platforms(
+                    root,
+                    'AstrBotDevs/AstrBot-desktop',
+                    'v4.29.0',
+                    version='4.29.0',
+                    channel='stable',
+                )
+
+    def test_collect_platforms_rejects_unsupported_signature_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / 'AstrBot_4.29.0_windows_amd64_setup.msi.sig').write_text('sig-unknown')
+
+            with self.assertRaisesRegex(
+                ValueError,
+                'Unsupported updater signature files under artifacts root',
+            ):
+                MODULE.collect_platforms(
+                    root,
+                    'AstrBotDevs/AstrBot-desktop',
+                    'v4.29.0',
+                    version='4.29.0',
+                    channel='stable',
+                )
+
+
 if __name__ == '__main__':
     unittest.main()

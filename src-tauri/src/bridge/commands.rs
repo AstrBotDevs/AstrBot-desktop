@@ -28,6 +28,14 @@ fn resolve_update_channel(app_handle: &AppHandle) -> update_channel::UpdateChann
     )
 }
 
+fn updater_manifest_log_message(channel: update_channel::UpdateChannel, endpoint: &Url) -> String {
+    format!(
+        "Using updater manifest for {} channel: {}",
+        channel.config_key(),
+        endpoint
+    )
+}
+
 fn build_channel_aware_updater(
     app_handle: &AppHandle,
 ) -> Result<tauri_plugin_updater::Updater, String> {
@@ -38,6 +46,7 @@ fn build_channel_aware_updater(
     )?;
     let endpoint =
         Url::parse(&raw_endpoint).map_err(|error| format!("Invalid updater endpoint: {error}"))?;
+    append_desktop_log(&updater_manifest_log_message(preferred_channel, &endpoint));
 
     app_handle
         .updater_builder()
@@ -305,5 +314,19 @@ pub(crate) async fn desktop_bridge_install_app_update(
             map_update_install_ok()
         }
         Err(error) => map_update_install_error(format!("Failed to install update: {error}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn updater_manifest_log_message_includes_channel_and_endpoint() {
+        let endpoint = Url::parse("https://example.com/nightly.json").expect("url should parse");
+        assert_eq!(
+            updater_manifest_log_message(update_channel::UpdateChannel::Nightly, &endpoint),
+            "Using updater manifest for nightly channel: https://example.com/nightly.json"
+        );
     }
 }
