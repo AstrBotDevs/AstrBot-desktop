@@ -2,8 +2,8 @@ use tauri::{AppHandle, Manager};
 
 use crate::{
     append_desktop_log, append_restart_log, append_shutdown_log, restart_backend_flow,
-    tray::{actions, bridge_event}, ui_dispatch, window, BackendState,
-    DEFAULT_SHELL_LOCALE, TRAY_RESTART_BACKEND_EVENT,
+    tray::{actions, bridge_event},
+    ui_dispatch, window, BackendState, DEFAULT_SHELL_LOCALE, TRAY_RESTART_BACKEND_EVENT,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,9 +22,11 @@ fn decide_tray_restart(backend_action_in_progress: bool) -> TrayRestartDecision 
 
 pub fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
     match actions::action_from_menu_id(menu_id) {
-        Some(actions::TrayMenuAction::ToggleWindow) => {
-            window::actions::toggle_main_window(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log)
-        }
+        Some(actions::TrayMenuAction::ToggleWindow) => window::actions::toggle_main_window(
+            app_handle,
+            DEFAULT_SHELL_LOCALE,
+            append_desktop_log,
+        ),
         Some(actions::TrayMenuAction::ReloadWindow) => {
             window::actions::reload_main_window(app_handle, append_desktop_log)
         }
