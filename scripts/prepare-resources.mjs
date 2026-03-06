@@ -31,8 +31,6 @@ const main = async () => {
     sourceRepoUrl,
     sourceRepoRef,
     isSourceRepoRefCommitSha,
-    sourceDirOverrideRaw,
-    desktopVersionOverrideRaw,
     desktopVersionOverride,
     isSourceRepoRefVersionTag,
     isDesktopBridgeExpectationStrict,
@@ -42,9 +40,12 @@ const main = async () => {
   const needsSourceRepo = mode !== 'version' || !desktopVersionOverride;
   await mkdir(path.join(projectRoot, 'resources'), { recursive: true });
 
-  if (desktopVersionOverrideRaw && desktopVersionOverrideRaw !== desktopVersionOverride) {
+  const desktopVersionInput = process.env.ASTRBOT_DESKTOP_VERSION?.trim() || '';
+  const sourceDirOverrideInput = process.env.ASTRBOT_SOURCE_DIR?.trim() || '';
+
+  if (desktopVersionInput && desktopVersionInput !== desktopVersionOverride) {
     console.log(
-      `[prepare-resources] Normalized ASTRBOT_DESKTOP_VERSION from ${desktopVersionOverrideRaw} to ${desktopVersionOverride}`,
+      `[prepare-resources] Normalized ASTRBOT_DESKTOP_VERSION from ${desktopVersionInput} to ${desktopVersionOverride}`,
     );
   }
 
@@ -54,7 +55,7 @@ const main = async () => {
       sourceRepoUrl,
       sourceRepoRef,
       isSourceRepoRefCommitSha,
-      sourceDirOverrideRaw,
+      sourceDirOverrideRaw: sourceDirOverrideInput,
     });
   } else {
     console.log(
@@ -69,8 +70,8 @@ const main = async () => {
   if (desktopVersionOverride && needsSourceRepo) {
     const sourceVersion = await readAstrbotVersionFromPyproject({ sourceDir });
     if (sourceVersion !== desktopVersionOverride) {
-      console.warn(
-        `[prepare-resources] Version override drift detected: ASTRBOT_DESKTOP_VERSION=${desktopVersionOverrideRaw} (normalized=${desktopVersionOverride}), source pyproject version=${sourceVersion} (${sourceDir})`,
+        console.warn(
+        `[prepare-resources] Version override drift detected: ASTRBOT_DESKTOP_VERSION=${desktopVersionInput} (normalized=${desktopVersionOverride}), source pyproject version=${sourceVersion} (${sourceDir})`,
       );
     }
   }

@@ -31,15 +31,16 @@ export const createPrepareResourcesContext = ({ argv, env, projectRoot, cwd = pr
     trimEnv(env, 'ASTRBOT_DESKTOP_STRICT_BRIDGE_EXPECTATIONS').toLowerCase(),
   );
 
-  const { repoUrl: sourceRepoUrl, repoRef: sourceRepoRef } = normalizeSourceRepoConfig(
+  const { repoUrl: sourceRepoUrl, repoRef: sourceRepoRefInputNormalized } = normalizeSourceRepoConfig(
     sourceRepoUrlInput,
     sourceRepoRefInput,
   );
 
   const {
+    ref: sourceRepoRef,
     isCommit: isSourceRepoRefCommitSha,
     isVersionTag: isSourceRepoRefVersionTag,
-  } = getSourceRefInfo(sourceRepoRef, sourceRepoRefCommitHint);
+  } = getSourceRefInfo(sourceRepoRefInputNormalized, sourceRepoRefCommitHint);
 
   const sourceDir = resolveSourceDir(projectRoot, sourceDirOverride, cwd);
 

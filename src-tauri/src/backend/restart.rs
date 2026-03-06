@@ -174,6 +174,8 @@ impl BackendState {
         previous_start_time: Option<i64>,
         packaged_mode: bool,
     ) -> Result<(), String> {
+        // Contract: this function interprets the pure (strategy, outcome) pair and either
+        // returns early on a completed graceful restart or performs the managed fallback path.
         let outcome = match strategy {
             backend::restart_strategy::RestartStrategy::ManagedSkipGraceful => {
                 backend::restart_strategy::GracefulRestartOutcome::RequestRejected
