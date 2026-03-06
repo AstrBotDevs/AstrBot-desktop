@@ -4,9 +4,9 @@ use tauri_plugin_updater::UpdaterExt;
 use url::Url;
 
 use crate::bridge::updater_types::{
-    map_no_update_result, map_update_available_result, map_update_check_error,
-    map_update_install_error, map_update_install_ok, DesktopAppUpdateCheckResult,
-    DesktopAppUpdateResult,
+    map_manual_download_result, map_no_update_result, map_update_available_result,
+    map_update_check_error, map_update_install_error, map_update_install_ok,
+    DesktopAppUpdateCheckResult, DesktopAppUpdateResult,
 };
 use crate::{
     append_desktop_log, restart_backend_flow, runtime_paths, shell_locale, tray,
@@ -15,9 +15,32 @@ use crate::{
 
 const DESKTOP_UPDATER_UNSUPPORTED_REASON: &str =
     "Desktop app updater is not available on this platform yet.";
+pub(crate) const DESKTOP_UPDATER_MANUAL_DOWNLOAD_REASON: &str =
+    "This Linux installation method does not support automatic updates. Please download the latest package from GitHub Releases.";
 
-fn desktop_updater_supported() -> bool {
-    cfg!(target_os = "windows") || cfg!(target_os = "macos")
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DesktopUpdateMode {
+    NativeUpdater,
+    ManualDownload,
+    Unsupported,
+}
+
+fn resolve_desktop_update_mode() -> DesktopUpdateMode {
+    if cfg!(target_os = "windows") || cfg!(target_os = "macos") {
+        return DesktopUpdateMode::NativeUpdater;
+    }
+
+    if cfg!(target_os = "linux") {
+        let has_appimage =
+            std::env::var_os("APPIMAGE").is_some() || std::env::var_os("APPDIR").is_some();
+        return if has_appimage {
+            DesktopUpdateMode::NativeUpdater
+        } else {
+            DesktopUpdateMode::ManualDownload
+        };
+    }
+
+    DesktopUpdateMode::Unsupported
 }
 
 fn parse_openable_url(raw_url: &str) -> Result<Url, String> {
@@ -195,8 +218,26 @@ pub(crate) async fn desktop_bridge_check_app_update(
     app_handle: AppHandle,
 ) -> DesktopAppUpdateCheckResult {
     let current_version = app_handle.package_info().version.to_string();
-    if !desktop_updater_supported() {
-        return map_update_check_error(Some(current_version), DESKTOP_UPDATER_UNSUPPORTED_REASON);
+    match resolve_desktop_update_mode() {
+        DesktopUpdateMode::NativeUpdater => {}
+        DesktopUpdateMode::ManualDownload => {
+            append_desktop_log(
+                "desktop updater check routed to manual-download mode for current Linux install",
+            );
+            return map_manual_download_result(
+                &current_version,
+                DESKTOP_UPDATER_MANUAL_DOWNLOAD_REASON,
+            );
+        }
+        DesktopUpdateMode::Unsupported => {
+            append_desktop_log(
+                "desktop updater check is unsupported on the current platform/runtime mode",
+            );
+            return map_update_check_error(
+                Some(current_version),
+                DESKTOP_UPDATER_UNSUPPORTED_REASON,
+            );
+        }
     }
 
     let updater = match app_handle.updater() {
@@ -225,8 +266,20 @@ pub(crate) async fn desktop_bridge_check_app_update(
 pub(crate) async fn desktop_bridge_install_app_update(
     app_handle: AppHandle,
 ) -> DesktopAppUpdateResult {
-    if !desktop_updater_supported() {
-        return map_update_install_error(DESKTOP_UPDATER_UNSUPPORTED_REASON);
+    match resolve_desktop_update_mode() {
+        DesktopUpdateMode::NativeUpdater => {}
+        DesktopUpdateMode::ManualDownload => {
+            append_desktop_log(
+                "desktop updater install routed to manual-download mode for current Linux install",
+            );
+            return map_update_install_error(DESKTOP_UPDATER_MANUAL_DOWNLOAD_REASON);
+        }
+        DesktopUpdateMode::Unsupported => {
+            append_desktop_log(
+                "desktop updater install is unsupported on the current platform/runtime mode",
+            );
+            return map_update_install_error(DESKTOP_UPDATER_UNSUPPORTED_REASON);
+        }
     }
 
     let updater = match app_handle.updater() {

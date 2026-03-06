@@ -67,6 +67,19 @@ pub(crate) fn map_update_install_ok() -> DesktopAppUpdateResult {
     }
 }
 
+pub(crate) fn map_manual_download_result(
+    current_version: &str,
+    reason: impl Into<String>,
+) -> DesktopAppUpdateCheckResult {
+    DesktopAppUpdateCheckResult {
+        ok: true,
+        reason: Some(reason.into()),
+        current_version: Some(current_version.to_string()),
+        latest_version: Some(current_version.to_string()),
+        has_update: false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,5 +117,21 @@ mod tests {
         let result = map_update_install_error("install failed");
         assert!(!result.ok);
         assert_eq!(result.reason.as_deref(), Some("install failed"));
+    }
+
+    #[test]
+    fn map_manual_download_result_keeps_current_version_and_reason() {
+        let result = map_manual_download_result(
+            "4.19.2",
+            crate::bridge::commands::DESKTOP_UPDATER_MANUAL_DOWNLOAD_REASON,
+        );
+        assert!(result.ok);
+        assert_eq!(result.current_version.as_deref(), Some("4.19.2"));
+        assert_eq!(result.latest_version.as_deref(), Some("4.19.2"));
+        assert!(!result.has_update);
+        assert_eq!(
+            result.reason.as_deref(),
+            Some(crate::bridge::commands::DESKTOP_UPDATER_MANUAL_DOWNLOAD_REASON)
+        );
     }
 }
