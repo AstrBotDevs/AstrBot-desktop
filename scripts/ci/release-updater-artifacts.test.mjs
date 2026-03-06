@@ -12,11 +12,14 @@ const projectRoot = path.resolve(scriptDir, '..', '..');
 const normalizeScript = path.join(projectRoot, 'scripts/ci/normalize-release-artifact-filenames.py');
 const generateScript = path.join(projectRoot, 'scripts/ci/generate-tauri-latest-json.py');
 
-const runPython = (scriptPath, args, cwd) => {
-  const result = spawnSync('python3', [scriptPath, ...args], {
+const runPythonRaw = (scriptPath, args, cwd = projectRoot) =>
+  spawnSync('python3', [scriptPath, ...args], {
     cwd,
     encoding: 'utf8',
   });
+
+const runPython = (scriptPath, args, cwd = projectRoot) => {
+  const result = runPythonRaw(scriptPath, args, cwd);
 
   if (result.status !== 0) {
     throw new Error(
@@ -32,6 +35,64 @@ const runPython = (scriptPath, args, cwd) => {
 
   return result;
 };
+
+test('detect_artifact_extension prefers the longest matching suffix at call time', () => {
+  const result = spawnSync(
+    'python3',
+    [
+      '-c',
+      `
+import importlib.util
+import pathlib
+
+script_path = pathlib.Path(${JSON.stringify(normalizeScript)})
+spec = importlib.util.spec_from_file_location('normalize_release_artifacts', script_path)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module.ARTIFACT_EXTENSIONS = ('.sig', '.app.tar.gz.sig')
+print(module.detect_artifact_extension(pathlib.Path('AstrBot.app.tar.gz.sig')) or '')
+`,
+    ],
+    { cwd: projectRoot, encoding: 'utf8' },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), '.app.tar.gz.sig');
+});
+
+test('generate-tauri-latest-json rejects unsupported signature artifacts', async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'astrbot-release-artifacts-'));
+
+  try {
+    const artifactsDir = path.join(tempDir, 'release-artifacts');
+    await mkdir(artifactsDir, { recursive: true });
+
+    await writeFile(
+      path.join(artifactsDir, 'AstrBot_4.19.2_windows_amd64_setup.exe.sig'),
+      'windows-signature',
+      'utf8',
+    );
+    await writeFile(path.join(artifactsDir, 'unexpected.sig'), 'bad-signature', 'utf8');
+
+    const result = runPythonRaw(generateScript, [
+      '--artifacts-root',
+      artifactsDir,
+      '--repo',
+      'AstrBotDevs/AstrBot-desktop',
+      '--tag',
+      'nightly',
+      '--version',
+      '4.19.2-nightly.20260306.7ac169c5',
+      '--output',
+      path.join(artifactsDir, 'latest.json'),
+    ]);
+
+    assert.notEqual(result.status, 0, 'expected generate-tauri-latest-json.py to fail');
+    assert.match(result.stderr, /unexpected\.sig|unsupported/i);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
 
 test('release artifact normalization keeps updater signatures aligned for latest.json generation', async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), 'astrbot-release-artifacts-'));

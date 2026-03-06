@@ -73,8 +73,9 @@ def match_any(filename: str, patterns: tuple[re.Pattern[str], ...]) -> re.Match[
 
 def collect_platforms(root: Path, repo: str, tag: str) -> dict[str, dict[str, str]]:
     platforms: dict[str, dict[str, str]] = {}
+    unsupported_signature_files: list[str] = []
 
-    for sig_path in root.rglob("*.sig"):
+    for sig_path in sorted(root.rglob("*.sig")):
         sig_name = sig_path.name
         if sig_name.endswith(".exe.sig"):
             exe_name = sig_name[:-4]
@@ -107,9 +108,13 @@ def collect_platforms(root: Path, repo: str, tag: str) -> dict[str, dict[str, st
             }
             continue
 
-        print(
-            f"[generate-tauri-latest-json] Ignoring unsupported signature file: {sig_name}",
-            file=sys.stderr,
+        unsupported_signature_files.append(sig_name)
+
+    if unsupported_signature_files:
+        joined = ", ".join(unsupported_signature_files)
+        raise SystemExit(
+            "Unsupported updater signature files under artifacts root: "
+            f"{joined}"
         )
 
     return platforms

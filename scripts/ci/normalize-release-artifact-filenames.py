@@ -14,25 +14,20 @@ from artifact_arch import normalize_arch_alias
 NIGHTLY_DATE_PATTERN = re.compile(r"(?:-|_)nightly[._-][0-9]{8}[._-][0-9a-fA-F]{7,40}")
 NIGHTLY_HASH_PATTERN = re.compile(r"(?:-|_)nightly[-_][0-9a-fA-F]{7,40}")
 HEX_SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{8,64}$")
-# Prefer longer, more specific suffixes first so multi-part artifacts such as
-# ".app.tar.gz.sig" win before shorter suffixes with overlapping endings.
-ARTIFACT_EXTENSIONS: tuple[str, ...] = tuple(
-    sorted(
-        (
-            ".app.tar.gz.sig",
-            ".app.tar.gz",
-            ".exe.sig",
-            ".msi.sig",
-            ".zip.sig",
-            ".rpm",
-            ".deb",
-            ".exe",
-            ".msi",
-            ".zip",
-        ),
-        key=len,
-        reverse=True,
-    )
+# Known artifact extensions. Some may overlap (for example a future generic
+# ".sig" alongside ".app.tar.gz.sig"), so callers must choose the longest
+# matching suffix at call time instead of relying on declaration order.
+ARTIFACT_EXTENSIONS: tuple[str, ...] = (
+    ".app.tar.gz.sig",
+    ".app.tar.gz",
+    ".exe.sig",
+    ".msi.sig",
+    ".zip.sig",
+    ".rpm",
+    ".deb",
+    ".exe",
+    ".msi",
+    ".zip",
 )
 
 VERSION_PATTERN = r"[0-9A-Za-z.+-]+"
@@ -139,10 +134,18 @@ def resolve_nightly_source_sha(source_git_ref: str) -> str:
 
 def detect_artifact_extension(path: pathlib.Path) -> str | None:
     lower_name = path.name.lower()
+    best_match: str | None = None
+    best_len = -1
+
     for ext in ARTIFACT_EXTENSIONS:
-        if lower_name.endswith(ext):
-            return ext
-    return None
+        if not lower_name.endswith(ext):
+            continue
+        ext_len = len(ext)
+        if ext_len > best_len:
+            best_len = ext_len
+            best_match = ext
+
+    return best_match
 
 
 def strip_extension(name: str, ext: str) -> str:
