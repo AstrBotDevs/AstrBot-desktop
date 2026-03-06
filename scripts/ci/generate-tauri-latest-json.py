@@ -16,6 +16,11 @@ WINDOWS_RE = re.compile(
 # Matches macOS updater archives normalized by the release workflow, e.g.
 # AstrBot_4.19.2_macos_arm64.zip
 MACOS_RE = re.compile(r"(?P<name>.+?)_(?P<version>[^_]+)_macos_(?P<arch>[^.]+)\.zip$")
+# Matches Linux AppImage updater assets normalized by the release workflow, e.g.
+# AstrBot_4.19.2_linux_amd64.AppImage
+LINUX_APPIMAGE_RE = re.compile(
+    r"(?P<name>.+?)_(?P<version>[^_]+)_linux_(?P<arch>[^.]+)\.AppImage$"
+)
 
 
 def read_signature(path: Path) -> str:
@@ -40,6 +45,14 @@ def platform_key_for_macos(arch: str) -> str:
     if arch == "arm64":
         return "darwin-aarch64"
     raise ValueError(f"Unsupported macOS arch: {arch}")
+
+
+def platform_key_for_linux_appimage(arch: str) -> str:
+    if arch == "amd64":
+        return "linux-x86_64"
+    if arch == "arm64":
+        return "linux-aarch64"
+    raise ValueError(f"Unsupported Linux AppImage arch: {arch}")
 
 
 def collect_platforms(root: Path, repo: str, tag: str) -> dict[str, dict[str, str]]:
@@ -75,6 +88,21 @@ def collect_platforms(root: Path, repo: str, tag: str) -> dict[str, dict[str, st
             platforms[platform_key] = {
                 "signature": read_signature(sig_path),
                 "url": asset_url(repo, tag, zip_name),
+            }
+            continue
+
+        if sig_name.endswith(".AppImage.sig"):
+            appimage_name = sig_name[:-4]
+            match = LINUX_APPIMAGE_RE.match(appimage_name)
+            if not match:
+                raise ValueError(
+                    "Unexpected Linux AppImage artifact name: "
+                    f"{appimage_name}. Expected format: <name>_<version>_linux_<arch>.AppImage"
+                )
+            platform_key = platform_key_for_linux_appimage(match.group("arch"))
+            platforms[platform_key] = {
+                "signature": read_signature(sig_path),
+                "url": asset_url(repo, tag, appimage_name),
             }
             continue
 
