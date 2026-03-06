@@ -8,6 +8,7 @@ pub(crate) struct DesktopAppUpdateCheckResult {
     pub current_version: Option<String>,
     pub latest_version: Option<String>,
     pub has_update: bool,
+    pub manual_download_required: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -24,6 +25,7 @@ pub(crate) fn map_no_update_result(current_version: String) -> DesktopAppUpdateC
         current_version: Some(current_version.clone()),
         latest_version: Some(current_version),
         has_update: false,
+        manual_download_required: false,
     }
 }
 
@@ -37,6 +39,7 @@ pub(crate) fn map_update_available_result(
         current_version: Some(current_version),
         latest_version: Some(latest_version),
         has_update: true,
+        manual_download_required: false,
     }
 }
 
@@ -50,6 +53,7 @@ pub(crate) fn map_update_check_error(
         current_version: current_version.clone(),
         latest_version: current_version,
         has_update: false,
+        manual_download_required: false,
     }
 }
 
@@ -77,6 +81,7 @@ pub(crate) fn map_manual_download_result(
         current_version: Some(current_version.to_string()),
         latest_version: None,
         has_update: false,
+        manual_download_required: true,
     }
 }
 
@@ -91,6 +96,7 @@ mod tests {
         assert_eq!(result.current_version.as_deref(), Some("4.19.2"));
         assert_eq!(result.latest_version.as_deref(), Some("4.19.2"));
         assert!(!result.has_update);
+        assert!(!result.manual_download_required);
     }
 
     #[test]
@@ -100,6 +106,7 @@ mod tests {
         assert_eq!(result.current_version.as_deref(), Some("4.19.2"));
         assert_eq!(result.latest_version.as_deref(), Some("4.20.0"));
         assert!(result.has_update);
+        assert!(!result.manual_download_required);
     }
 
     #[test]
@@ -110,6 +117,7 @@ mod tests {
         assert_eq!(result.current_version.as_deref(), Some("4.19.2"));
         assert_eq!(result.latest_version.as_deref(), Some("4.19.2"));
         assert!(!result.has_update);
+        assert!(!result.manual_download_required);
     }
 
     #[test]
@@ -129,6 +137,7 @@ mod tests {
         assert_eq!(result.current_version.as_deref(), Some("4.19.2"));
         assert_eq!(result.latest_version, None);
         assert!(!result.has_update);
+        assert!(result.manual_download_required);
         assert_eq!(
             result.reason.as_deref(),
             Some(crate::bridge::updater_messages::DESKTOP_UPDATER_MANUAL_DOWNLOAD_REASON)
