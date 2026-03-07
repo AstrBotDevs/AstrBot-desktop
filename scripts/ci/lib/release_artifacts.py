@@ -77,11 +77,9 @@ MACOS_UPDATER_ARCHIVE_PATTERNS: tuple[re.Pattern[str], ...] = (
 )
 
 
-class ReleaseArtifactError(RuntimeError):
-    pass
-
-
-def match_any(filename: str, patterns: tuple[re.Pattern[str], ...]) -> re.Match[str] | None:
+def match_any(
+    filename: str, patterns: tuple[re.Pattern[str], ...]
+) -> re.Match[str] | None:
     for pattern in patterns:
         match = pattern.match(filename)
         if match:

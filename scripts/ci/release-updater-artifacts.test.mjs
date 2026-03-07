@@ -171,6 +171,25 @@ test('generate_tauri_latest_json surfaces invalid artifact names without traceba
   }
 });
 
+test('normalize_release_artifact_filenames strict unmatched mode surfaces naming errors without traceback noise', async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'astrbot-release-artifacts-'));
+
+  try {
+    const artifactsDir = path.join(tempDir, 'release-artifacts');
+    await mkdir(artifactsDir, { recursive: true });
+
+    await writeFile(path.join(artifactsDir, 'AstrBot_4.19.2_windows_portable.exe'), 'portable', 'utf8');
+
+    const result = runPythonRaw(normalizeModule, ['--root', artifactsDir, '--strict-unmatched']);
+
+    assert.notEqual(result.status, 0, 'expected strict unmatched artifact normalization to fail');
+    assert.match(result.stderr, /unmatched naming pattern/i);
+    assert.doesNotMatch(result.stderr, /Traceback/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test('release artifact normalization keeps updater signatures aligned for latest.json generation', async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), 'astrbot-release-artifacts-'));
 

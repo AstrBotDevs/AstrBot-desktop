@@ -61,6 +61,42 @@ fn build_channel_aware_updater(
         .map_err(|error| format!("Failed to initialize updater: {error}"))
 }
 
+fn short_circuit_update_check(
+    mode: DesktopUpdateMode,
+    current_version: &str,
+) -> Option<(&'static str, DesktopAppUpdateCheckResult)> {
+    match mode {
+        DesktopUpdateMode::NativeUpdater => None,
+        DesktopUpdateMode::ManualDownload => Some((
+            "desktop updater check routed to manual-download mode for current Linux install",
+            map_manual_download_result(current_version, desktop_manual_download_reason()),
+        )),
+        DesktopUpdateMode::Unsupported => Some((
+            "desktop updater check is unsupported on the current platform/runtime mode",
+            map_update_check_error(
+                Some(current_version.to_string()),
+                DESKTOP_UPDATER_UNSUPPORTED_REASON,
+            ),
+        )),
+    }
+}
+
+fn short_circuit_update_install(
+    mode: DesktopUpdateMode,
+) -> Option<(&'static str, DesktopAppUpdateResult)> {
+    match mode {
+        DesktopUpdateMode::NativeUpdater => None,
+        DesktopUpdateMode::ManualDownload => Some((
+            "desktop updater install routed to manual-download mode for current Linux install",
+            map_update_install_error(desktop_manual_download_reason()),
+        )),
+        DesktopUpdateMode::Unsupported => Some((
+            "desktop updater install is unsupported on the current platform/runtime mode",
+            map_update_install_error(DESKTOP_UPDATER_UNSUPPORTED_REASON),
+        )),
+    }
+}
+
 fn parse_openable_url(raw_url: &str) -> Result<Url, String> {
     let trimmed = raw_url.trim();
     if trimmed.is_empty() {
@@ -266,23 +302,11 @@ pub(crate) async fn desktop_bridge_check_app_update(
     app_handle: AppHandle,
 ) -> DesktopAppUpdateCheckResult {
     let current_version = app_handle.package_info().version.to_string();
-    match resolve_desktop_update_mode() {
-        DesktopUpdateMode::NativeUpdater => {}
-        DesktopUpdateMode::ManualDownload => {
-            append_desktop_log(
-                "desktop updater check routed to manual-download mode for current Linux install",
-            );
-            return map_manual_download_result(&current_version, desktop_manual_download_reason());
-        }
-        DesktopUpdateMode::Unsupported => {
-            append_desktop_log(
-                "desktop updater check is unsupported on the current platform/runtime mode",
-            );
-            return map_update_check_error(
-                Some(current_version),
-                DESKTOP_UPDATER_UNSUPPORTED_REASON,
-            );
-        }
+    if let Some((log_message, result)) =
+        short_circuit_update_check(resolve_desktop_update_mode(), &current_version)
+    {
+        append_desktop_log(log_message);
+        return result;
     }
 
     let updater = match build_channel_aware_updater(&app_handle) {
@@ -306,20 +330,10 @@ pub(crate) async fn desktop_bridge_check_app_update(
 pub(crate) async fn desktop_bridge_install_app_update(
     app_handle: AppHandle,
 ) -> DesktopAppUpdateResult {
-    match resolve_desktop_update_mode() {
-        DesktopUpdateMode::NativeUpdater => {}
-        DesktopUpdateMode::ManualDownload => {
-            append_desktop_log(
-                "desktop updater install routed to manual-download mode for current Linux install",
-            );
-            return map_update_install_error(desktop_manual_download_reason());
-        }
-        DesktopUpdateMode::Unsupported => {
-            append_desktop_log(
-                "desktop updater install is unsupported on the current platform/runtime mode",
-            );
-            return map_update_install_error(DESKTOP_UPDATER_UNSUPPORTED_REASON);
-        }
+    if let Some((log_message, result)) = short_circuit_update_install(resolve_desktop_update_mode())
+    {
+        append_desktop_log(log_message);
+        return result;
     }
 
     let updater = match build_channel_aware_updater(&app_handle) {
@@ -345,6 +359,92 @@ pub(crate) async fn desktop_bridge_install_app_update(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn updater_check_mode_returns_manual_download_result() {
+        let (log_message, result) =
+            short_circuit_update_check(DesktopUpdateMode::ManualDownload, "4.19.2")
+                .expect("manual-download mode should short-circuit update checks");
+
+        assert_eq!(
+            log_message,
+            "desktop updater check routed to manual-download mode for current Linux install"
+        );
+        assert_eq!(
+            result,
+            crate::bridge::updater_types::DesktopAppUpdateCheckResult {
+                ok: true,
+                reason: Some(crate::bridge::updater_messages::desktop_manual_download_reason()),
+                current_version: Some("4.19.2".to_string()),
+                latest_version: None,
+                has_update: true,
+                manual_download_required: true,
+            }
+        );
+    }
+
+    #[test]
+    fn updater_check_mode_returns_unsupported_result() {
+        let (log_message, result) =
+            short_circuit_update_check(DesktopUpdateMode::Unsupported, "4.19.2")
+                .expect("unsupported mode should short-circuit update checks");
+
+        assert_eq!(
+            log_message,
+            "desktop updater check is unsupported on the current platform/runtime mode"
+        );
+        assert_eq!(
+            result,
+            crate::bridge::updater_types::DesktopAppUpdateCheckResult {
+                ok: false,
+                reason: Some(
+                    crate::bridge::updater_messages::DESKTOP_UPDATER_UNSUPPORTED_REASON.to_string(),
+                ),
+                current_version: Some("4.19.2".to_string()),
+                latest_version: Some("4.19.2".to_string()),
+                has_update: false,
+                manual_download_required: false,
+            }
+        );
+    }
+
+    #[test]
+    fn updater_install_mode_returns_manual_download_result() {
+        let (log_message, result) = short_circuit_update_install(DesktopUpdateMode::ManualDownload)
+            .expect("manual-download mode should short-circuit update installs");
+
+        assert_eq!(
+            log_message,
+            "desktop updater install routed to manual-download mode for current Linux install"
+        );
+        assert_eq!(
+            result,
+            crate::bridge::updater_types::DesktopAppUpdateResult {
+                ok: false,
+                reason: Some(crate::bridge::updater_messages::desktop_manual_download_reason()),
+            }
+        );
+    }
+
+    #[test]
+    fn updater_install_mode_returns_unsupported_result() {
+        let (log_message, result) = short_circuit_update_install(DesktopUpdateMode::Unsupported)
+            .expect("unsupported mode should short-circuit update installs");
+
+        assert_eq!(
+            log_message,
+            "desktop updater install is unsupported on the current platform/runtime mode"
+        );
+        assert_eq!(
+            result,
+            crate::bridge::updater_types::DesktopAppUpdateResult {
+                ok: false,
+                reason: Some(
+                    crate::bridge::updater_messages::DESKTOP_UPDATER_UNSUPPORTED_REASON.to_string(),
+                ),
+            }
+        );
+    }
 
     #[test]
     fn updater_manifest_log_message_includes_channel_and_endpoint() {

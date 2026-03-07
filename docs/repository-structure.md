@@ -17,7 +17,9 @@
 - `docs/`
   - 架构、重构归档、环境变量清单等文档。
 
-## 2. Rust 侧组织（`src-tauri/src`）
+## 2. Rust 侧当前布局（`src-tauri/src`）
+
+当前 Rust 代码采用“子系统目录 + 顶层共享模块”的布局；以下职责说明以当前落点为准。
 
 - `tray/`
   - 托盘子系统目录。
@@ -52,9 +54,15 @@
   - `bridge/desktop.rs`
     - desktop bridge bootstrap 组装与注入执行。
   - `bridge/commands.rs`
-    - desktop bridge IPC 命令定义与返回结构收敛。
+    - desktop bridge IPC 命令定义与返回结构收敛，含 shell locale / updater 相关入口。
   - `bridge/origin_policy.rs`
     - bridge 注入来源判定（同源/loopback/端口策略）。
+  - `bridge/updater_messages.rs`
+    - updater 文案、默认手动下载 URL 与 manual-download 原因组装。
+  - `bridge/updater_mode.rs`
+    - 运行时 updater 模式判定（`NativeUpdater` / `ManualDownload` / `Unsupported`）。
+  - `bridge/updater_types.rs`
+    - updater 检查/安装/通道 IPC 返回结构与映射 helper。
 - `backend/`
   - backend 子系统目录。
   - `backend/config.rs`
@@ -80,6 +88,8 @@
 
 - `main.rs`
   - 应用入口与流程编排。
+- `desktop_state.rs`
+  - `desktop_state.json` 共享路径解析，供 shell locale 与 update channel 共用。
 - `app_runtime_events.rs`
   - 窗口/页面加载/退出事件的纯决策逻辑。
 - `logging.rs`
@@ -93,7 +103,9 @@
 - `process_control.rs`
   - 子进程 graceful/force 停止控制与等待策略。
 - `shell_locale.rs`
-  - shell locale 归一化、缓存读取与托盘文案映射。
+  - shell locale 归一化、共享状态缓存读写与托盘文案映射。
+- `update_channel.rs`
+  - stable/nightly 通道解析、updater endpoint 选择与 `updateChannel` 状态持久化。
 - `runtime_paths.rs`
   - source root / packaged root / 资源路径探测逻辑。
 - `packaged_webui.rs`
@@ -137,7 +149,7 @@
 ## 4. 文档组织（`docs/`）
 
 - `architecture.md`
-  - 架构与流程说明。
+  - 当前子系统边界与主要流程。
 - `repository-structure.md`
   - 文件组织说明（本文档）。
 - `environment-variables.md`

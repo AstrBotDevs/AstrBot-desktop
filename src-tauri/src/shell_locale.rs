@@ -81,19 +81,8 @@ pub(crate) fn normalize_shell_locale(raw: &str) -> Option<&'static str> {
     None
 }
 
-fn desktop_state_path_for_locale(packaged_root_dir: Option<&Path>) -> Option<PathBuf> {
-    if let Ok(root) = env::var("ASTRBOT_ROOT") {
-        let path = PathBuf::from(root.trim());
-        if !path.as_os_str().is_empty() {
-            return Some(path.join("data").join("desktop_state.json"));
-        }
-    }
-
-    packaged_root_dir.map(|root| root.join("data").join("desktop_state.json"))
-}
-
 fn read_cached_shell_locale(packaged_root_dir: Option<&Path>) -> Option<&'static str> {
-    let state_path = desktop_state_path_for_locale(packaged_root_dir)?;
+    let state_path = crate::desktop_state::resolve_desktop_state_path(packaged_root_dir)?;
     let raw = fs::read_to_string(state_path).ok()?;
     let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
     let locale = parsed.get(LOCALE_FIELD)?.as_str()?;
@@ -126,7 +115,8 @@ pub(crate) fn write_cached_shell_locale(
         }
     }
 
-    let Some(state_path) = desktop_state_path_for_locale(packaged_root_dir) else {
+    let Some(state_path) = crate::desktop_state::resolve_desktop_state_path(packaged_root_dir)
+    else {
         crate::append_desktop_log(
             "shell locale state path is unavailable; skipping locale persistence",
         );

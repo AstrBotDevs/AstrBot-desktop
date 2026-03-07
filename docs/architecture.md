@@ -1,479 +1,189 @@
 # AstrBot Desktop 架构说明
 
-本文档描述当前桌面端（Tauri）运行时架构、关键模块边界和主要流程。
+本文档描述当前桌面端（Tauri）运行时的子系统边界、共享状态和主要流程。
+详细文件清单见 `docs/repository-structure.md`；本文只关注当前架构，不记录迁移历史。
 
-## 1. 总体架构
+## 1. 总体结构
 
 系统由三层组成：
 
-1. 桌面壳层（Tauri + Rust）
+1. 桌面壳层（`src-tauri`，Tauri + Rust）
 2. WebUI 资源层（`resources/webui`）
 3. 后端运行时层（`resources/backend` + CPython runtime）
 
 桌面壳层负责：
 
-- 进程生命周期管理（拉起、探活、重启、停止）
-- 托盘与窗口行为
-- 前端桥接注入与 IPC 命令
-- 配置解析、日志落盘、退出流程协调
+- 后端启动、探活、重启、停止
+- 托盘、窗口和启动壳层行为
+- WebView bridge 注入与 IPC 命令
+- 日志、配置、退出和 updater 流程编排
 
-## 2. Rust 模块边界
+## 2. Rust 子系统边界
 
-### 2.0 当前分组方向（进行中）
+当前 Rust 代码采用“子系统目录 + 顶层共享模块”的布局。
 
-Rust 侧正在从“顶层平铺模块”逐步迁移到“按子系统分组”的结构，当前已落地的方向包括：
+### 2.1 编排层
 
-- `tray/`
-  - 托盘菜单动作、文案刷新、事件处理、tray icon 初始化、tray bridge 事件
-- `window/`
-  - 主窗口操作、窗口动作编排、startup loading 注入逻辑
-- `lifecycle/`
-  - 退出事件编排、退出清理、BackendState 的退出状态包装方法
-- `bridge/`
-  - desktop bridge 注入、bridge IPC 命令、同源判定策略
-- `backend/`
-  - backend 配置、PATH 组装、启动、生命周期、HTTP 请求、HTTP 响应解析、运行时参数、readiness、restart 能力
+- `main.rs`
+  - 进程入口与模块声明。
+- `app_runtime.rs`
+  - Tauri builder、插件、事件绑定和 invoke handler 编排。
 - `app_runtime_events.rs`
-  - 从 `app_runtime.rs` 中抽出的窗口/页面加载/退出事件纯决策逻辑
+  - 窗口、页面加载和退出事件的纯决策逻辑。
+
+这一层负责把各子系统接起来，不承载具体业务细节。
+
+### 2.2 backend 子系统
+
+- `backend/`
+  - 后端配置、PATH 组装、启动、HTTP 探测、readiness、restart 和进程生命周期。
+- `launch_plan.rs`
+  - custom / packaged / dev 三类启动计划解析。
+- `runtime_paths.rs`
+  - packaged root、resource 路径、开发态源码根目录探测。
+- `process_control.rs`
+  - graceful / force stop 与等待策略。
+- `packaged_webui.rs`、`webui_paths.rs`
+  - 打包 WebUI 与 fallback 资源路径决策。
+
+backend 子系统对上提供统一的“后端可否管理、如何启动、何时算 ready”的运行时边界。
+
+### 2.3 window / tray 子系统
+
+- `window/`
+  - 主窗口 show/hide/reload、startup loading 注入和窗口动作编排。
+- `tray/`
+  - 托盘菜单、文案刷新、重启事件和初始化。
+- `shell_locale.rs`
+  - 壳层 locale 归一化、托盘文案映射和 locale 缓存读写。
+- `startup_mode.rs`
+  - `loading` / `panel-update` 启动模式判定。
+
+这一层负责桌面交互体验，不直接处理 backend 细节。
+
+### 2.4 lifecycle 子系统
+
+- `lifecycle/`
+  - ExitRequested / Exit 分支、清理流程和退出状态包装。
+- `exit_state.rs`
+  - 退出状态机。
+- `restart_backend_flow.rs`
+  - bridge / tray 共用的重启任务入口与并发门禁。
+
+这一层保证退出和重启流程串行、可追踪、可降级。
+
+### 2.5 bridge 与 updater 子系统
 
-迁移策略保持增量推进：先抽纯逻辑与 seam，再做目录迁移，最后同步文档与流程说明。
-
-### 2.1 `src-tauri/src/main.rs`
-
-入口与编排层，主要保留：
-
-- 模块声明与统一 re-export 出口
-- 进程入口（`main`）与运行委托（`app_runtime::run()`）
-- 维持 `crate::CONST` / `crate::fn` / `crate::Type` 调用兼容
-
-### 2.2 `src-tauri/src/backend_config.rs`
-
-后端配置解析模块：
-
-- ready path 解析
-- timeout clamp 与默认值策略
-- readiness config 聚合（含 `BackendReadinessConfig`）
-- backend URL 归一化
-
-已迁移到：`src-tauri/src/backend/config.rs`
-
-### 2.3 `src-tauri/src/logging.rs`
-
-日志模块：
-
-- 日志轮转
-- 日志路径解析（desktop/backend）
-- 日志落盘
-- 日志分类：`startup/runtime/restart/shutdown`
-
-### 2.4 `src-tauri/src/startup_mode.rs`
-
-启动模式纯逻辑：
-
-- 环境变量到启动模式映射
-- WebUI 文件存在性到启动模式映射
-
-### 2.5 `src-tauri/src/backend_path.rs`
-
-后端 PATH 覆盖逻辑：
-
-- 平台特定路径候选
-- 去重与合并
-- 诊断日志输出
-
-已迁移到：`src-tauri/src/backend/path.rs`
-
-### 2.6 `src-tauri/src/webui_paths.rs`
-
-打包模式 WebUI 回退路径逻辑：
-
-- fallback 探测目录
-- fallback 可用性判断
-- 诊断展示路径生成
-
-### 2.7 `src-tauri/src/exit_state.rs`
-
-退出状态机：
-
-- 状态：`Running` / `QuittingRequested` / `CleanupInProgress` / `ReadyToExit` / `Exiting`
-- 能力：开始清理、放行下次退出请求、状态读取
-
-### 2.8 `src-tauri/src/http_response.rs`
-
-HTTP 响应解析模块：
-
-- 状态码提取（status line）
-- chunked body 解码
-- JSON 响应提取（仅 2xx 状态码）
-- 后端 `start_time` 字段解析
-
-已迁移到：`src-tauri/src/backend/http_response.rs`
-
-### 2.9 `src-tauri/src/process_control.rs`
-
-进程停止控制模块：
-
-- 子进程退出等待
-- graceful stop / force stop 命令编排
-- 跟随等待时间计算与失败降级策略
-
-### 2.10 `src-tauri/src/origin_policy.rs`
-
-桥接注入来源策略模块：
-
-- URL 同源判定
-- loopback host 判定
-- tray bridge 注入来源决策
-
-已迁移到：`src-tauri/src/bridge/origin_policy.rs`
-
-### 2.11 `src-tauri/src/tray_actions.rs`
-
-托盘菜单动作映射模块：
-
-- 菜单 ID 常量集中定义
-- 菜单 ID 到动作枚举映射
-- 托盘事件分发入口去字符串硬编码
-
-已迁移到：`src-tauri/src/tray/actions.rs`
-
-### 2.12 `src-tauri/src/shell_locale.rs`
-
-桌面 locale 模块：
-
-- locale 归一化与兜底
-- `desktop_state.json` 缓存 locale 读取
-- 托盘文案（中英）映射
-
-### 2.13 `src-tauri/src/main_window.rs`
-
-主窗口操作模块：
-
-- main window show/hide/reload
-- 导航到 backend dashboard
-- 主窗口异常处理日志收敛
-
-已迁移到：`src-tauri/src/window/main_window.rs`
-
-### 2.14 `src-tauri/src/runtime_paths.rs`
-
-运行时路径模块：
-
-- AstrBot source root 探测
-- 默认打包根目录解析（`~/.astrbot`）
-- 资源路径定位（含 `_up_/resources` 回退探测）
-
-### 2.15 `src-tauri/src/packaged_webui.rs`
-
-打包 WebUI 解析模块：
-
-- embedded/fallback webui 目录决策
-- fallback index 诊断路径组装
-- 多语言不可用错误文案生成
-
-### 2.16 `src-tauri/src/ui_dispatch.rs`
-
-UI 分发模块：
-
-- 主线程任务调度包装
-- startup error 日志与退出流程
-- startup error 主线程派发兜底
-
-### 2.17 `src-tauri/src/tray_bridge_event.rs`
-
-托盘 bridge 事件模块：
-
-- tray restart signal token 递增
-- 向主窗口发射重启事件
-- 事件发送失败日志收敛
-
-已迁移到：`src-tauri/src/tray/bridge_event.rs`
-
-### 2.18 `src-tauri/src/startup_loading.rs`
-
-启动 loading 模块：
-
-- 是否应用 startup loading 的 URL/窗口判定
-- startup mode 解析与缓存读写
-- startup mode 前端注入脚本执行
-
-已迁移到：`src-tauri/src/window/startup_loading.rs`
-
-### 2.19 `src-tauri/src/desktop_bridge.rs`
-
-desktop bridge 模块：
-
-- bridge bootstrap 模板装配
-- bridge script 缓存
-- bridge script 注入执行
-- bridge 注入判定（backend/page URL）
-
-已迁移到：`src-tauri/src/bridge/desktop.rs`
-
-### 2.20 `src-tauri/src/tray_labels.rs`
-
-托盘文案模块：
-
-- 托盘菜单文案按 locale 刷新
-- 主窗口可见性与 toggle 文案联动
-- `set_text` 失败日志收敛
-
-已迁移到：`src-tauri/src/tray/labels.rs`
-
-### 2.21 `src-tauri/src/exit_cleanup.rs`
-
-退出清理模块：
-
-- 退出清理并发判定
-- ExitRequested/Exit fallback 分支日志语义
-- backend stop 后续退出放行日志
-
-已迁移到：`src-tauri/src/lifecycle/cleanup.rs`
-
-### 2.22 `src-tauri/src/restart_backend_flow.rs`
-
-重启任务流程模块：
-
-- backend action 并发判定
-- 重启任务异步执行与结果归一
-- bridge 与 tray 重启入口复用
-
-### 2.23 `src-tauri/src/tray_menu_handler.rs`
-
-托盘菜单处理模块：
-
-- 菜单动作分发执行
-- tray 触发重启流程的编排
-- tray quit 退出路径收敛
-
-已迁移到：`src-tauri/src/tray/menu_handler.rs`
-
-### 2.24 `src-tauri/src/window_actions.rs`
-
-窗口动作模块：
-
-- 主窗口 show/hide/toggle/reload 统一封装
-- 主窗口动作与 tray label 刷新联动
-- 主窗口可见性判定日志收敛
-
-已迁移到：`src-tauri/src/window/actions.rs`
-
-### 2.25 `src-tauri/src/tray_setup.rs`
-
-托盘初始化模块：
-
-- tray 菜单项构建与状态注册
-- tray icon 事件绑定
-- tray setup 失败错误收敛
-
-已迁移到：`src-tauri/src/tray/setup.rs`
-
-### 2.26 `src-tauri/src/launch_plan.rs`
-
-启动计划模块：
-
-- custom/packaged/dev 启动计划构建
-- 打包运行时 manifest 解析
-- 启动目录与 webui 路径策略收敛
-
-### 2.27 `src-tauri/src/startup_task.rs`
-
-启动任务模块：
-
-- 后端就绪等待任务启动
-- 启动完成后主线程导航派发
-- 启动失败错误分发与退出路径
-
-### 2.28 `src-tauri/src/exit_events.rs`
-
-退出事件模块：
-
-- ExitRequested 分支编排
-- Exit fallback 分支编排
-- 退出分支与清理模块解耦
-
-已迁移到：`src-tauri/src/lifecycle/events.rs`
-
-### 2.29 `src-tauri/src/backend_runtime.rs`
-
-后端运行时参数模块：
-
-- backend timeout 解析
-- readiness 配置解析
-- backend/bridge ping timeout 解析与缓存
-
-已迁移到：`src-tauri/src/backend/runtime.rs`
-
-### 2.30 `src-tauri/src/backend_http.rs`
-
-后端 HTTP 能力模块：
-
-- backend TCP 探活（ping）
-- 原始 HTTP 请求封装（method/path/body/token）
-- status/json/start_time 响应提取调用链
-
-已迁移到：`src-tauri/src/backend/http.rs`
-
-### 2.31 `src-tauri/src/backend_restart.rs`
-
-后端重启策略模块：
-
-- restart auth token 读写与归一化
-- graceful restart 请求与轮询等待
-- managed/unmanaged 重启策略决策
-- bridge backend state 组装
-
-已迁移到：`src-tauri/src/backend/restart.rs`
-
-### 2.32 `src-tauri/src/backend_launch.rs`
-
-后端启动计划与拉起模块：
-
-- 启动计划解析（custom/packaged/dev）
-- 子进程启动参数与环境注入
-- backend 进程拉起与日志输出重定向
-
-已迁移到：`src-tauri/src/backend/launch.rs`
-
-### 2.33 `src-tauri/src/backend_readiness.rs`
-
-后端就绪探测模块：
-
-- 启动前快速探活与 auto-start 判定
-- readiness 轮询与超时控制
-- HTTP/TCP 探测结果日志收敛
-
-已迁移到：`src-tauri/src/backend/readiness.rs`
-
-### 2.34 `src-tauri/src/backend_process_lifecycle.rs`
-
-后端进程生命周期模块：
-
-- backend graceful stop
-- backend 日志轮转 worker 启停
-- child PID 存活判定与轮转退出协同
-
-已迁移到：`src-tauri/src/backend/process_lifecycle.rs`
-
-### 2.35 `src-tauri/src/backend_exit_state.rs`
-
-退出状态包装模块：
-
-- `exit_state` 锁读写包装
-- 退出流程状态方法迁移（mark/is_quitting/cleanup allow）
-- 锁异常日志语义统一
-
-已迁移到：`src-tauri/src/lifecycle/backend_exit_state.rs`
-
-### 2.36 `src-tauri/src/desktop_bridge_commands.rs`
-
-bridge 命令模块：
-
-- `desktop_bridge_*` IPC 命令定义
-- backend action 并发判定与返回结构统一
-- bridge 命令与运行编排解耦
-
-已迁移到：`src-tauri/src/bridge/commands.rs`
-
-### 2.37 `src-tauri/src/app_runtime.rs`
-
-应用运行编排模块：
-
-- Tauri Builder 构建与 invoke handler 挂载
-- window/page load/setup/run 事件绑定
-- 启动日志与退出事件分支编排
-
-### 2.37.1 `src-tauri/src/app_runtime_events.rs`
-
-运行时事件决策模块：
-
-- main window close/focus-lost 行为判定
-- page load started/finished 行为判定
-- run event 退出分支判定
-
-### 2.37.2 `src-tauri/src/backend/restart_strategy.rs`
-
-后端重启策略模块：
-
-- managed/unmanaged/windows packaged restart 策略判定
-- graceful restart 请求/等待结果映射
-- graceful restart 后续执行决策（success/fallback/error）
-
-### 2.38 `src-tauri/src/app_types.rs`
-
-共享类型模块：
-
-- `BackendState`、`LaunchPlan`、`TrayMenuState` 等核心结构定义
-- `BackendBridgeState/Result` 返回结构定义
-- `AtomicFlagGuard` 与 `BackendState::default` 收敛
-
-### 2.39 `src-tauri/src/app_constants.rs`
-
-共享常量模块：
-
-- timeout/readiness/ping 相关运行常量
-- 日志与托盘常量
-- 平台特定（Windows）进程创建 flags
-
-### 2.40 `src-tauri/src/app_helpers.rs`
-
-共享 helper 模块：
-
-- 日志写入 helper（startup/runtime/restart/shutdown）
-- desktop bridge 注入 helper
-- backend PATH 覆写与 debug command 组装
-- 主窗口导航 helper
-
-## 3. 关键流程
-
-### 3.1 启动流程
-
-1. Tauri 启动并初始化托盘与窗口事件。
-2. 异步 worker 执行后端就绪检查与必要拉起。
-3. 成功后导航主窗口；失败时进入 startup error 路径。
-4. 页面加载阶段按规则注入 desktop bridge。
-
-### 3.2 重启流程
-
-1. 触发源：托盘菜单或 bridge IPC。
-2. 统一进入 `run_restart_backend_task`。
-3. 原子门禁阻止并发重启/拉起。
-4. 按策略执行 graceful 或 fallback 重启。
-
-### 3.3 退出流程
-
-1. `ExitRequested` 阶段先 `prevent_exit`。
-2. 退出状态机尝试进入清理态。
-3. 异步执行 `stop_backend`。
-4. 清理完成后放行下一次退出请求并 `exit(0)`。
-5. `Exit` 分支作为 fallback 清理路径。
-
-## 4. 脚本架构（prepare-resources）
-
-入口：`scripts/prepare-resources.mjs`（编排层）
-
-子模块：
-
-- `source-repo.mjs`：源码仓库 URL/ref 解析与同步
-- `version-sync.mjs`：版本读取与三处文件同步
-- `backend-runtime.mjs`：CPython runtime 解析/准备
-- `mode-tasks.mjs`：`webui/backend/all` 任务实现
-- `desktop-bridge-checks.mjs`：bridge 工件校验
-
-## 5. 测试与校验
-
-本地：
-
-- `make lint`
-- `make test`
-
-CI：
-
-- `check-rust.yml`：fmt/clippy/check + 关键 Rust 单测
-- `check-scripts.yml`：Node/Python 语法 + Node 行为测试
-
-## 6. 演进建议
-
-- 继续把 `main.rs` 中仍偏纯函数的工具逻辑按职责迁移。
-- 为退出/重启流程补充更贴近事件流的集成测试。
-- 维持“编排层薄、模块层厚”的边界纪律。
+- `bridge/desktop.rs`
+  - bridge bootstrap 组装与注入执行。
+- `bridge/origin_policy.rs`
+  - bridge 注入来源判定。
+- `bridge/commands.rs`
+  - desktop bridge IPC 命令入口，收敛 backend、locale、updater 相关返回结构。
+- `bridge/updater_messages.rs`
+  - updater 不支持/手动下载原因文案，以及 manual-download 文案里的下载地址解析。
+- `bridge/updater_mode.rs`
+  - 当前运行时 updater 模式判定：`NativeUpdater`、`ManualDownload`、`Unsupported`。
+- `bridge/updater_types.rs`
+  - updater check / install / channel 的序列化返回结构。
+- `update_channel.rs`
+  - `stable` / `nightly` 通道解析、manifest endpoint 选择、版本比较和 `updateChannel` 持久化。
+- `desktop_state.rs`
+  - `desktop_state.json` 共享路径解析，供 locale / update channel 共用。
+
+这一层对 WebUI 暴露稳定的桌面能力接口，并把平台差异和 updater 分支收敛在 Rust 侧。
+
+### 2.6 共享支撑模块
+
+- `logging.rs`
+  - desktop/backend 日志路径、轮转和写入。
+- `ui_dispatch.rs`
+  - 主线程任务派发与 startup error 分发。
+- `app_types.rs`
+  - `BackendState`、`LaunchPlan`、bridge 返回结构等共享类型。
+- `app_constants.rs`
+  - timeout、日志、tray 和 startup 相关常量。
+- `app_helpers.rs`
+  - 日志写入、bridge 注入、路径覆写、debug command 等跨模块 helper。
+
+## 3. 共享状态与配置边界
+
+### 3.1 `desktop_state.json`
+
+- 共享路径由 `desktop_state.rs` 统一解析。
+- 路径优先级：`ASTRBOT_ROOT/data/desktop_state.json` -> 打包根目录下的 `data/desktop_state.json`。
+- `shell_locale.rs` 维护 `locale` 字段。
+- `update_channel.rs` 维护 `updateChannel` 字段，并保留其他 JSON 字段。
+
+当前维护约定是：locale 和 update channel 共用同一个状态文件，但各模块只管理自己的字段。
+
+### 3.2 updater endpoint 与模式解析
+
+- `update_channel.rs` 先看环境变量覆盖，再读 `tauri.conf.json` 的 `plugins.updater.channelEndpoints`。
+- stable 通道额外兼容 `plugins.updater.endpoints[0]`。
+- `bridge/updater_mode.rs` 的当前策略是：
+  - Windows / macOS：`NativeUpdater`
+  - Linux AppImage 运行态：`NativeUpdater`
+  - 其他 Linux 安装方式：`ManualDownload`
+  - 其他平台：`Unsupported`
+
+### 3.3 资源与根目录解析
+
+- `runtime_paths.rs` 负责 packaged root、workspace root 和资源路径探测。
+- Tauri 资源路径支持直接资源路径和 `_up_/resources` 回退路径。
+- `launch_plan.rs` 根据当前模式决定 backend cwd、root_dir 和 webui_dir。
+
+## 4. 主要流程
+
+### 4.1 启动流程
+
+1. `app_runtime.rs` 初始化 Tauri 插件、窗口事件、页面加载事件和托盘。
+2. `startup_task.rs` 异步解析启动计划，执行 backend readiness 检查与必要拉起。
+3. backend ready 后导航主窗口；失败时进入 startup error 路径。
+4. 页面加载过程中按来源策略注入 desktop bridge，并在需要时注入 startup loading mode。
+
+### 4.2 bridge 注入与桌面交互流程
+
+1. `bridge/origin_policy.rs` 判断当前页面是否允许注入 desktop bridge。
+2. `bridge/desktop.rs` 把 bootstrap 脚本注入 WebView。
+3. WebUI 通过 `bridge/commands.rs` 调用 desktop IPC。
+4. tray / window 子系统根据当前 locale 和窗口状态刷新文案与可见性。
+
+### 4.3 更新检查/安装流程
+
+1. `bridge/commands.rs` 先用 `bridge/updater_mode.rs` 判定当前 updater 模式。
+2. `ManualDownload` / `Unsupported` 直接短路，复用 `bridge/updater_messages.rs` 和 `bridge/updater_types.rs` 返回统一结果。
+3. `NativeUpdater` 路径下，`update_channel.rs` 先读缓存的 `updateChannel`，未命中时按当前版本推断通道。
+4. updater manifest endpoint 优先取 `ASTRBOT_DESKTOP_UPDATER_STABLE_ENDPOINT` / `ASTRBOT_DESKTOP_UPDATER_NIGHTLY_ENDPOINT`，否则回退到 `tauri.conf.json`。
+5. 版本比较仍由 `update_channel.rs` 统一控制 stable / nightly 跨通道规则。
+
+### 4.4 重启流程
+
+1. 触发源来自 tray 菜单或 bridge IPC。
+2. `restart_backend_flow.rs` 统一处理并发门禁。
+3. `backend/restart.rs` 和 `backend/restart_strategy.rs` 决定 graceful 或 fallback 路径。
+4. 完成后刷新 bridge / tray 侧可观察状态。
+
+### 4.5 退出流程
+
+1. `lifecycle/events.rs` 在 `ExitRequested` 阶段先阻止直接退出。
+2. `exit_state.rs` 尝试进入清理态。
+3. `lifecycle/cleanup.rs` 异步停止 backend 并完成清理。
+4. 清理完成后放行退出；`Exit` 分支保留 fallback 清理路径。
+
+## 5. 脚本与校验面
+
+- `scripts/prepare-resources.mjs`
+  - 资源准备编排入口。
+- `scripts/prepare-resources/source-repo.mjs`
+  - 源码仓库 URL/ref、clone/fetch/checkout。
+- `scripts/prepare-resources/version-sync.mjs`
+  - 桌面版本同步。
+- `scripts/prepare-resources/backend-runtime.mjs`
+  - CPython runtime 准备。
+- `scripts/prepare-resources/mode-tasks.mjs`
+  - WebUI / backend 资源准备任务。
+- `scripts/prepare-resources/desktop-bridge-checks.mjs`
+  - bridge 工件校验。
+
+当前本地和 CI 主要通过 `make lint`、`make test`、`check-rust.yml`、`check-scripts.yml` 维持这些边界。

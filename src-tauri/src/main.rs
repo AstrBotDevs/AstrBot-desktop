@@ -8,6 +8,7 @@ mod app_types;
 
 mod backend;
 mod bridge;
+mod desktop_state;
 
 mod exit_state;
 mod lifecycle;

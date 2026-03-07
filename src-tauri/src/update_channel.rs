@@ -1,13 +1,7 @@
 use semver::{BuildMetadata, Prerelease, Version};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use std::{
-    collections::HashMap,
-    env, fs,
-    io::Write,
-    path::{Path, PathBuf},
-    sync::OnceLock,
-};
+use std::{collections::HashMap, env, fs, io::Write, path::Path, sync::OnceLock};
 
 #[cfg(test)]
 const UPDATE_CHANNEL_FIELD: &str = "updateChannel";
@@ -83,17 +77,6 @@ impl UpdateChannel {
     }
 }
 
-fn desktop_state_path(packaged_root_dir: Option<&Path>) -> Option<PathBuf> {
-    if let Ok(root) = env::var("ASTRBOT_ROOT") {
-        let path = PathBuf::from(root.trim());
-        if !path.as_os_str().is_empty() {
-            return Some(path.join("data").join("desktop_state.json"));
-        }
-    }
-
-    packaged_root_dir.map(|root| root.join("data").join("desktop_state.json"))
-}
-
 fn version_is_nightly(version: &Version) -> bool {
     version
         .pre
@@ -106,7 +89,16 @@ pub(crate) fn resolve_manifest_endpoint(
     plugins_config: &HashMap<String, Value>,
     channel: UpdateChannel,
 ) -> Result<String, String> {
-    if let Ok(value) = env::var(channel.env_override_key()) {
+    let env_override = env::var(channel.env_override_key()).ok();
+    resolve_manifest_endpoint_with_override(plugins_config, channel, env_override.as_deref())
+}
+
+fn resolve_manifest_endpoint_with_override(
+    plugins_config: &HashMap<String, Value>,
+    channel: UpdateChannel,
+    env_override: Option<&str>,
+) -> Result<String, String> {
+    if let Some(value) = env_override {
         let trimmed = value.trim();
         if !trimmed.is_empty() {
             return Ok(trimmed.to_string());
@@ -276,7 +268,7 @@ pub(crate) fn infer_channel_from_version(version: &Version) -> UpdateChannel {
 pub(crate) fn read_cached_update_channel(
     packaged_root_dir: Option<&Path>,
 ) -> Option<UpdateChannel> {
-    let state_path = desktop_state_path(packaged_root_dir)?;
+    let state_path = crate::desktop_state::resolve_desktop_state_path(packaged_root_dir)?;
     let raw = fs::read_to_string(state_path).ok()?;
     let state: DesktopState = serde_json::from_str(&raw).ok()?;
     UpdateChannel::parse(state.update_channel.as_deref()?)
@@ -374,7 +366,8 @@ pub(crate) fn write_cached_update_channel(
     channel: Option<UpdateChannel>,
     packaged_root_dir: Option<&Path>,
 ) -> Result<(), String> {
-    let Some(state_path) = desktop_state_path(packaged_root_dir) else {
+    let Some(state_path) = crate::desktop_state::resolve_desktop_state_path(packaged_root_dir)
+    else {
         let message =
             "Update channel state path is unavailable; cannot persist update channel selection."
                 .to_string();
@@ -529,12 +522,6 @@ mod tests {
 
     #[test]
     fn resolve_manifest_endpoint_prefers_environment_override() {
-        let _guard = EnvVarGuard::clear(UpdateChannel::Nightly.env_override_key());
-        std::env::set_var(
-            UpdateChannel::Nightly.env_override_key(),
-            "https://env.example/nightly.json",
-        );
-
         let updater_config = json!({
             "channelEndpoints": {
                 "stable": "https://config.example/stable.json",
@@ -545,14 +532,20 @@ mod tests {
         let mut plugins = HashMap::new();
         plugins.insert(UPDATER_PLUGIN_KEY.to_string(), updater_config);
 
-        let endpoint = resolve_manifest_endpoint(&plugins, UpdateChannel::Nightly)
-            .expect("nightly endpoint should resolve");
+        let endpoint = resolve_manifest_endpoint_with_override(
+            &plugins,
+            UpdateChannel::Nightly,
+            Some("https://env.example/nightly.json"),
+        )
+        .expect("nightly endpoint should resolve");
 
         assert_eq!(endpoint, "https://env.example/nightly.json");
     }
 
     #[test]
     fn resolve_manifest_endpoint_reads_channel_specific_config() {
+        let _stable_guard = EnvVarGuard::clear(UpdateChannel::Stable.env_override_key());
+        let _nightly_guard = EnvVarGuard::clear(UpdateChannel::Nightly.env_override_key());
         let updater_config = json!({
             "channelEndpoints": {
                 "stable": "https://config.example/stable.json",
@@ -575,6 +568,8 @@ mod tests {
 
     #[test]
     fn resolve_manifest_endpoint_uses_stable_endpoint_fallback_array() {
+        let _stable_guard = EnvVarGuard::clear(UpdateChannel::Stable.env_override_key());
+        let _nightly_guard = EnvVarGuard::clear(UpdateChannel::Nightly.env_override_key());
         let updater_config = json!({
             "endpoints": ["https://config.example/stable-fallback.json"]
         });
@@ -590,6 +585,8 @@ mod tests {
 
     #[test]
     fn resolve_manifest_endpoint_reports_stable_fallback_in_error() {
+        let _stable_guard = EnvVarGuard::clear(UpdateChannel::Stable.env_override_key());
+        let _nightly_guard = EnvVarGuard::clear(UpdateChannel::Nightly.env_override_key());
         let updater_config = json!({});
 
         let mut plugins = HashMap::new();
@@ -609,13 +606,11 @@ mod tests {
 
     #[test]
     fn resolve_manifest_endpoint_allows_env_override_without_updater_config() {
-        let _guard = EnvVarGuard::clear(UpdateChannel::Nightly.env_override_key());
-        std::env::set_var(
-            UpdateChannel::Nightly.env_override_key(),
-            "https://env.example/nightly.json",
+        let result = resolve_manifest_endpoint_with_override(
+            &HashMap::new(),
+            UpdateChannel::Nightly,
+            Some("https://env.example/nightly.json"),
         );
-
-        let result = resolve_manifest_endpoint(&HashMap::new(), UpdateChannel::Nightly);
 
         assert_eq!(
             result.expect("env override should resolve without updater config"),
