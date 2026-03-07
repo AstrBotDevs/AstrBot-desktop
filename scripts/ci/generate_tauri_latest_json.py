@@ -11,7 +11,9 @@ from scripts.ci.lib.artifact_arch import normalize_arch_alias
 from scripts.ci.lib.nightly_version import NIGHTLY_CANONICAL_FORMAT, NIGHTLY_VERSION_RE
 from scripts.ci.lib.release_artifacts import (
     LINUX_APPIMAGE_UPDATER_PATTERNS,
+    MACOS_UPDATER_ARCHIVE_EXTENSION,
     MACOS_UPDATER_ARCHIVE_PATTERNS,
+    MACOS_UPDATER_SIGNATURE_EXTENSION,
     WINDOWS_UPDATER_PATTERNS,
     match_any,
 )
@@ -98,11 +100,10 @@ def canonical_macos_filename(
     arch: str,
     version: str,
     channel: str,
-    archive_ext: str,
 ) -> str:
     _, base_version, nightly_suffix = derive_release_metadata(version, channel)
     arch = normalize_arch(arch)
-    return f"{name}_{base_version}_macos_{arch}{nightly_suffix}{archive_ext}"
+    return f"{name}_{base_version}_macos_{arch}{nightly_suffix}{MACOS_UPDATER_ARCHIVE_EXTENSION}"
 
 
 def canonical_linux_appimage_filename(
@@ -135,7 +136,7 @@ def parse_macos_artifact_name(source_name: str) -> re.Match[str]:
         raise ValueError(
             "Unexpected macOS artifact name: "
             f"{source_name}. Expected format: "
-            "<name>_<version>_macos_<arch>.app.tar.gz "
+            f"<name>_<version>_macos_<arch>{MACOS_UPDATER_ARCHIVE_EXTENSION} "
             "(nightly builds may append _nightly_<sha> before the extension)."
         )
     return match
@@ -210,7 +211,7 @@ def collect_platforms(
             )
             continue
 
-        if sig_name.endswith(".app.tar.gz.sig"):
+        if sig_name.endswith(MACOS_UPDATER_SIGNATURE_EXTENSION):
             source_name = sig_name[:-4]
             match = parse_macos_artifact_name(source_name)
             artifact_name = canonical_macos_filename(
@@ -218,7 +219,6 @@ def collect_platforms(
                 match.group("arch"),
                 version,
                 channel,
-                ".app.tar.gz",
             )
             add_platform(
                 platforms,
