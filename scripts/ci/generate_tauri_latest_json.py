@@ -184,6 +184,8 @@ def collect_platforms(
     channel: str,
 ) -> dict[str, dict[str, str]]:
     platforms: dict[str, dict[str, str]] = {}
+    # Fail fast on any unknown signature file so release packaging problems are
+    # visible immediately instead of silently producing a partial manifest.
     unsupported_signature_files: list[str] = []
 
     for sig_path in sorted(root.rglob("*.sig")):

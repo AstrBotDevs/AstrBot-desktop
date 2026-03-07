@@ -1,6 +1,6 @@
 # Remove macOS Zip Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> Use this plan task-by-task and verify each step before moving on.
 
 **Goal:** Remove macOS zip packaging and updater parsing so release artifacts only include the `.app.tar.gz` assets actually used for macOS updates.
 
