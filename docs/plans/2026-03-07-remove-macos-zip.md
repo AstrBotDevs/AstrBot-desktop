@@ -109,5 +109,5 @@ Expected: no output and exit status `1`.
 
 ```bash
 git add .github/workflows/build-desktop-tauri.yml scripts/ci/generate_tauri_latest_json.py scripts/ci/lib/release_artifacts.py scripts/ci/release-updater-artifacts.test.mjs scripts/ci/test_generate_tauri_latest_json.py docs/plans/2026-03-07-remove-macos-zip-design.md docs/plans/2026-03-07-remove-macos-zip.md
-git commit -m "fix(ci): remove macos zip updater artifacts"
+git commit -m "fix(ci): remove macOS zip updater artifacts"
 ```

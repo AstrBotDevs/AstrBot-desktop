@@ -422,7 +422,7 @@ class GenerateTauriLatestJsonTests(unittest.TestCase):
                     channel="stable",
                 )
 
-    def test_collect_platforms_rejects_unknown_signature_files_even_with_valid_sig(
+    def test_collect_platforms_ignores_non_artifact_sig_files_even_with_valid_sig(
         self,
     ):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -432,28 +432,25 @@ class GenerateTauriLatestJsonTests(unittest.TestCase):
             )
             (root / "unexpected.sig").write_text("sig-unknown")
 
-            with self.assertRaisesRegex(
-                ValueError,
-                "Unsupported updater signature files under artifacts root",
-            ):
-                MODULE.collect_platforms(
-                    root,
-                    "AstrBotDevs/AstrBot-desktop",
-                    "v4.29.0",
-                    version="4.29.0",
-                    channel="stable",
-                )
+            platforms = MODULE.collect_platforms(
+                root,
+                "AstrBotDevs/AstrBot-desktop",
+                "v4.29.0",
+                version="4.29.0",
+                channel="stable",
+            )
+
+        self.assertIn("darwin-aarch64", platforms)
 
     def test_collect_platforms_error_lists_all_unsupported_signature_files(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (root / "AstrBot_4.29.0_macos_arm64.zip.sig").write_text("sig-mac-invalid")
-            (root / "unexpected.sig").write_text("sig-unknown")
+            (root / "AstrBot_4.29.0_windows_amd64_setup.msi.sig").write_text(
+                "sig-win-invalid"
+            )
 
-            with self.assertRaisesRegex(
-                ValueError,
-                r"AstrBot_4\.29\.0_macos_arm64\.zip\.sig, unexpected\.sig",
-            ):
+            with self.assertRaises(ValueError) as cm:
                 MODULE.collect_platforms(
                     root,
                     "AstrBotDevs/AstrBot-desktop",
@@ -461,6 +458,30 @@ class GenerateTauriLatestJsonTests(unittest.TestCase):
                     version="4.29.0",
                     channel="stable",
                 )
+
+            error_message = str(cm.exception)
+            self.assertRegex(error_message, r"AstrBot_4\.29\.0_macos_arm64\.zip\.sig")
+            self.assertRegex(
+                error_message, r"AstrBot_4\.29\.0_windows_amd64_setup\.msi\.sig"
+            )
+
+    def test_collect_platforms_ignores_non_artifact_sig_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "AstrBot_4.29.0_macos_arm64.app.tar.gz.sig").write_text(
+                "sig-mac-valid"
+            )
+            (root / "notes.sig").write_text("not-an-artifact-signature")
+
+            platforms = MODULE.collect_platforms(
+                root,
+                "AstrBotDevs/AstrBot-desktop",
+                "v4.29.0",
+                version="4.29.0",
+                channel="stable",
+            )
+
+        self.assertIn("darwin-aarch64", platforms)
 
     def test_collect_platforms_accepts_linux_appimage_canonical_name(self):
         with tempfile.TemporaryDirectory() as tmpdir:

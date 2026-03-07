@@ -10,12 +10,17 @@ from pathlib import Path
 from scripts.ci.lib.artifact_arch import normalize_arch_alias
 from scripts.ci.lib.nightly_version import NIGHTLY_CANONICAL_FORMAT, NIGHTLY_VERSION_RE
 from scripts.ci.lib.release_artifacts import (
+    ARTIFACT_EXTENSIONS,
     LINUX_APPIMAGE_UPDATER_PATTERNS,
     MACOS_UPDATER_ARCHIVE_EXTENSION,
     MACOS_UPDATER_ARCHIVE_PATTERNS,
     MACOS_UPDATER_SIGNATURE_EXTENSION,
     WINDOWS_UPDATER_PATTERNS,
     match_any,
+)
+
+UPDATER_SIGNATURE_EXTENSIONS: tuple[str, ...] = tuple(
+    ext for ext in ARTIFACT_EXTENSIONS if ext.endswith(".sig")
 )
 
 WINDOWS_PREFIX_ALIAS_RE = re.compile(
@@ -176,6 +181,11 @@ def add_platform(
     }
 
 
+def iter_updater_signature_paths(root: Path):
+    for ext in UPDATER_SIGNATURE_EXTENSIONS:
+        yield from root.rglob(f"*{ext}")
+
+
 def collect_platforms(
     root: Path,
     repo: str,
@@ -189,7 +199,7 @@ def collect_platforms(
     # visible immediately instead of silently producing a partial manifest.
     unsupported_signature_files: list[str] = []
 
-    for sig_path in sorted(root.rglob("*.sig")):
+    for sig_path in sorted(iter_updater_signature_paths(root)):
         sig_name = sig_path.name
         if sig_name.endswith(".exe.sig"):
             source_name = sig_name[:-4]
