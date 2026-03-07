@@ -31,6 +31,7 @@ LINUX_CANONICAL_RULE: tuple[re.Pattern[str], str] = (
     "AstrBot_{version}_linux_{arch}",
 )
 CANONICALIZE_RULES: dict[str, tuple[tuple[re.Pattern[str], str], ...]] = {
+    ".AppImage": (LINUX_CANONICAL_RULE,),
     ".rpm": (
         (
             re.compile(
@@ -114,7 +115,7 @@ def detect_artifact_extension(path: pathlib.Path) -> str | None:
     best_len = -1
 
     for ext in ARTIFACT_EXTENSIONS:
-        if not lower_name.endswith(ext):
+        if not lower_name.endswith(ext.lower()):
             continue
         ext_len = len(ext)
         if ext_len > best_len:

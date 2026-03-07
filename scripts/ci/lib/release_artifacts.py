@@ -8,9 +8,11 @@ import re
 ARTIFACT_EXTENSIONS: tuple[str, ...] = (
     ".app.tar.gz.sig",
     ".app.tar.gz",
+    ".AppImage.sig",
     ".exe.sig",
     ".msi.sig",
     ".zip.sig",
+    ".AppImage",
     ".rpm",
     ".deb",
     ".exe",
@@ -73,6 +75,20 @@ MACOS_UPDATER_ARCHIVE_PATTERNS: tuple[re.Pattern[str], ...] = (
     # <name>_<version>_macos_<arch>.zip
     re.compile(
         rf"(?P<name>.+?)_(?P<version>{LEGACY_VERSION_PATTERN})_macos_(?P<arch>{LEGACY_ARCH_PATTERN})\.zip$"
+    ),
+)
+
+LINUX_APPIMAGE_UPDATER_PATTERNS: tuple[re.Pattern[str], ...] = (
+    # Canonical:
+    # <name>_<version>_linux_<arch>_nightly_<shortsha>.AppImage
+    re.compile(
+        rf"(?P<name>.+?)_(?P<version>{CANONICAL_VERSION_PATTERN})_linux_(?P<arch>{CANONICAL_ARCH_PATTERN})"
+        rf"{CANONICAL_NIGHTLY_SUFFIX_PATTERN}\.AppImage$"
+    ),
+    # Legacy:
+    # <name>_<version>_<arch>.AppImage
+    re.compile(
+        rf"(?P<name>.+?)_(?P<version>{LEGACY_VERSION_PATTERN})_(?P<arch>x86_64|x64|amd64|aarch64|arm64)\.AppImage$"
     ),
 )
 
