@@ -185,6 +185,41 @@ test('normalize_release_artifact_filenames strict unmatched mode surfaces naming
     assert.notEqual(result.status, 0, 'expected strict unmatched artifact normalization to fail');
     assert.match(result.stderr, /unmatched naming pattern/i);
     assert.doesNotMatch(result.stderr, /Traceback/);
+    await access(path.join(artifactsDir, 'AstrBot_4.19.2_windows_portable.exe'), fsConstants.F_OK);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('normalize_release_artifact_filenames strict unmatched mode does not rename unmatched nightly files', async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'astrbot-release-artifacts-'));
+
+  try {
+    const artifactsDir = path.join(tempDir, 'release-artifacts');
+    await mkdir(artifactsDir, { recursive: true });
+
+    const originalName = 'AstrBot_4.19.2-nightly.20260306.7ac169c5_windows_portable.exe';
+    const originalPath = path.join(artifactsDir, originalName);
+    await writeFile(originalPath, 'portable', 'utf8');
+
+    const result = runPythonRaw(normalizeModule, [
+      '--root',
+      artifactsDir,
+      '--build-mode',
+      'nightly',
+      '--source-git-ref',
+      '7ac169c5e81cee0acc1416d22d7ee4464a507a8d',
+      '--strict-unmatched',
+    ]);
+
+    assert.notEqual(result.status, 0, 'expected strict unmatched nightly normalization to fail');
+    await access(originalPath, fsConstants.F_OK);
+    await assert.rejects(
+      access(
+        path.join(artifactsDir, 'AstrBot_4.19.2_windows_portable_nightly_7ac169c5.exe'),
+        fsConstants.F_OK,
+      ),
+    );
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

@@ -78,11 +78,7 @@ impl UpdateChannel {
 }
 
 fn version_is_nightly(version: &Version) -> bool {
-    version
-        .pre
-        .as_str()
-        .split('.')
-        .any(|identifier| identifier.eq_ignore_ascii_case(NIGHTLY_IDENTIFIER))
+    parse_nightly_version_info(version).is_some()
 }
 
 pub(crate) fn resolve_manifest_endpoint(
@@ -486,12 +482,21 @@ mod tests {
         );
         assert_eq!(
             infer_channel_from_version(&version("4.29.0-nightly.20260307.abcd1234.extra")),
-            UpdateChannel::Nightly
+            UpdateChannel::Stable
         );
         assert_eq!(
             infer_channel_from_version(&version("4.29.0")),
             UpdateChannel::Stable
         );
+    }
+
+    #[test]
+    fn malformed_nightly_versions_still_allow_forward_nightly_updates_when_preferred() {
+        assert!(should_offer_update(
+            &version("4.29.0-nightly.20260307.abcd1234.extra"),
+            UpdateChannel::Nightly,
+            &version("4.30.0-nightly.20260308.abcdef12")
+        ));
     }
 
     #[test]
