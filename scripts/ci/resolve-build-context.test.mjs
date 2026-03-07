@@ -71,6 +71,10 @@ case "\${command_name}" in
     source_ref="\${2-}"
     case "\${source_ref}" in
       refs/tags/*)
+        if [ "\${ASTRBOT_TEST_GIT_TAGS_FAIL:-0}" = "1" ]; then
+          echo 'simulated tag lookup failure' >&2
+          exit 1
+        fi
         IFS='|' read -r -a entries <<< "\${ASTRBOT_TEST_GIT_TAGS:-}"
         for entry in "\${entries[@]}"; do
           [ -n "\${entry}" ] || continue
@@ -182,12 +186,39 @@ test('workflow_dispatch tag-poll does not mark latest when explicit source ref i
   assert.equal(outputs.release_make_latest, 'false');
 });
 
+test('workflow_dispatch tag-poll keeps explicit source ref builds running when tag lookup fails', async () => {
+  const { result, outputs } = await runResolveBuildContext({
+    WORKFLOW_SOURCE_GIT_REF: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
+    ASTRBOT_TEST_GIT_TAGS_FAIL: '1',
+    ASTRBOT_TEST_FETCHED_VERSION: '4.19.7',
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(outputs.source_git_ref, 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef');
+  assert.equal(outputs.astrbot_version, '4.19.7');
+  assert.equal(outputs.release_make_latest, 'false');
+});
+
 test('workflow_dispatch tag-poll marks latest when no override is provided and latest upstream tag is selected', async () => {
   const { result, outputs } = await runResolveBuildContext();
 
   assert.equal(result.status, 0, result.stderr);
   assert.equal(outputs.source_git_ref, 'v4.19.0');
   assert.equal(outputs.release_tag, 'v4.19.0');
+  assert.equal(outputs.release_make_latest, 'true');
+});
+
+test('workflow_dispatch tag-poll normalizes annotated latest tags before latest comparison', async () => {
+  const { result, outputs } = await runResolveBuildContext({
+    WORKFLOW_SOURCE_GIT_REF: 'v4.19.0',
+    ASTRBOT_TEST_GIT_TAGS:
+      '1111111111111111111111111111111111111111 refs/tags/v4.18.0|' +
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa refs/tags/v4.19.0|' +
+      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb refs/tags/v4.19.0^{}',
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(outputs.source_git_ref, 'v4.19.0');
   assert.equal(outputs.release_make_latest, 'true');
 });
 
