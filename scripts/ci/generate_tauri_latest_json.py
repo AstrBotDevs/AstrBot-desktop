@@ -129,7 +129,7 @@ def parse_windows_artifact_name(source_name: str) -> re.Match[str]:
     )
 
 
-def parse_macos_artifact_name(source_name: str) -> tuple[re.Match[str], str]:
+def parse_macos_artifact_name(source_name: str) -> re.Match[str]:
     match = match_any(source_name, MACOS_UPDATER_ARCHIVE_PATTERNS)
     if not match:
         raise ValueError(
@@ -138,7 +138,7 @@ def parse_macos_artifact_name(source_name: str) -> tuple[re.Match[str], str]:
             "<name>_<version>_macos_<arch>.app.tar.gz "
             "(nightly builds may append _nightly_<sha> before the extension)."
         )
-    return match, ".app.tar.gz"
+    return match
 
 
 def parse_linux_appimage_artifact_name(source_name: str) -> re.Match[str]:
@@ -210,13 +210,13 @@ def collect_platforms(
 
         if sig_name.endswith(".app.tar.gz.sig"):
             source_name = sig_name[:-4]
-            match, archive_ext = parse_macos_artifact_name(source_name)
+            match = parse_macos_artifact_name(source_name)
             artifact_name = canonical_macos_filename(
                 match.group("name"),
                 match.group("arch"),
                 version,
                 channel,
-                archive_ext,
+                ".app.tar.gz",
             )
             add_platform(
                 platforms,
