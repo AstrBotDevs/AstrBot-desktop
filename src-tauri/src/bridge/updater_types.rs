@@ -53,6 +53,21 @@ pub(crate) fn map_update_available_result(
     }
 }
 
+pub(crate) fn map_manual_download_update_available_result(
+    current_version: String,
+    latest_version: String,
+    reason: impl Into<String>,
+) -> DesktopAppUpdateCheckResult {
+    DesktopAppUpdateCheckResult {
+        ok: true,
+        reason: Some(reason.into()),
+        current_version: Some(current_version),
+        latest_version: Some(latest_version),
+        has_update: true,
+        manual_download_required: true,
+    }
+}
+
 pub(crate) fn map_update_check_error(
     current_version: Option<String>,
     reason: impl Into<String>,
@@ -105,11 +120,9 @@ pub(crate) fn map_manual_download_result(
         ok: true,
         reason: Some(reason.into()),
         current_version: Some(current_version.to_string()),
-        latest_version: None,
-        // Manual-download mode should still trigger update UI even though
-        // we cannot determine an exact remote latest version here.
-        has_update: true,
-        manual_download_required: true,
+        latest_version: Some(current_version.to_string()),
+        has_update: false,
+        manual_download_required: false,
     }
 }
 
@@ -135,6 +148,20 @@ mod tests {
         assert_eq!(result.latest_version.as_deref(), Some("4.20.0"));
         assert!(result.has_update);
         assert!(!result.manual_download_required);
+    }
+
+    #[test]
+    fn map_manual_download_update_available_result_marks_manual_download_upgrade() {
+        let result = map_manual_download_update_available_result(
+            "4.19.2".to_string(),
+            "4.20.0".to_string(),
+            crate::bridge::updater_messages::DESKTOP_UPDATER_MANUAL_DOWNLOAD_REASON,
+        );
+        assert!(result.ok);
+        assert_eq!(result.current_version.as_deref(), Some("4.19.2"));
+        assert_eq!(result.latest_version.as_deref(), Some("4.20.0"));
+        assert!(result.has_update);
+        assert!(result.manual_download_required);
     }
 
     #[test]
@@ -170,12 +197,30 @@ mod tests {
         );
         assert!(result.ok);
         assert_eq!(result.current_version.as_deref(), Some("4.19.2"));
-        assert_eq!(result.latest_version, None);
-        assert!(result.has_update);
-        assert!(result.manual_download_required);
+        assert_eq!(result.latest_version.as_deref(), Some("4.19.2"));
+        assert!(!result.has_update);
+        assert!(!result.manual_download_required);
         assert_eq!(
             result.reason.as_deref(),
             Some(crate::bridge::updater_messages::DESKTOP_UPDATER_MANUAL_DOWNLOAD_REASON)
         );
+    }
+
+    #[test]
+    fn map_manual_download_result_keeps_manual_download_message_without_update_flag() {
+        let result = map_manual_download_result(
+            "4.19.2",
+            crate::bridge::updater_messages::desktop_manual_download_reason(),
+        );
+
+        assert!(result.ok);
+        assert_eq!(result.current_version.as_deref(), Some("4.19.2"));
+        assert_eq!(result.latest_version.as_deref(), Some("4.19.2"));
+        assert_eq!(
+            result.reason.as_deref(),
+            Some(crate::bridge::updater_messages::desktop_manual_download_reason().as_str())
+        );
+        assert!(!result.has_update);
+        assert!(!result.manual_download_required);
     }
 }
