@@ -313,17 +313,17 @@ pub(crate) async fn desktop_bridge_check_app_update(
     match updater.check().await {
         Ok(Some(update)) => match update_mode {
             DesktopUpdateMode::ManualDownload => map_manual_download_update_available_result(
-                current_version,
-                update.version.clone().to_string(),
+                &current_version,
+                &update.version,
                 desktop_manual_download_reason(),
             ),
-            _ => map_update_available_result(current_version, update.version.clone().to_string()),
+            _ => map_update_available_result(&current_version, &update.version),
         },
         Ok(None) => match update_mode {
             DesktopUpdateMode::ManualDownload => {
                 map_manual_download_result(&current_version, desktop_manual_download_reason())
             }
-            _ => map_no_update_result(current_version),
+            _ => map_no_update_result(&current_version),
         },
         Err(error) => map_update_check_error(
             Some(current_version),
