@@ -6,7 +6,7 @@ const tauriConfigPath = new URL('../../src-tauri/tauri.conf.json', import.meta.u
 
 test('main Tauri window disables background throttling', async () => {
   const tauriConfig = JSON.parse(await readFile(tauriConfigPath, 'utf8'));
-  const mainWindow = tauriConfig?.app?.windows?.[0];
+  const mainWindow = tauriConfig?.app?.windows?.find((windowConfig) => windowConfig.label === 'main');
 
   assert.ok(mainWindow, 'expected tauri config to define a main window');
   assert.equal(mainWindow.backgroundThrottling, 'disabled');
