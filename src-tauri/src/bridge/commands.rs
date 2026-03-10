@@ -101,65 +101,83 @@ fn should_stop_managed_backend_before_update_install(
     is_windows && has_managed_backend_child
 }
 
-fn has_managed_backend_child(state: &BackendState) -> Result<bool, String> {
-    state
-        .child
-        .lock()
-        .map(|guard| guard.is_some())
-        .map_err(|_| "Backend process lock poisoned.".to_string())
+fn has_managed_backend_child(state: &BackendState) -> bool {
+    match state.child.lock() {
+        Ok(guard) => guard.is_some(),
+        Err(_) => {
+            append_desktop_log(
+                "backend child lock poisoned while checking managed backend state; assuming no managed backend child",
+            );
+            false
+        }
+    }
 }
 
-type NativeUpdateInstallAction<'a> = Box<dyn FnOnce() -> Result<(), String> + 'a>;
-
-enum PreparedNativeUpdateInstall<'a> {
-    None,
-    StopManagedBackend {
-        stop_backend: NativeUpdateInstallAction<'a>,
-        restart_backend_after_failed_install: NativeUpdateInstallAction<'a>,
-    },
+fn compose_update_install_error(error: &str, restart_error: Option<&str>) -> String {
+    match restart_error {
+        Some(restart_error) => format!(
+            "Failed to install update: {error}. Failed to restart backend after install failure: {restart_error}"
+        ),
+        None => format!("Failed to install update: {error}"),
+    }
 }
 
-fn finalize_native_update_install<InstallUpdate>(
-    preparation: PreparedNativeUpdateInstall<'_>,
+fn run_native_update_install<StopBackend, RestartBackend, InstallUpdate>(
+    stop_backend: Option<StopBackend>,
+    restart_backend_after_failed_install: Option<RestartBackend>,
     install_update: InstallUpdate,
 ) -> DesktopAppUpdateResult
 where
+    StopBackend: FnOnce() -> Result<(), String>,
+    RestartBackend: FnOnce() -> Result<(), String>,
     InstallUpdate: FnOnce() -> Result<(), String>,
 {
     let mut backend_stopped = false;
-    let restart_backend_after_failed_install = match preparation {
-        PreparedNativeUpdateInstall::None => None,
-        PreparedNativeUpdateInstall::StopManagedBackend {
-            stop_backend,
-            restart_backend_after_failed_install,
-        } => {
-            if let Err(error) = stop_backend() {
-                return map_update_install_error(format!(
-                    "Failed to stop backend before Windows update install: {error}"
-                ));
-            }
-            backend_stopped = true;
-            Some(restart_backend_after_failed_install)
+    if let Some(stop_backend) = stop_backend {
+        if let Err(error) = stop_backend() {
+            return map_update_install_error(format!(
+                "Failed to stop backend before Windows update install: {error}"
+            ));
         }
-    };
+        backend_stopped = true;
+    }
 
     match install_update() {
         Ok(()) => map_update_install_ok(),
         Err(error) => {
-            if backend_stopped {
+            let restart_error = if backend_stopped {
                 if let Some(restart_backend_after_failed_install) =
                     restart_backend_after_failed_install
                 {
-                    if let Err(restart_error) = restart_backend_after_failed_install() {
-                        return map_update_install_error(format!(
-                            "Failed to install update: {error}. Failed to restart backend after install failure: {restart_error}"
-                        ));
-                    }
+                    restart_backend_after_failed_install().err()
+                } else {
+                    None
                 }
+            } else {
+                None
+            };
+
+            if let Some(restart_error) = restart_error.as_deref() {
+                return map_update_install_error(compose_update_install_error(
+                    &error,
+                    Some(restart_error),
+                ));
             }
 
-            map_update_install_error(format!("Failed to install update: {error}"))
+            map_update_install_error(compose_update_install_error(&error, None))
         }
+    }
+}
+
+fn build_restart_backend_after_failed_install<'a>(
+    app_handle: AppHandle,
+    restart_plan: crate::LaunchPlan,
+) -> impl FnOnce() -> Result<(), String> + 'a {
+    move || {
+        let state = app_handle.state::<BackendState>();
+        append_desktop_log("update install failed before exit, restarting managed backend");
+        state.start_backend_process(&app_handle, &restart_plan)?;
+        state.wait_for_backend(&restart_plan)
     }
 }
 
@@ -431,13 +449,10 @@ pub(crate) async fn desktop_bridge_install_app_update(
     };
 
     let state = app_handle.state::<BackendState>();
-    let has_managed_backend = match has_managed_backend_child(&state) {
-        Ok(has_managed_backend) => has_managed_backend,
-        Err(error) => return map_update_install_error(error),
-    };
+    let has_managed_backend = has_managed_backend_child(&state);
     let stop_managed_backend =
         should_stop_managed_backend_before_update_install(cfg!(target_os = "windows"), has_managed_backend);
-    let install_preparation = if stop_managed_backend {
+    let restart_backend_after_failed_install = if stop_managed_backend {
         let restart_plan = match state.resolve_launch_plan(&app_handle) {
             Ok(plan) => plan,
             Err(error) => {
@@ -447,25 +462,21 @@ pub(crate) async fn desktop_bridge_install_app_update(
                 return map_update_install_error(error);
             }
         };
-        let app_handle_for_restart = app_handle.clone();
-        PreparedNativeUpdateInstall::StopManagedBackend {
-            stop_backend: Box::new(|| state.stop_backend()),
-            restart_backend_after_failed_install: Box::new(move || {
-                let state = app_handle_for_restart.state::<BackendState>();
-                append_desktop_log(
-                    "update install failed before exit, restarting managed backend",
-                );
-                state.start_backend_process(&app_handle_for_restart, &restart_plan)?;
-                state.wait_for_backend(&restart_plan)
-            }),
-        }
+        Some(build_restart_backend_after_failed_install(
+            app_handle.clone(),
+            restart_plan,
+        ))
     } else {
-        PreparedNativeUpdateInstall::None
+        None
     };
 
-    let result = finalize_native_update_install(install_preparation, || {
+    let result = run_native_update_install(
+        stop_managed_backend.then(|| || state.stop_backend()),
+        restart_backend_after_failed_install,
+        || {
         update.install(bytes).map_err(|error| error.to_string())
-    });
+        },
+    );
     if result.ok {
         app_handle.request_restart();
     }
@@ -475,7 +486,7 @@ pub(crate) async fn desktop_bridge_install_app_update(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{cell::RefCell, rc::Rc};
+    use std::{cell::RefCell, panic::AssertUnwindSafe, rc::Rc};
 
     #[test]
     fn update_check_short_circuit_only_applies_to_unsupported_mode() {
@@ -579,23 +590,21 @@ mod tests {
     }
 
     #[test]
-    fn finalize_native_update_install_stops_backend_before_windows_install() {
+    fn run_native_update_install_stops_backend_before_windows_install() {
         let events = Rc::new(RefCell::new(Vec::new()));
         let stop_events = Rc::clone(&events);
         let restart_events = Rc::clone(&events);
         let install_events = Rc::clone(&events);
 
-        let result = finalize_native_update_install(
-            PreparedNativeUpdateInstall::StopManagedBackend {
-                stop_backend: Box::new(|| {
-                    stop_events.borrow_mut().push("stop");
-                    Ok(())
-                }),
-                restart_backend_after_failed_install: Box::new(|| {
-                    restart_events.borrow_mut().push("restart");
-                    Ok(())
-                }),
-            },
+        let result = run_native_update_install(
+            Some(|| {
+                stop_events.borrow_mut().push("stop");
+                Ok(())
+            }),
+            Some(|| {
+                restart_events.borrow_mut().push("restart");
+                Ok(())
+            }),
             || {
                 install_events.borrow_mut().push("install");
                 Ok(())
@@ -607,18 +616,16 @@ mod tests {
     }
 
     #[test]
-    fn finalize_native_update_install_short_circuits_when_backend_stop_fails() {
+    fn run_native_update_install_short_circuits_when_backend_stop_fails() {
         let mut install_called = false;
         let mut restart_called = false;
 
-        let result = finalize_native_update_install(
-            PreparedNativeUpdateInstall::StopManagedBackend {
-                stop_backend: Box::new(|| Err("backend still running".to_string())),
-                restart_backend_after_failed_install: Box::new(|| {
-                    restart_called = true;
-                    Ok(())
-                }),
-            },
+        let result = run_native_update_install(
+            Some(|| Err("backend still running".to_string())),
+            Some(|| {
+                restart_called = true;
+                Ok(())
+            }),
             || {
                 install_called = true;
                 Ok(())
@@ -636,11 +643,12 @@ mod tests {
     }
 
     #[test]
-    fn finalize_native_update_install_skips_backend_stop_when_not_required() {
+    fn run_native_update_install_skips_backend_stop_when_not_required() {
         let mut install_called = false;
 
-        let result = finalize_native_update_install(
-            PreparedNativeUpdateInstall::None,
+        let result = run_native_update_install(
+            None::<fn() -> Result<(), String>>,
+            None::<fn() -> Result<(), String>>,
             || {
                 install_called = true;
                 Ok(())
@@ -652,9 +660,10 @@ mod tests {
     }
 
     #[test]
-    fn finalize_native_update_install_maps_install_errors() {
-        let result = finalize_native_update_install(
-            PreparedNativeUpdateInstall::None,
+    fn run_native_update_install_maps_install_errors() {
+        let result = run_native_update_install(
+            None::<fn() -> Result<(), String>>,
+            None::<fn() -> Result<(), String>>,
             || Err("installer launch failed".to_string()),
         );
 
@@ -665,22 +674,20 @@ mod tests {
     }
 
     #[test]
-    fn finalize_native_update_install_restarts_backend_after_failed_install() {
+    fn run_native_update_install_restarts_backend_after_failed_install() {
         let events = Rc::new(RefCell::new(Vec::new()));
         let stop_events = Rc::clone(&events);
         let restart_events = Rc::clone(&events);
 
-        let result = finalize_native_update_install(
-            PreparedNativeUpdateInstall::StopManagedBackend {
-                stop_backend: Box::new(|| {
-                    stop_events.borrow_mut().push("stop");
-                    Ok(())
-                }),
-                restart_backend_after_failed_install: Box::new(|| {
-                    restart_events.borrow_mut().push("restart");
-                    Ok(())
-                }),
-            },
+        let result = run_native_update_install(
+            Some(|| {
+                stop_events.borrow_mut().push("stop");
+                Ok(())
+            }),
+            Some(|| {
+                restart_events.borrow_mut().push("restart");
+                Ok(())
+            }),
             || Err("installer launch failed".to_string()),
         );
 
@@ -692,14 +699,10 @@ mod tests {
     }
 
     #[test]
-    fn finalize_native_update_install_reports_restart_failures_after_install_failure() {
-        let result = finalize_native_update_install(
-            PreparedNativeUpdateInstall::StopManagedBackend {
-                stop_backend: Box::new(|| Ok(())),
-                restart_backend_after_failed_install: Box::new(|| {
-                    Err("backend restart timed out".to_string())
-                }),
-            },
+    fn run_native_update_install_reports_restart_failures_after_install_failure() {
+        let result = run_native_update_install(
+            Some(|| Ok(())),
+            Some(|| Err("backend restart timed out".to_string())),
             || Err("installer launch failed".to_string()),
         );
 
@@ -708,6 +711,36 @@ mod tests {
             map_update_install_error(
                 "Failed to install update: installer launch failed. Failed to restart backend after install failure: backend restart timed out"
             )
+        );
+    }
+
+    #[test]
+    fn has_managed_backend_child_returns_false_when_lock_is_poisoned() {
+        let state = BackendState::default();
+        let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let _guard = state.child.lock().expect("lock should succeed before poisoning");
+            panic!("poison backend child lock");
+        }));
+
+        assert!(!has_managed_backend_child(&state));
+    }
+
+    #[test]
+    fn compose_update_install_error_without_restart_failure_uses_base_message() {
+        assert_eq!(
+            compose_update_install_error("installer launch failed", None),
+            "Failed to install update: installer launch failed"
+        );
+    }
+
+    #[test]
+    fn compose_update_install_error_with_restart_failure_appends_restart_message() {
+        assert_eq!(
+            compose_update_install_error(
+                "installer launch failed",
+                Some("backend restart timed out")
+            ),
+            "Failed to install update: installer launch failed. Failed to restart backend after install failure: backend restart timed out"
         );
     }
 
