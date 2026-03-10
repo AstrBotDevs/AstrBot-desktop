@@ -94,13 +94,6 @@ fn short_circuit_update_install(
     }
 }
 
-fn should_stop_managed_backend_before_update_install(
-    is_windows: bool,
-    has_managed_backend_child: bool,
-) -> bool {
-    is_windows && has_managed_backend_child
-}
-
 fn has_managed_backend_child(state: &BackendState) -> bool {
     match state.child.lock() {
         Ok(guard) => guard.is_some(),
@@ -113,66 +106,37 @@ fn has_managed_backend_child(state: &BackendState) -> bool {
     }
 }
 
-fn compose_update_install_error(error: &str, restart_error: Option<&str>) -> String {
-    match restart_error {
-        Some(restart_error) => format!(
-            "Failed to install update: {error}. Failed to restart backend after install failure: {restart_error}"
-        ),
-        None => format!("Failed to install update: {error}"),
-    }
-}
-
-fn run_native_update_install<StopBackend, RestartBackend, InstallUpdate>(
-    stop_backend: Option<StopBackend>,
-    restart_backend_after_failed_install: Option<RestartBackend>,
+fn run_native_update_install<InstallUpdate, RestartBackend>(
     install_update: InstallUpdate,
+    restart_backend_after_failed_install: Option<RestartBackend>,
+    backend_was_stopped: bool,
 ) -> DesktopAppUpdateResult
 where
-    StopBackend: FnOnce() -> Result<(), String>,
-    RestartBackend: FnOnce() -> Result<(), String>,
     InstallUpdate: FnOnce() -> Result<(), String>,
+    RestartBackend: FnOnce() -> Result<(), String>,
 {
-    let mut backend_stopped = false;
-    if let Some(stop_backend) = stop_backend {
-        if let Err(error) = stop_backend() {
-            return map_update_install_error(format!(
-                "Failed to stop backend before Windows update install: {error}"
-            ));
-        }
-        backend_stopped = true;
-    }
-
     match install_update() {
         Ok(()) => map_update_install_ok(),
-        Err(error) => {
-            let restart_error = if backend_stopped {
-                if let Some(restart_backend_after_failed_install) =
-                    restart_backend_after_failed_install
-                {
-                    restart_backend_after_failed_install().err()
-                } else {
-                    None
+        Err(install_err) => {
+            if backend_was_stopped {
+                if let Some(restart_backend) = restart_backend_after_failed_install {
+                    if let Err(restart_err) = restart_backend() {
+                        return map_update_install_error(format!(
+                            "Failed to install update: {install_err}. Failed to restart backend after install failure: {restart_err}"
+                        ));
+                    }
                 }
-            } else {
-                None
-            };
-
-            if let Some(restart_error) = restart_error.as_deref() {
-                return map_update_install_error(compose_update_install_error(
-                    &error,
-                    Some(restart_error),
-                ));
             }
 
-            map_update_install_error(compose_update_install_error(&error, None))
+            map_update_install_error(format!("Failed to install update: {install_err}"))
         }
     }
 }
 
-fn build_restart_backend_after_failed_install<'a>(
+fn build_restart_backend_after_failed_install(
     app_handle: AppHandle,
     restart_plan: crate::LaunchPlan,
-) -> impl FnOnce() -> Result<(), String> + 'a {
+) -> impl FnOnce() -> Result<(), String> {
     move || {
         let state = app_handle.state::<BackendState>();
         append_desktop_log("update install failed before exit, restarting managed backend");
@@ -451,11 +415,7 @@ pub(crate) async fn desktop_bridge_install_app_update(
     };
 
     let state = app_handle.state::<BackendState>();
-    let has_managed_backend = has_managed_backend_child(&state);
-    let stop_managed_backend = should_stop_managed_backend_before_update_install(
-        cfg!(target_os = "windows"),
-        has_managed_backend,
-    );
+    let stop_managed_backend = cfg!(target_os = "windows") && has_managed_backend_child(&state);
     let restart_backend_after_failed_install = if stop_managed_backend {
         let restart_plan = match state.resolve_launch_plan(&app_handle) {
             Ok(plan) => plan,
@@ -474,10 +434,21 @@ pub(crate) async fn desktop_bridge_install_app_update(
         None
     };
 
+    let backend_was_stopped = if stop_managed_backend {
+        if let Err(error) = state.stop_backend() {
+            return map_update_install_error(format!(
+                "Failed to stop backend before Windows update install: {error}"
+            ));
+        }
+        true
+    } else {
+        false
+    };
+
     let result = run_native_update_install(
-        stop_managed_backend.then(|| || state.stop_backend()),
-        restart_backend_after_failed_install,
         || update.install(bytes).map_err(|error| error.to_string()),
+        restart_backend_after_failed_install,
+        backend_was_stopped,
     );
     if result.ok {
         app_handle.request_restart();
@@ -592,81 +563,49 @@ mod tests {
     }
 
     #[test]
-    fn run_native_update_install_stops_backend_before_windows_install() {
+    fn run_native_update_install_reports_success_when_install_succeeds() {
         let events = Rc::new(RefCell::new(Vec::new()));
-        let stop_events = Rc::clone(&events);
-        let restart_events = Rc::clone(&events);
         let install_events = Rc::clone(&events);
 
         let result = run_native_update_install(
-            Some(|| {
-                stop_events.borrow_mut().push("stop");
-                Ok(())
-            }),
-            Some(|| {
-                restart_events.borrow_mut().push("restart");
-                Ok(())
-            }),
             || {
                 install_events.borrow_mut().push("install");
                 Ok(())
             },
+            None::<fn() -> Result<(), String>>,
+            true,
         );
 
-        assert_eq!(*events.borrow(), vec!["stop", "install"]);
+        assert_eq!(*events.borrow(), vec!["install"]);
         assert_eq!(result, map_update_install_ok());
     }
 
     #[test]
-    fn run_native_update_install_short_circuits_when_backend_stop_fails() {
-        let mut install_called = false;
+    fn run_native_update_install_skips_restart_when_backend_was_not_stopped() {
         let mut restart_called = false;
 
         let result = run_native_update_install(
-            Some(|| Err("backend still running".to_string())),
+            || Err("installer launch failed".to_string()),
             Some(|| {
                 restart_called = true;
                 Ok(())
             }),
-            || {
-                install_called = true;
-                Ok(())
-            },
+            false,
         );
 
-        assert!(!install_called);
         assert!(!restart_called);
         assert_eq!(
             result,
-            map_update_install_error(
-                "Failed to stop backend before Windows update install: backend still running"
-            )
+            map_update_install_error("Failed to install update: installer launch failed")
         );
-    }
-
-    #[test]
-    fn run_native_update_install_skips_backend_stop_when_not_required() {
-        let mut install_called = false;
-
-        let result = run_native_update_install(
-            None::<fn() -> Result<(), String>>,
-            None::<fn() -> Result<(), String>>,
-            || {
-                install_called = true;
-                Ok(())
-            },
-        );
-
-        assert!(install_called);
-        assert_eq!(result, map_update_install_ok());
     }
 
     #[test]
     fn run_native_update_install_maps_install_errors() {
         let result = run_native_update_install(
-            None::<fn() -> Result<(), String>>,
-            None::<fn() -> Result<(), String>>,
             || Err("installer launch failed".to_string()),
+            None::<fn() -> Result<(), String>>,
+            false,
         );
 
         assert_eq!(
@@ -678,22 +617,18 @@ mod tests {
     #[test]
     fn run_native_update_install_restarts_backend_after_failed_install() {
         let events = Rc::new(RefCell::new(Vec::new()));
-        let stop_events = Rc::clone(&events);
         let restart_events = Rc::clone(&events);
 
         let result = run_native_update_install(
-            Some(|| {
-                stop_events.borrow_mut().push("stop");
-                Ok(())
-            }),
+            || Err("installer launch failed".to_string()),
             Some(|| {
                 restart_events.borrow_mut().push("restart");
                 Ok(())
             }),
-            || Err("installer launch failed".to_string()),
+            true,
         );
 
-        assert_eq!(*events.borrow(), vec!["stop", "restart"]);
+        assert_eq!(*events.borrow(), vec!["restart"]);
         assert_eq!(
             result,
             map_update_install_error("Failed to install update: installer launch failed")
@@ -703,9 +638,9 @@ mod tests {
     #[test]
     fn run_native_update_install_reports_restart_failures_after_install_failure() {
         let result = run_native_update_install(
-            Some(|| Ok(())),
-            Some(|| Err("backend restart timed out".to_string())),
             || Err("installer launch failed".to_string()),
+            Some(|| Err("backend restart timed out".to_string())),
+            true,
         );
 
         assert_eq!(
@@ -728,37 +663,5 @@ mod tests {
         }));
 
         assert!(!has_managed_backend_child(&state));
-    }
-
-    #[test]
-    fn compose_update_install_error_without_restart_failure_uses_base_message() {
-        assert_eq!(
-            compose_update_install_error("installer launch failed", None),
-            "Failed to install update: installer launch failed"
-        );
-    }
-
-    #[test]
-    fn compose_update_install_error_with_restart_failure_appends_restart_message() {
-        assert_eq!(
-            compose_update_install_error(
-                "installer launch failed",
-                Some("backend restart timed out")
-            ),
-            "Failed to install update: installer launch failed. Failed to restart backend after install failure: backend restart timed out"
-        );
-    }
-
-    #[test]
-    fn should_stop_managed_backend_before_update_install_only_for_windows_managed_backend() {
-        assert!(should_stop_managed_backend_before_update_install(
-            true, true
-        ));
-        assert!(!should_stop_managed_backend_before_update_install(
-            true, false
-        ));
-        assert!(!should_stop_managed_backend_before_update_install(
-            false, true
-        ));
     }
 }
