@@ -445,13 +445,17 @@ pub(crate) async fn desktop_bridge_install_app_update(
 
     let bytes = match update.download(|_, _| {}, || {}).await {
         Ok(bytes) => bytes,
-        Err(error) => return map_update_install_error(format!("Failed to download update: {error}")),
+        Err(error) => {
+            return map_update_install_error(format!("Failed to download update: {error}"))
+        }
     };
 
     let state = app_handle.state::<BackendState>();
     let has_managed_backend = has_managed_backend_child(&state);
-    let stop_managed_backend =
-        should_stop_managed_backend_before_update_install(cfg!(target_os = "windows"), has_managed_backend);
+    let stop_managed_backend = should_stop_managed_backend_before_update_install(
+        cfg!(target_os = "windows"),
+        has_managed_backend,
+    );
     let restart_backend_after_failed_install = if stop_managed_backend {
         let restart_plan = match state.resolve_launch_plan(&app_handle) {
             Ok(plan) => plan,
@@ -473,9 +477,7 @@ pub(crate) async fn desktop_bridge_install_app_update(
     let result = run_native_update_install(
         stop_managed_backend.then(|| || state.stop_backend()),
         restart_backend_after_failed_install,
-        || {
-        update.install(bytes).map_err(|error| error.to_string())
-        },
+        || update.install(bytes).map_err(|error| error.to_string()),
     );
     if result.ok {
         app_handle.request_restart();
@@ -718,7 +720,10 @@ mod tests {
     fn has_managed_backend_child_returns_false_when_lock_is_poisoned() {
         let state = BackendState::default();
         let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            let _guard = state.child.lock().expect("lock should succeed before poisoning");
+            let _guard = state
+                .child
+                .lock()
+                .expect("lock should succeed before poisoning");
             panic!("poison backend child lock");
         }));
 
@@ -746,8 +751,14 @@ mod tests {
 
     #[test]
     fn should_stop_managed_backend_before_update_install_only_for_windows_managed_backend() {
-        assert!(should_stop_managed_backend_before_update_install(true, true));
-        assert!(!should_stop_managed_backend_before_update_install(true, false));
-        assert!(!should_stop_managed_backend_before_update_install(false, true));
+        assert!(should_stop_managed_backend_before_update_install(
+            true, true
+        ));
+        assert!(!should_stop_managed_backend_before_update_install(
+            true, false
+        ));
+        assert!(!should_stop_managed_backend_before_update_install(
+            false, true
+        ));
     }
 }
