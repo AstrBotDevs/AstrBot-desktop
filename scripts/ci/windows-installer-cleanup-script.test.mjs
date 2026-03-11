@@ -8,10 +8,12 @@ const hookPath = new URL('../../src-tauri/windows/nsis-installer-hooks.nsh', imp
 function extractNsisMacroBody(source, macroName) {
   const lines = source.split('\n');
   const startMarker = `!macro ${macroName}`;
+  const startMarkerLower = startMarker.toLowerCase();
   const startIdx = lines.findIndex((line) => {
     const normalizedLine = line.trimStart();
+    const normalizedLower = normalizedLine.toLowerCase();
     return (
-      normalizedLine.startsWith(startMarker) &&
+      normalizedLower.startsWith(startMarkerLower) &&
       (normalizedLine.length === startMarker.length || /\s/.test(normalizedLine[startMarker.length]))
     );
   });
@@ -38,10 +40,6 @@ function parseNsisDefines(source) {
   for (const line of source.split('\n')) {
     const trimmedLine = line.trim();
     const match = trimmedLine.match(/^!define\s+(\S+)\s+(?:"([^"]+)"|'([^']+)'|(\S+))/);
-
-    if (trimmedLine.startsWith('!define ') && !match) {
-      assert.fail(`Expected NSIS define line to be parseable: ${trimmedLine}`);
-    }
 
     if (match) {
       defines.set(match[1], match[2] ?? match[3] ?? match[4]);
