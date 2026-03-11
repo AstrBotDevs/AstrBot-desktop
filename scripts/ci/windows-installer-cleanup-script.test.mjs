@@ -8,7 +8,13 @@ const hookPath = new URL('../../src-tauri/windows/nsis-installer-hooks.nsh', imp
 function extractNsisMacroBody(source, macroName) {
   const lines = source.split('\n');
   const startMarker = `!macro ${macroName}`;
-  const startIdx = lines.findIndex((line) => line.trim() === startMarker);
+  const startIdx = lines.findIndex((line) => {
+    const normalizedLine = line.trimStart();
+    return (
+      normalizedLine.startsWith(startMarker) &&
+      (normalizedLine.length === startMarker.length || /\s/.test(normalizedLine[startMarker.length]))
+    );
+  });
 
   assert.notEqual(startIdx, -1, `Expected NSIS macro ${macroName} to exist`);
 
@@ -16,6 +22,10 @@ function extractNsisMacroBody(source, macroName) {
 
   assert.notEqual(endIdx, -1, `Expected end of NSIS macro ${macroName}`);
   return lines.slice(startIdx + 1, endIdx).map((line) => line.trim());
+}
+
+function findMatchingLineIndex(lines, pattern) {
+  return lines.findIndex((line) => pattern.test(line));
 }
 
 test('windows cleanup script emits diagnostic logging for install root and process termination', async () => {
@@ -37,9 +47,15 @@ test('windows cleanup script only matches processes under the provided install r
 test('nsis installer hook looks for the install-root cleanup script before updater fallback', async () => {
   const source = await readFile(hookPath, 'utf8');
   const macroBody = extractNsisMacroBody(source, 'NSIS_RUN_BACKEND_CLEANUP');
-  const primaryIdx = macroBody.indexOf('StrCpy $1 "${ASTRBOT_BACKEND_CLEANUP_SCRIPT_INSTALL_ROOT}"');
-  const fileExistsIdx = macroBody.indexOf('IfFileExists "$1" +2 0');
-  const fallbackIdx = macroBody.indexOf('StrCpy $1 "${ASTRBOT_BACKEND_CLEANUP_SCRIPT_UPDATER_FALLBACK}"');
+  const primaryIdx = findMatchingLineIndex(
+    macroBody,
+    /StrCpy\s+\$1\s+"\$\{ASTRBOT_BACKEND_CLEANUP_SCRIPT_INSTALL_ROOT\}"/
+  );
+  const fileExistsIdx = findMatchingLineIndex(macroBody, /IfFileExists\s+"\$1"\s+\+2\s+0/);
+  const fallbackIdx = findMatchingLineIndex(
+    macroBody,
+    /StrCpy\s+\$1\s+"\$\{ASTRBOT_BACKEND_CLEANUP_SCRIPT_UPDATER_FALLBACK\}"/
+  );
 
   assert.match(
     source,
