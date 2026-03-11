@@ -18,7 +18,11 @@ function extractNsisMacroBody(source, macroName) {
 
   assert.notEqual(startIdx, -1, `Expected NSIS macro ${macroName} to exist`);
 
-  const endIdx = lines.findIndex((line, index) => index > startIdx && line.trim() === '!macroend');
+  const endIdx = lines.findIndex((line, index) => {
+    if (index <= startIdx) return false;
+
+    return line.trim().toLowerCase().startsWith('!macroend');
+  });
 
   assert.notEqual(endIdx, -1, `Expected end of NSIS macro ${macroName}`);
   return lines.slice(startIdx + 1, endIdx).map((line) => line.trim());
@@ -26,6 +30,19 @@ function extractNsisMacroBody(source, macroName) {
 
 function findMatchingLineIndex(lines, pattern) {
   return lines.findIndex((line) => pattern.test(line));
+}
+
+function parseNsisDefines(source) {
+  const defines = new Map();
+
+  for (const line of source.split('\n')) {
+    const match = line.trim().match(/^!define\s+(\S+)\s+"([^"]+)"/);
+    if (match) {
+      defines.set(match[1], match[2]);
+    }
+  }
+
+  return defines;
 }
 
 test('windows cleanup script emits diagnostic logging for install root and process termination', async () => {
@@ -47,6 +64,7 @@ test('windows cleanup script only matches processes under the provided install r
 test('nsis installer hook looks for the install-root cleanup script before updater fallback', async () => {
   const source = await readFile(hookPath, 'utf8');
   const macroBody = extractNsisMacroBody(source, 'NSIS_RUN_BACKEND_CLEANUP');
+  const defines = parseNsisDefines(source);
   const primaryIdx = findMatchingLineIndex(
     macroBody,
     /StrCpy\s+\$1\s+"\$\{ASTRBOT_BACKEND_CLEANUP_SCRIPT_INSTALL_ROOT\}"/
@@ -57,13 +75,10 @@ test('nsis installer hook looks for the install-root cleanup script before updat
     /StrCpy\s+\$1\s+"\$\{ASTRBOT_BACKEND_CLEANUP_SCRIPT_UPDATER_FALLBACK\}"/
   );
 
-  assert.match(
-    source,
-    /!define\s+ASTRBOT_BACKEND_CLEANUP_SCRIPT_INSTALL_ROOT\s+"\$INSTDIR\\kill-backend-processes\.ps1"/
-  );
-  assert.match(
-    source,
-    /!define\s+ASTRBOT_BACKEND_CLEANUP_SCRIPT_UPDATER_FALLBACK\s+"\$INSTDIR\\_up_\\resources\\kill-backend-processes\.ps1"/
+  assert.equal(defines.get('ASTRBOT_BACKEND_CLEANUP_SCRIPT_INSTALL_ROOT'), '$INSTDIR\\kill-backend-processes.ps1');
+  assert.equal(
+    defines.get('ASTRBOT_BACKEND_CLEANUP_SCRIPT_UPDATER_FALLBACK'),
+    '$INSTDIR\\_up_\\resources\\kill-backend-processes.ps1'
   );
   assert.notEqual(primaryIdx, -1);
   assert.notEqual(fileExistsIdx, -1);
