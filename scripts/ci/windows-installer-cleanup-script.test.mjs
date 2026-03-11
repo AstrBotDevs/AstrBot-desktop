@@ -7,59 +7,44 @@ const hookPath = new URL('../../src-tauri/windows/nsis-installer-hooks.nsh', imp
 
 function extractNsisMacroBody(source, macroName) {
   const lines = source.split('\n');
-  const startMarker = `!macro ${macroName}`;
-  const startMarkerLower = startMarker.toLowerCase();
-  const startIdx = lines.findIndex((line) => {
-    const normalizedLine = line.trimStart();
-    const normalizedLower = normalizedLine.toLowerCase();
-    return (
-      normalizedLower.startsWith(startMarkerLower) &&
-      (normalizedLine.length === startMarker.length || /\s/.test(normalizedLine[startMarker.length]))
-    );
-  });
+  const startPattern = new RegExp(`^\\s*!macro\\s+${macroName}(?:\\s|$)`, 'i');
+  const endPattern = /^\s*!macroend\b/i;
+  const startIdx = lines.findIndex((line) => startPattern.test(line));
 
   assert.notEqual(startIdx, -1, `Expected NSIS macro ${macroName} to exist`);
 
-  const endIdx = lines.findIndex((line, index) => {
-    if (index <= startIdx) return false;
-
-    return line.trim().toLowerCase().startsWith('!macroend');
-  });
+  const endIdx = lines.findIndex((line, index) => index > startIdx && endPattern.test(line));
 
   assert.notEqual(endIdx, -1, `Expected end of NSIS macro ${macroName}`);
   return lines.slice(startIdx + 1, endIdx).map((line) => line.trim());
 }
 
-function findMatchingLineIndex(lines, pattern) {
-  return lines.findIndex((line) => pattern.test(line));
-}
-
 function getNsisDefineValue(source, defineName) {
-  const definePattern = new RegExp(`^!define\\s+${defineName}(?:\\s+(.+))?$`, 'i');
+  const targetDefinePattern = new RegExp(`^!define\\s+${defineName}(?:\\s+(.+))?$`, 'i');
+  const definePattern = new RegExp(
+    `^!define\\s+${defineName}\\s+("([^"\\s]+)"|'([^'\\s]+)'|([^"'\\n\\s]+))$`,
+    'i'
+  );
 
   for (const line of source.split('\n')) {
     const trimmedLine = line.trim();
-    const match = trimmedLine.match(definePattern);
+    const targetMatch = trimmedLine.match(targetDefinePattern);
 
-    if (!match) {
+    if (!targetMatch) {
       continue;
     }
 
-    const rawValue = match[1]?.trim();
-    if (!rawValue) {
+    const match = trimmedLine.match(definePattern);
+
+    if (!match) {
       throw new Error(`Expected NSIS define ${defineName} to have a simple literal value`);
     }
 
-    const quotedValueMatch = rawValue.match(/^"([^"]+)"$|^'([^']+)'$/);
-    if (quotedValueMatch) {
-      return quotedValueMatch[1] ?? quotedValueMatch[2];
+    const value = match[2] ?? match[3] ?? match[4];
+    if (!value) {
+      throw new Error(`Expected NSIS define ${defineName} to have a simple literal value`);
     }
-
-    if (!/\s/.test(rawValue)) {
-      return rawValue;
-    }
-
-    throw new Error(`Expected NSIS define ${defineName} to have a simple literal value`);
+    return value;
   }
 
   return undefined;
@@ -101,15 +86,13 @@ test('windows cleanup script only matches processes under the provided install r
 test('nsis installer hook looks for the install-root cleanup script before updater fallback', async () => {
   const source = await readFile(hookPath, 'utf8');
   const macroBody = extractNsisMacroBody(source, 'NSIS_RUN_BACKEND_CLEANUP');
-  const primaryIdx = findMatchingLineIndex(
-    macroBody,
-    /StrCpy\s+\$1\s+"\$\{ASTRBOT_BACKEND_CLEANUP_SCRIPT_INSTALL_ROOT\}"/
-  );
-  const fileExistsIdx = findMatchingLineIndex(macroBody, /IfFileExists\s+"\$1"\s+\+2\s+0/);
-  const fallbackIdx = findMatchingLineIndex(
-    macroBody,
-    /StrCpy\s+\$1\s+"\$\{ASTRBOT_BACKEND_CLEANUP_SCRIPT_UPDATER_FALLBACK\}"/
-  );
+  const bodyText = macroBody.join('\n');
+  const primaryPattern = /StrCpy\s+\$1\s+"\$\{ASTRBOT_BACKEND_CLEANUP_SCRIPT_INSTALL_ROOT\}"/;
+  const fileExistsPattern = /IfFileExists\s+"\$1"\s+\+2\s+0/;
+  const fallbackPattern = /StrCpy\s+\$1\s+"\$\{ASTRBOT_BACKEND_CLEANUP_SCRIPT_UPDATER_FALLBACK\}"/;
+  const primaryIdx = bodyText.search(primaryPattern);
+  const fileExistsIdx = bodyText.search(fileExistsPattern);
+  const fallbackIdx = bodyText.search(fallbackPattern);
 
   assert.equal(
     getNsisDefineValue(source, 'ASTRBOT_BACKEND_CLEANUP_SCRIPT_INSTALL_ROOT'),
@@ -119,9 +102,9 @@ test('nsis installer hook looks for the install-root cleanup script before updat
     getNsisDefineValue(source, 'ASTRBOT_BACKEND_CLEANUP_SCRIPT_UPDATER_FALLBACK'),
     '$INSTDIR\\_up_\\resources\\kill-backend-processes.ps1'
   );
-  assert.notEqual(primaryIdx, -1);
-  assert.notEqual(fileExistsIdx, -1);
-  assert.notEqual(fallbackIdx, -1);
+  assert.ok(primaryIdx !== -1);
+  assert.ok(fileExistsIdx !== -1);
+  assert.ok(fallbackIdx !== -1);
   assert.ok(primaryIdx < fileExistsIdx && fileExistsIdx < fallbackIdx);
-  assert.ok(macroBody.some((line) => /nsExec::ExecToLog/.test(line)));
+  assert.ok(/nsExec::ExecToLog/.test(bodyText));
 });
