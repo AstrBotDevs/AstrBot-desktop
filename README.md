@@ -13,7 +13,7 @@ The desktop edition of AstrBot, designed for fast local installation and conveni
   <span> · </span>
   <a href="https://astrbot.app/">Documentation</a>
   <span> · </span>
-  <a href="https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest">Download Releases</a>
+  <a href="https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest">Releases</a>
   <span> · </span>
   <a href="https://github.com/AstrBotDevs/AstrBot-desktop/issues">Issue Tracker</a>
 </p>
@@ -31,6 +31,7 @@ The desktop edition of AstrBot, designed for fast local installation and conveni
 
 AstrBot Desktop is a packaged desktop distribution of AstrBot for local use. It bundles the WebUI, backend runtime, and desktop shell into a single app, making it a good fit for users who want a quick local setup with ChatUI, plugins, and knowledge base features. If you plan to run AstrBot on a server for long-term use, the upstream AstrBot source, Docker, or panel-based deployment is still the better choice.
 
+<!-- section: best-fit -->
 ## Best Fit For
 
 - You want to install AstrBot directly on Windows, macOS, or Linux without preparing a full command-line environment first.
@@ -38,6 +39,7 @@ AstrBot Desktop is a packaged desktop distribution of AstrBot for local use. It 
 - You want your data stored in a local directory for easier backup, migration, and troubleshooting.
 - You need both `stable` and `nightly` release channels for daily use or early access testing.
 
+<!-- section: highlights -->
 ## Highlights
 
 1. Ready-to-use desktop installation experience with the WebUI and backend runtime included by default.
@@ -46,14 +48,16 @@ AstrBot Desktop is a packaged desktop distribution of AstrBot for local use. It 
 4. Provides both `stable` and `nightly` channels for stable usage or early access to recent changes.
 5. Supports migration to source-based deployment, and migration back from source deployment to the desktop app.
 
+<!-- section: one-click-install -->
 ## One-Click Install
 
 If you only want to use the app and do not need to build it locally, download the installer for your platform from [`Releases`](https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest).
 
-- [Stable release](https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest): recommended for most users.
-- [Nightly release](https://github.com/AstrBotDevs/AstrBot-desktop/releases/tag/nightly): automatically built from newer upstream changes for early access to fixes and features.
+- [Stable](https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest): recommended for most users.
+- [Nightly](https://github.com/AstrBotDevs/AstrBot-desktop/releases/tag/nightly): automatically built from newer upstream changes for early access to fixes and features.
 - Choose the package that matches your operating system and CPU architecture.
 
+<!-- section: data-and-configuration-location -->
 ## Data and Configuration Location
 
 AstrBot Desktop stores the AstrBot root directory under the user home directory as `.astrbot` by default:
@@ -74,18 +78,22 @@ Common directories:
 
 If you need to migrate data between the desktop app and a source-based deployment, read [`docs/data-migration.md`](docs/data-migration.md) first.
 
+<!-- section: updates-and-release-channels -->
 ## Updates and Release Channels
 
 - `stable`: recommended for everyday use.
 - `nightly`: closer to the latest upstream commits, suitable for testing new features or fixes.
 - On Windows, macOS, and Linux AppImage builds, the desktop updater usually works directly in-app. Some Linux installation methods may still require manual download and installation.
 
+<!-- section: faq -->
 ## FAQ
 
+<!-- faq: server-deployment -->
 ### Is it suitable for server deployment?
 
 Not really. AstrBot Desktop is intended for local desktop usage and personal workflows. If you need long-running, stable server deployment, use the upstream AstrBot source, Docker, or panel-based deployment instead.
 
+<!-- faq: macos-quarantine -->
 ### macOS says the app is damaged or cannot be opened
 
 If you downloaded the installer from the internet, macOS may attach a quarantine flag to the app. Run:
@@ -96,6 +104,7 @@ xattr -dr com.apple.quarantine /Applications/AstrBot.app
 
 Then restart the app. If the app is not located in `/Applications`, replace the path with the actual one.
 
+<!-- faq: missing-runtime-tools -->
 ### Why do some MCP tools say `node`, `npx`, or `uvx` is missing?
 
 Some MCP tools depend on `node`, `npx`, or `uvx` from your system environment. These dependencies are not bundled with the desktop installer, so you need to install them separately.
@@ -112,7 +121,10 @@ npx -v
 uvx --version
 ```
 
+<!-- section: further-documentation -->
 ## Further Documentation
+
+The following repository documents are currently written in Chinese:
 
 - [`docs/data-migration.md`](docs/data-migration.md): data migration between the desktop app and source deployment.
 - [`docs/development.md`](docs/development.md): local build, maintenance commands, version syncing, and release notes.
@@ -120,6 +132,7 @@ uvx --version
 - [`docs/architecture.md`](docs/architecture.md): current desktop architecture.
 - [`docs/repository-structure.md`](docs/repository-structure.md): repository structure overview.
 
+<!-- section: feedback -->
 ## Feedback
 
 If you need installation help or want to report issues and suggestions, you can reach out through:
@@ -127,6 +140,7 @@ If you need installation help or want to report issues and suggestions, you can 
 - GitHub Issues: <https://github.com/AstrBotDevs/AstrBot-desktop/issues>
 - QQ Group: 1060046189
 
+<!-- section: license -->
 ## License
 
 This project is licensed under `AGPL-3.0`. See [`LICENSE`](./LICENSE) for the full text.
