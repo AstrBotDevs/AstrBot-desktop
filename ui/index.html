@@ -151,9 +151,10 @@
         const desc = document.getElementById("startup-desc");
         const status = document.getElementById("startup-status");
         if (!title || !desc || !status) return;
-        if (!window.__astrbotStartupShell) return;
+        if (!window.astrbot || !window.astrbot.startupShell) return;
 
-        const { STARTUP_MODES, STARTUP_COPY } = window.__astrbotStartupShell;
+        const startupShell = window.astrbot.startupShell;
+        const { STARTUP_MODES, STARTUP_COPY } = startupShell;
 
         const resolveLocaleKey = () => {
           const locale =
@@ -173,6 +174,7 @@
           const next = resolveStartupCopy(mode);
           title.textContent = next.title;
           desc.textContent = next.desc;
+          if (status.textContent === next.status) return;
           status.textContent = next.status;
         };
 

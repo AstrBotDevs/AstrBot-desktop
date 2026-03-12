@@ -49,8 +49,13 @@ test('startup shell loads shared copy config, reuses applyStartupMode, and expos
   );
   assert.match(
     source,
-    /const\s+\{\s*STARTUP_MODES,\s*STARTUP_COPY\s*\}\s*=\s*window\.__astrbotStartupShell;/,
-    'expected startup shell to read startup copy from the shared config',
+    /const\s+startupShell\s*=\s*window\.astrbot\.startupShell;/,
+    'expected startup shell to read its shared config from a named astrbot namespace',
+  );
+  assert.match(
+    source,
+    /const\s+\{\s*STARTUP_MODES,\s*STARTUP_COPY\s*\}\s*=\s*startupShell;/,
+    'expected startup shell to destructure startup config from the namespaced object',
   );
   assert.doesNotMatch(
     source,
@@ -62,20 +67,45 @@ test('startup shell loads shared copy config, reuses applyStartupMode, and expos
     /applyStartupMode\(STARTUP_MODES\.LOADING\);/,
     'expected startup shell to initialize through applyStartupMode',
   );
+  assert.match(
+    source,
+    /if\s*\(status\.textContent\s*===\s*next\.status\)\s*return;/,
+    'expected startup shell to skip duplicate status announcements',
+  );
 
   assert.match(
     configSource,
-    /const\s+STARTUP_MODES\s*=\s*Object\.freeze\(/,
+    /const\s+deepFreeze\s*=\s*\(obj\)\s*=>/,
+    'expected shared startup copy config to use a deepFreeze helper',
+  );
+  assert.match(
+    configSource,
+    /const\s+STARTUP_MODES\s*=\s*\{/,
     'expected shared startup copy config to define startup modes',
   );
   assert.match(
     configSource,
-    /const\s+STARTUP_COPY\s*=\s*Object\.freeze\(/,
+    /window\.astrbot\s*=\s*window\.astrbot\s*\|\|\s*\{\};/,
+    'expected shared startup copy config to allocate the astrbot namespace',
+  );
+  assert.match(
+    configSource,
+    /window\.astrbot\.startupShell\s*=\s*deepFreeze\(/,
+    'expected shared startup copy config to expose startup shell under the astrbot namespace',
+  );
+  assert.match(
+    configSource,
+    /STARTUP_COPY:\s*\{/,
     'expected shared startup copy config to define localized startup copy',
   );
   assert.match(
     configSource,
-    /window\.__astrbotStartupShell\s*=\s*Object\.freeze\(/,
-    'expected shared startup copy config to expose startup shell data on window',
+    /en:\s*\{/,
+    'expected shared startup copy config to include English startup copy',
+  );
+  assert.match(
+    configSource,
+    /zh:\s*\{/,
+    'expected shared startup copy config to include Chinese startup copy',
   );
 });
