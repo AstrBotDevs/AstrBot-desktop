@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import * as runtimeArchUtils from './runtime-arch-utils.mjs';
 import {
   isWindowsArm64BundledRuntime,
   resolveBundledRuntimeArch,
@@ -53,5 +54,36 @@ test('isWindowsArm64BundledRuntime uses explicit bundled runtime arch handoff', 
       env: { ASTRBOT_DESKTOP_BUNDLED_RUNTIME_ARCH: 'amd64' },
     }),
     false,
+  );
+});
+
+test('isWindowsArm64BundledRuntime returns false for unsupported Windows host arch', () => {
+  assert.equal(
+    isWindowsArm64BundledRuntime({
+      platform: 'win32',
+      arch: 'ia32',
+      env: {},
+    }),
+    false,
+  );
+});
+
+test('hasRuntimeArchOverride returns booleans for recognized override env vars', () => {
+  assert.equal(typeof runtimeArchUtils.hasRuntimeArchOverride, 'function');
+  assert.equal(runtimeArchUtils.hasRuntimeArchOverride({}), false);
+  assert.equal(
+    runtimeArchUtils.hasRuntimeArchOverride({
+      ASTRBOT_DESKTOP_BUNDLED_RUNTIME_ARCH: '   ',
+      ASTRBOT_DESKTOP_TARGET_ARCH: ' ',
+    }),
+    false,
+  );
+  assert.equal(
+    runtimeArchUtils.hasRuntimeArchOverride({ ASTRBOT_DESKTOP_BUNDLED_RUNTIME_ARCH: 'arm64' }),
+    true,
+  );
+  assert.equal(
+    runtimeArchUtils.hasRuntimeArchOverride({ ASTRBOT_DESKTOP_TARGET_ARCH: 'arm64' }),
+    true,
   );
 });

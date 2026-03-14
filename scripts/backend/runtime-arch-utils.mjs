@@ -7,6 +7,12 @@ const PROCESS_ARCH_MAP = {
   arm64: 'arm64',
 };
 
+const hasNonEmptyEnvOverride = (env, key) => Boolean(String(env[key] ?? '').trim());
+
+export const hasRuntimeArchOverride = (env = process.env) =>
+  hasNonEmptyEnvOverride(env, BUNDLED_RUNTIME_ARCH_ENV) ||
+  hasNonEmptyEnvOverride(env, DESKTOP_TARGET_ARCH_ENV);
+
 export const normalizeDesktopArch = (rawArch, sourceName) => {
   const raw = String(rawArch ?? '').trim().toLowerCase();
   if (raw === 'amd64' || raw === 'x64') {
@@ -22,7 +28,7 @@ export const normalizeDesktopArch = (rawArch, sourceName) => {
 
 export const resolveDesktopTargetArch = ({ arch = process.arch, env = process.env } = {}) => {
   const overrideRaw = env[DESKTOP_TARGET_ARCH_ENV];
-  if (overrideRaw !== undefined && String(overrideRaw).trim()) {
+  if (hasNonEmptyEnvOverride(env, DESKTOP_TARGET_ARCH_ENV)) {
     return normalizeDesktopArch(overrideRaw, DESKTOP_TARGET_ARCH_ENV);
   }
 
@@ -40,7 +46,7 @@ export const resolveBundledRuntimeArch = ({
   env = process.env,
 } = {}) => {
   const explicitBundledRuntimeArch = env[BUNDLED_RUNTIME_ARCH_ENV];
-  if (explicitBundledRuntimeArch !== undefined && String(explicitBundledRuntimeArch).trim()) {
+  if (hasNonEmptyEnvOverride(env, BUNDLED_RUNTIME_ARCH_ENV)) {
     return normalizeDesktopArch(explicitBundledRuntimeArch, BUNDLED_RUNTIME_ARCH_ENV);
   }
 
@@ -50,7 +56,7 @@ export const resolveBundledRuntimeArch = ({
   }
 
   const windowsArmBackendArch = env[WINDOWS_ARM_BACKEND_ARCH_ENV];
-  if (windowsArmBackendArch === undefined || !String(windowsArmBackendArch).trim()) {
+  if (!hasNonEmptyEnvOverride(env, WINDOWS_ARM_BACKEND_ARCH_ENV)) {
     return 'amd64';
   }
 
@@ -61,4 +67,14 @@ export const isWindowsArm64BundledRuntime = ({
   platform = process.platform,
   arch = process.arch,
   env = process.env,
-} = {}) => platform === 'win32' && resolveBundledRuntimeArch({ platform, arch, env }) === 'arm64';
+} = {}) => {
+  if (platform !== 'win32') {
+    return false;
+  }
+
+  if (!hasRuntimeArchOverride(env) && !PROCESS_ARCH_MAP[arch]) {
+    return false;
+  }
+
+  return resolveBundledRuntimeArch({ platform, arch, env }) === 'arm64';
+};
