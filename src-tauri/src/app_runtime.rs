@@ -125,6 +125,10 @@ fn configure_setup(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
 
 fn handle_run_event(app_handle: &tauri::AppHandle, event: RunEvent) {
     match app_runtime_events::run_event_action(&event) {
+        app_runtime_events::RunEventAction::ShowMainWindow => {
+            append_desktop_log("application reopen requested, showing main window");
+            window::actions::show_main_window(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log);
+        }
         app_runtime_events::RunEventAction::HandleExitRequested => {
             if let RunEvent::ExitRequested { api, .. } = event {
                 lifecycle::events::handle_exit_requested(app_handle, &api);
