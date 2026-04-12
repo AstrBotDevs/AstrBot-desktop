@@ -267,7 +267,7 @@ jobs:
           astrbot_version: ${{ steps.desktop_version.outputs.normalized }}
 
       - name: Import Apple Developer Certificate
-        if: ${{ env.APPLE_CERTIFICATE != '' }}
+        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
