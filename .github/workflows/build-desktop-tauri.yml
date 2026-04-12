@@ -266,6 +266,64 @@ jobs:
         with:
           astrbot_version: ${{ steps.desktop_version.outputs.normalized }}
 
+      - name: Import Apple Developer Certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${APPLE_CERTIFICATE:-}" ]; then
+            echo "APPLE_CERTIFICATE is not configured; skipping certificate import."
+            exit 0
+          fi
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
+
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          rm -f "$CERT_PATH"
+
+          CERT_INFO=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep "Developer ID Application")
+          CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
+          echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> "$GITHUB_ENV"
+          echo "Imported signing identity: $CERT_ID"
+
+      - name: Pre-sign backend resources (macOS)
+        if: ${{ env.APPLE_SIGNING_IDENTITY != '' }}
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          ASTRBOT_SOURCE_GIT_URL: ${{ needs.resolve_build_context.outputs.source_git_url }}
+          ASTRBOT_SOURCE_GIT_REF: ${{ needs.resolve_build_context.outputs.source_git_ref }}
+          ASTRBOT_DESKTOP_VERSION: ${{ steps.desktop_version.outputs.prefixed }}
+          ASTRBOT_DESKTOP_UPDATER_PUBLIC_KEY: ${{ env.ASTRBOT_DESKTOP_UPDATER_PUBLIC_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm run prepare:resources
+          if [ ! -d "resources/backend" ]; then
+            echo "::error::resources/backend not found after prepare:resources." >&2
+            exit 1
+          fi
+          echo "Pre-signing Mach-O binaries in resources/backend..."
+          bash scripts/ci/codesign-macos-nested.sh "resources/backend" "src-tauri/entitlements.plist"
+          python3 -c "
+          import json
+          p = 'src-tauri/tauri.conf.json'
+          with open(p) as f: c = json.load(f)
+          c['build']['beforeBuildCommand'] = ''
+          with open(p, 'w') as f: json.dump(c, f, indent=2)
+          print('Cleared beforeBuildCommand to prevent re-generating resources.')
+          "
+
       - name: Resolve macOS app bundle name
         id: resolve_macos_app_bundle
         env:
@@ -295,6 +353,12 @@ jobs:
           ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS: ${{ vars.ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS || '' }}
           ASTRBOT_MACOS_BUILD_MAX_ATTEMPTS: ${{ vars.ASTRBOT_MACOS_BUILD_MAX_ATTEMPTS || '3' }}
           ASTRBOT_MACOS_BUILD_RETRY_SLEEP_SECONDS: ${{ vars.ASTRBOT_MACOS_BUILD_RETRY_SLEEP_SECONDS || '8' }}
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
         shell: bash
