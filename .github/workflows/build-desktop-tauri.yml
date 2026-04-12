@@ -383,6 +383,20 @@ jobs:
             sleep "${retry_sleep_seconds}"
           done
 
+      - name: Codesign nested binaries (macOS)
+        if: ${{ env.APPLE_SIGNING_IDENTITY != '' }}
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_bundle="src-tauri/target/${{ matrix.target }}/release/bundle/macos/AstrBot.app"
+          if [ ! -d "${app_bundle}" ]; then
+            echo "::warning::App bundle not found at ${app_bundle}; skipping nested signing."
+            exit 0
+          fi
+          bash scripts/ci/codesign-macos-nested.sh "${app_bundle}" "src-tauri/entitlements.plist"
+
       - name: Smoke test backend startup (macOS)
         shell: bash
         run: |
