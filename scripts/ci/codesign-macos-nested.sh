@@ -36,8 +36,13 @@ echo "Found ${#NESTED_BINARIES[@]} Mach-O binary(ies) to sign in ${TARGET}."
 
 for binary in "${NESTED_BINARIES[@]}"; do
   echo "  Signing: ${binary}"
+  # Only apply entitlements to executables, not dylibs
+  CURRENT_ENTITLEMENTS=()
+  if [ ${#ENTITLEMENTS_ARGS[@]} -gt 0 ] && file --brief "${binary}" | grep -q "executable"; then
+    CURRENT_ENTITLEMENTS=("${ENTITLEMENTS_ARGS[@]}")
+  fi
   codesign "${SIGN_OPTS[@]}" \
-    "${ENTITLEMENTS_ARGS[@]+"${ENTITLEMENTS_ARGS[@]}"}" \
+    ${CURRENT_ENTITLEMENTS[@]+"${CURRENT_ENTITLEMENTS[@]}"} \
     "${binary}"
 done
 
