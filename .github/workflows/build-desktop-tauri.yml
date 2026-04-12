@@ -267,7 +267,6 @@ jobs:
           astrbot_version: ${{ steps.desktop_version.outputs.normalized }}
 
       - name: Import Apple Developer Certificate
-        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -275,6 +274,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [ -z "${APPLE_CERTIFICATE:-}" ]; then
+            echo "APPLE_CERTIFICATE is not configured; skipping certificate import."
+            exit 0
+          fi
           CERT_PATH="$RUNNER_TEMP/certificate.p12"
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
 
