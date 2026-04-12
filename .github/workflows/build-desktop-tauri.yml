@@ -295,15 +295,28 @@ jobs:
         if: ${{ env.APPLE_SIGNING_IDENTITY != '' }}
         env:
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          ASTRBOT_SOURCE_GIT_URL: ${{ needs.resolve_build_context.outputs.source_git_url }}
+          ASTRBOT_SOURCE_GIT_REF: ${{ needs.resolve_build_context.outputs.source_git_ref }}
+          ASTRBOT_DESKTOP_VERSION: ${{ steps.desktop_version.outputs.prefixed }}
+          ASTRBOT_DESKTOP_UPDATER_PUBLIC_KEY: ${{ env.ASTRBOT_DESKTOP_UPDATER_PUBLIC_KEY }}
         shell: bash
         run: |
           set -euo pipefail
-          if [ -d "resources/backend" ]; then
-            echo "Pre-signing Mach-O binaries in resources/backend..."
-            bash scripts/ci/codesign-macos-nested.sh "resources/backend" "src-tauri/entitlements.plist"
-          else
-            echo "resources/backend not found; skipping pre-sign."
+          pnpm run prepare:resources
+          if [ ! -d "resources/backend" ]; then
+            echo "::error::resources/backend not found after prepare:resources." >&2
+            exit 1
           fi
+          echo "Pre-signing Mach-O binaries in resources/backend..."
+          bash scripts/ci/codesign-macos-nested.sh "resources/backend" "src-tauri/entitlements.plist"
+          python3 -c "
+          import json
+          p = 'src-tauri/tauri.conf.json'
+          with open(p) as f: c = json.load(f)
+          c['build']['beforeBuildCommand'] = ''
+          with open(p, 'w') as f: json.dump(c, f, indent=2)
+          print('Cleared beforeBuildCommand to prevent re-generating resources.')
+          "
 
       - name: Resolve macOS app bundle name
         id: resolve_macos_app_bundle
