@@ -291,6 +291,20 @@ jobs:
           echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> "$GITHUB_ENV"
           echo "Imported signing identity: $CERT_ID"
 
+      - name: Pre-sign backend resources (macOS)
+        if: ${{ env.APPLE_SIGNING_IDENTITY != '' }}
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d "resources/backend" ]; then
+            echo "Pre-signing Mach-O binaries in resources/backend..."
+            bash scripts/ci/codesign-macos-nested.sh "resources/backend" "src-tauri/entitlements.plist"
+          else
+            echo "resources/backend not found; skipping pre-sign."
+          fi
+
       - name: Resolve macOS app bundle name
         id: resolve_macos_app_bundle
         env:
@@ -382,20 +396,6 @@ jobs:
             echo "macOS build hit transient failure on attempt ${attempt}/${max_attempts}; retrying in ${retry_sleep_seconds}s..."
             sleep "${retry_sleep_seconds}"
           done
-
-      - name: Codesign nested binaries (macOS)
-        if: ${{ env.APPLE_SIGNING_IDENTITY != '' }}
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          app_bundle="src-tauri/target/${{ matrix.target }}/release/bundle/macos/AstrBot.app"
-          if [ ! -d "${app_bundle}" ]; then
-            echo "::warning::App bundle not found at ${app_bundle}; skipping nested signing."
-            exit 0
-          fi
-          bash scripts/ci/codesign-macos-nested.sh "${app_bundle}" "src-tauri/entitlements.plist"
 
       - name: Smoke test backend startup (macOS)
         shell: bash
