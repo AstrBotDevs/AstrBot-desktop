@@ -28,7 +28,7 @@ while IFS= read -r -d '' file; do
     NESTED_BINARIES+=("${file}")
     BINARY_FILE_DESCRIPTIONS+=("${file_description}")
   fi
-done < <(find "${TARGET}" -type f -print0 2>/dev/null | sort -rz)
+done < <(find "${TARGET}" -type f -print0 2>/dev/null)
 
 if [ "${#NESTED_BINARIES[@]}" -eq 0 ]; then
   echo "No Mach-O binaries found in ${TARGET}; nothing to sign."
