@@ -36,15 +36,33 @@ export const generateRuntimeCoreLock = ({ runtimePython, outputPath }) => {
     );
   }
   if (result.status !== 0) {
-    const detail = result.stderr?.trim() || result.stdout?.trim() || `exit code ${result.status}`;
+    let detail;
+    if (result.signal) {
+      detail = `terminated by signal ${result.signal}`;
+    } else {
+      detail = result.stderr?.trim() || result.stdout?.trim() || `exit code ${result.status}`;
+    }
     throw new Error(
       `Runtime core lock generation failed ${formatGeneratorContext(runtimePython.absolute)}: ${detail}`,
     );
   }
 
-  if (!fs.existsSync(outputPath)) {
-    throw new Error(
-      `Runtime core lock generator did not create ${outputPath} ${formatGeneratorContext(runtimePython.absolute)}.`,
-    );
+  {
+    const context = formatGeneratorContext(runtimePython.absolute);
+    const baseMessage = `Runtime core lock generator did not create valid ${outputPath} ${context}.`;
+
+    if (!fs.existsSync(outputPath)) {
+      throw new Error(baseMessage);
+    }
+
+    try {
+      const contents = fs.readFileSync(outputPath, 'utf8');
+      if (!contents.trim()) {
+        throw new Error('empty runtime core lock output');
+      }
+      JSON.parse(contents);
+    } catch {
+      throw new Error(baseMessage);
+    }
   }
 };

@@ -14,6 +14,27 @@ const launcherTemplatePath = fileURLToPath(new URL('./templates/launch_backend.p
 const generatorScriptPath = fileURLToPath(new URL('./tools/generate_runtime_core_lock.py', import.meta.url));
 
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const shellQuote = (value) => `'${value.replace(/'/g, `'\\''`)}'`;
+
+const createFakeRuntime = (fixtureRoot, jsSource) => {
+  const driverPath = path.join(fixtureRoot, 'fake-runtime.js');
+  fs.writeFileSync(driverPath, jsSource, 'utf8');
+
+  if (process.platform === 'win32') {
+    const wrapperPath = path.join(fixtureRoot, 'fake-runtime.cmd');
+    fs.writeFileSync(wrapperPath, `@echo off\r\n"${process.execPath}" "${driverPath}" %*\r\n`, 'utf8');
+    return wrapperPath;
+  }
+
+  const wrapperPath = path.join(fixtureRoot, 'fake-runtime');
+  fs.writeFileSync(
+    wrapperPath,
+    `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(driverPath)} "$@"\n`,
+    'utf8',
+  );
+  fs.chmodSync(wrapperPath, 0o755);
+  return wrapperPath;
+};
 
 test('generateRuntimeCoreLock writes installed distribution metadata', () => {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'astrbot-runtime-core-lock-'));
@@ -207,6 +228,68 @@ test('generateRuntimeCoreLock reports generator context for non-zero exits', () 
         assert.equal(error instanceof Error, true);
         assert.match(error.message, /Runtime core lock generation failed/);
         assert.match(error.message, new RegExp(`python: ${escapeRegExp(process.execPath)}`));
+        assert.match(error.message, new RegExp(`script: ${escapeRegExp(generatorScriptPath)}`));
+        return true;
+      },
+    );
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test('generateRuntimeCoreLock reports signal-based termination clearly', () => {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'astrbot-runtime-core-lock-signal-error-'));
+  const fakeRuntimePath = createFakeRuntime(
+    fixtureRoot,
+    `process.kill(process.pid, ${JSON.stringify(process.platform === 'win32' ? 'SIGTERM' : 'SIGTERM')});\n`,
+  );
+
+  try {
+    assert.throws(
+      () =>
+        generateRuntimeCoreLock({
+          runtimePython: { absolute: fakeRuntimePath },
+          outputPath: path.join(fixtureRoot, 'runtime-core-lock.json'),
+        }),
+      (error) => {
+        assert.equal(error instanceof Error, true);
+        assert.match(error.message, /Runtime core lock generation failed/);
+        assert.match(error.message, /terminated by signal SIGTERM/);
+        assert.doesNotMatch(error.message, /exit code null/);
+        assert.match(error.message, new RegExp(`python: ${escapeRegExp(fakeRuntimePath)}`));
+        assert.match(error.message, new RegExp(`script: ${escapeRegExp(generatorScriptPath)}`));
+        return true;
+      },
+    );
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test('generateRuntimeCoreLock rejects invalid generated lock content', () => {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'astrbot-runtime-core-lock-invalid-output-'));
+  const fakeRuntimePath = createFakeRuntime(
+    fixtureRoot,
+    `
+const fs = require('node:fs');
+const outputPath = process.argv[4];
+fs.mkdirSync(require('node:path').dirname(outputPath), { recursive: true });
+fs.writeFileSync(outputPath, 'not json', 'utf8');
+`,
+  );
+
+  try {
+    assert.throws(
+      () =>
+        generateRuntimeCoreLock({
+          runtimePython: { absolute: fakeRuntimePath },
+          outputPath: path.join(fixtureRoot, 'runtime-core-lock.json'),
+        }),
+      (error) => {
+        assert.equal(error instanceof Error, true);
+        assert.match(error.message, /did not create valid/);
+        assert.match(error.message, new RegExp(escapeRegExp(path.join(fixtureRoot, 'runtime-core-lock.json'))));
+        assert.match(error.message, new RegExp(`python: ${escapeRegExp(fakeRuntimePath)}`));
         assert.match(error.message, new RegExp(`script: ${escapeRegExp(generatorScriptPath)}`));
         return true;
       },
