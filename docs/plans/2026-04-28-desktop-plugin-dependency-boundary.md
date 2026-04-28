@@ -1,7 +1,5 @@
 # Desktop Plugin Dependency Boundary Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
-
 **Goal:** Prevent packaged desktop plugin installs from replacing bundled backend runtime dependencies.
 
 **Architecture:** Generate a runtime core dependency lock during desktop backend packaging, expose it through an environment variable at launch, and teach AstrBot's packaged pip installer to constrain and skip locked core modules. This keeps plugin-only dependencies installable while preventing unsafe in-process replacement of backend dependencies.

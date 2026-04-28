@@ -5,13 +5,19 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const generatorScriptPath = path.join(__dirname, 'tools', 'generate_runtime_core_lock.py');
+const formatGeneratorContext = (pythonPath) =>
+  `(python: ${pythonPath ?? 'undefined'}, script: ${generatorScriptPath})`;
 
 export const generateRuntimeCoreLock = ({ runtimePython, outputPath }) => {
   if (!runtimePython?.absolute) {
-    throw new Error('Missing runtime Python executable for runtime core lock generation.');
+    throw new Error(
+      `Missing runtime Python executable for runtime core lock generation ${formatGeneratorContext(runtimePython?.absolute)}.`,
+    );
   }
   if (!outputPath) {
-    throw new Error('Missing output path for runtime core lock generation.');
+    throw new Error(
+      `Missing output path for runtime core lock generation ${formatGeneratorContext(runtimePython.absolute)}.`,
+    );
   }
 
   const result = spawnSync(
@@ -25,14 +31,20 @@ export const generateRuntimeCoreLock = ({ runtimePython, outputPath }) => {
   );
 
   if (result.error) {
-    throw new Error(`Failed to generate runtime core lock: ${result.error.message}`);
+    throw new Error(
+      `Failed to generate runtime core lock ${formatGeneratorContext(runtimePython.absolute)}: ${result.error.message}`,
+    );
   }
   if (result.status !== 0) {
     const detail = result.stderr?.trim() || result.stdout?.trim() || `exit code ${result.status}`;
-    throw new Error(`Runtime core lock generation failed: ${detail}`);
+    throw new Error(
+      `Runtime core lock generation failed ${formatGeneratorContext(runtimePython.absolute)}: ${detail}`,
+    );
   }
 
   if (!fs.existsSync(outputPath)) {
-    throw new Error(`Runtime core lock generator did not create ${outputPath}`);
+    throw new Error(
+      `Runtime core lock generator did not create ${outputPath} ${formatGeneratorContext(runtimePython.absolute)}.`,
+    );
   }
 };
