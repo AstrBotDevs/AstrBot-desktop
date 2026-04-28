@@ -10,7 +10,7 @@ This allows plugin-only dependencies to work, but it also allows plugin installs
 shadow packages already used by the bundled backend runtime. Packages such as
 `openai`, `pydantic`, `fastapi`, `numpy`, and PyObjC modules are unsafe to hot-reload
 inside a running backend process. Installing Cua exposed this failure mode: pip
-installed a second dependency set into plugin `site-packages`, the installer tried to
+installed a second dependency set into plugin `site-packages`; the installer tried to
 prefer those modules in-process, and the running OpenAI client later saw incompatible
 class identities.
 
