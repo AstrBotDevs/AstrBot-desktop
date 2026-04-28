@@ -224,7 +224,7 @@ def start_startup_heartbeat() -> None:
 def configure_runtime_core_lock_path() -> None:
     lock_path = APP_DIR / "runtime-core-lock.json"
     if lock_path.is_file():
-        os.environ["ASTRBOT_DESKTOP_CORE_LOCK_PATH"] = str(lock_path)
+        os.environ[RUNTIME_CORE_LOCK_ENV] = str(lock_path)
 
 
 def main() -> None:

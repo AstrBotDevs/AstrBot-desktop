@@ -9,7 +9,7 @@ from pathlib import Path
 def _read_top_level_modules(distribution: importlib_metadata.Distribution) -> list[str]:
     try:
         text = distribution.read_text("top_level.txt") or ""
-    except Exception:
+    except (FileNotFoundError, KeyError):
         return []
 
     modules: set[str] = set()
@@ -20,7 +20,9 @@ def _read_top_level_modules(distribution: importlib_metadata.Distribution) -> li
     return sorted(modules)
 
 
-def _distribution_record(distribution: importlib_metadata.Distribution) -> dict[str, object] | None:
+def _distribution_record(
+    distribution: importlib_metadata.Distribution,
+) -> dict[str, object] | None:
     name = distribution.metadata.get("Name")
     version = distribution.version
     if not name or not version:
