@@ -48,7 +48,14 @@ test('backend launcher exposes the runtime core lock path when present', async (
   assert.match(source, /ASTRBOT_DESKTOP_CORE_LOCK_PATH/);
   assert.match(source, /APP_DIR\s*\/\s*["']runtime-core-lock\.json["']/);
   assert.match(source, /RUNTIME_CORE_LOCK_ENV\s*=\s*["']ASTRBOT_DESKTOP_CORE_LOCK_PATH["']/);
-  assert.match(source, /os\.environ\[RUNTIME_CORE_LOCK_ENV\]\s*=\s*str\(lock_path\)/);
+  assert.match(source, /os\.environ\.setdefault\(RUNTIME_CORE_LOCK_ENV,\s*str\(lock_path\)\)/);
+});
+
+test('runtime core lock wrapper leaves output directory creation to the generator script', async () => {
+  const runtimeCoreLockPath = new URL('./runtime-core-lock.mjs', import.meta.url);
+  const source = await readFile(runtimeCoreLockPath, 'utf8');
+
+  assert.doesNotMatch(source, /mkdirSync\(/);
 });
 
 test('runtime core lock helper only suppresses missing top-level metadata', () => {

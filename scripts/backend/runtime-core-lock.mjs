@@ -14,8 +14,6 @@ export const generateRuntimeCoreLock = ({ runtimePython, outputPath }) => {
     throw new Error('Missing output path for runtime core lock generation.');
   }
 
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-
   const result = spawnSync(
     runtimePython.absolute,
     [generatorScriptPath, '--output', outputPath],
