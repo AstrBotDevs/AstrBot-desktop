@@ -48,6 +48,24 @@ pub fn handle_exit_requested(app_handle: &AppHandle, api: &tauri::ExitRequestApi
     });
 }
 
+pub fn handle_tray_quit(app_handle: &AppHandle) {
+    let state = app_handle.state::<BackendState>();
+    state.mark_quitting();
+    if !cleanup::try_begin_exit_cleanup(&state, cleanup::ExitTrigger::TrayQuit, append_shutdown_log)
+    {
+        return;
+    }
+
+    append_shutdown_log("tray quit requested, stopping backend asynchronously");
+    let app_handle_cloned = app_handle.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle_cloned.state::<BackendState>();
+        cleanup::stop_backend_for_exit(&state, cleanup::ExitTrigger::TrayQuit, append_shutdown_log);
+        state.allow_next_exit_request();
+        app_handle_cloned.exit(0);
+    });
+}
+
 pub fn handle_exit_event(app_handle: &AppHandle) {
     let state = app_handle.state::<BackendState>();
     if !cleanup::try_begin_exit_cleanup(
