@@ -37,6 +37,20 @@ where
     false
 }
 
+pub fn stop_backend_for_exit<F>(state: &BackendState, trigger: ExitTrigger, log: F)
+where
+    F: Fn(&str),
+{
+    let failure_prefix = stop_failure_prefix(trigger);
+    if let Err(error) = state.stop_backend() {
+        log(&format!("{failure_prefix}: {error}"));
+    }
+
+    if matches!(trigger, ExitTrigger::ExitRequested | ExitTrigger::TrayQuit) {
+        log("backend stop finished, exiting desktop process");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{duplicate_cleanup_message, ExitTrigger};
@@ -55,19 +69,5 @@ mod tests {
             super::stop_failure_prefix(ExitTrigger::TrayQuit),
             "backend graceful stop on tray quit failed"
         );
-    }
-}
-
-pub fn stop_backend_for_exit<F>(state: &BackendState, trigger: ExitTrigger, log: F)
-where
-    F: Fn(&str),
-{
-    let failure_prefix = stop_failure_prefix(trigger);
-    if let Err(error) = state.stop_backend() {
-        log(&format!("{failure_prefix}: {error}"));
-    }
-
-    if matches!(trigger, ExitTrigger::ExitRequested | ExitTrigger::TrayQuit) {
-        log("backend stop finished, exiting desktop process");
     }
 }
