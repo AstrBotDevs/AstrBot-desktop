@@ -34,6 +34,7 @@ const runtimeCoreLockPath = path.join(appDir, 'runtime-core-lock.json');
 const launcherPath = path.join(outputDir, 'launch_backend.py');
 const launcherTemplatePath = path.join(__dirname, 'templates', 'launch_backend.py');
 const importScannerScriptPath = path.join(__dirname, 'tools', 'scan_imports.py');
+const validateDiscordScriptPath = path.join(__dirname, 'tools', 'validate_discord.py');
 
 const runtimeSource =
   process.env.ASTRBOT_DESKTOP_BACKEND_RUNTIME ||
@@ -584,6 +585,87 @@ const installRuntimeDependencies = (runtimePython) => {
   }
 };
 
+// Configurable via env for slower CI environments.
+const DISCORD_VALIDATION_TIMEOUT_MS =
+  Number(process.env.ASTRBOT_DISCORD_VALIDATION_TIMEOUT) || 30_000;
+// Protocol prefix shared with scripts/backend/tools/validate_discord.py.
+const DISCORD_JSON_PREFIX = 'ASTRBOT_VALIDATE_DISCORD_JSON:';
+
+const extractPrefixedJson = (rawStdout) => {
+  if (!rawStdout) return null;
+  const lines = String(rawStdout).split(/\r?\n/);
+  const jsonLine = lines.find((line) => line.startsWith(DISCORD_JSON_PREFIX));
+  if (!jsonLine) return null;
+  try {
+    return JSON.parse(jsonLine.slice(DISCORD_JSON_PREFIX.length));
+  } catch {
+    return null;
+  }
+};
+
+const validateDiscordPackage = (runtimePython) => {
+  const result = spawnSync(
+    runtimePython.absolute,
+    [validateDiscordScriptPath, DISCORD_JSON_PREFIX],
+    {
+      encoding: 'utf8',
+      cwd: outputDir,
+      windowsHide: true,
+      timeout: DISCORD_VALIDATION_TIMEOUT_MS,
+    },
+  );
+
+  if (result.error) {
+    const isTimeout = result.error.code === 'ETIMEDOUT';
+    const details = [
+      `exit status: ${result.status ?? 'unknown'}`,
+      `error code: ${result.error.code ?? 'unknown'}`,
+      result.signal ? `signal: ${result.signal}` : null,
+      result.stdout ? `stdout: ${String(result.stdout).trim()}` : null,
+      result.stderr ? `stderr: ${String(result.stderr).trim()}` : null,
+    ]
+      .filter(Boolean)
+      .join('; ');
+
+    throw new Error(
+      `Discord package validation could not run (interpreter: ${runtimePython.absolute}). ` +
+      (isTimeout
+        ? `Timed out after ${DISCORD_VALIDATION_TIMEOUT_MS}ms. `
+        : 'This may indicate a Python runtime issue. ') +
+      `Details: ${details}. ` +
+      `Underlying error: ${result.error.message}`,
+    );
+  }
+
+  if (result.status === 0) {
+    console.log('[build-backend] Discord package validation passed.');
+    return;
+  }
+
+  let techDetails = 'unknown error';
+  const parsed = extractPrefixedJson(result.stdout);
+  if (parsed && !parsed.ok) {
+    const parts = [
+      parsed.missing?.length && `missing: ${parsed.missing.join(', ')}`,
+      parsed.file && `package file: ${parsed.file}`,
+      parsed.version && `version: ${parsed.version}`,
+      parsed.error && `error: ${parsed.error}`,
+    ].filter(Boolean);
+    if (parts.length) techDetails = parts.join('; ');
+  } else {
+    const stderr = result.stderr?.trim();
+    const stdout = result.stdout?.trim();
+    techDetails = stderr || stdout || techDetails;
+  }
+
+  throw new Error(
+    `Discord package validation failed (exit code ${result.status}): ${techDetails}. ` +
+    'The most common cause is the PyPI "discord" stub package being installed ' +
+    'instead of "py-cord", but other mis-installs can also trigger this. ' +
+    'Please clean the build environment (pip cache, virtualenv) and retry.',
+  );
+};
+
 const main = () => {
   const resolvedSourceDir = requireSourceDir();
 
@@ -615,6 +697,7 @@ const main = () => {
   copyAppSources(resolvedSourceDir);
   const runtimePython = prepareRuntimeExecutable(runtimeSourceReal);
   installRuntimeDependencies(runtimePython);
+  validateDiscordPackage(runtimePython);
   generateRuntimeCoreLock({
     runtimePython,
     outputPath: runtimeCoreLockPath,
