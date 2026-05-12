@@ -1,5 +1,6 @@
 use std::{
     env,
+    ffi::OsStr,
     fs::{self, OpenOptions},
     process::{Command, Stdio},
 };
@@ -43,32 +44,53 @@ where
 }
 
 fn configure_desktop_dashboard_environment(command: &mut Command) {
-    let dashboard_host =
-        env::var_os(DASHBOARD_HOST_ENV).or_else(|| env::var_os(ASTRBOT_DASHBOARD_HOST_ENV));
+    let dashboard_host_env = env::var_os(DASHBOARD_HOST_ENV);
+    let astrbot_dashboard_host_env = env::var_os(ASTRBOT_DASHBOARD_HOST_ENV);
+    let dashboard_port_env = env::var_os(DASHBOARD_PORT_ENV);
+    let astrbot_dashboard_port_env = env::var_os(ASTRBOT_DASHBOARD_PORT_ENV);
+    let astrbot_skip_auth_env = env::var_os(ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV);
+    let legacy_skip_auth_env = env::var_os(DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV);
 
-    if dashboard_host.is_none() {
+    let effective_host = dashboard_host_env
+        .as_ref()
+        .or(astrbot_dashboard_host_env.as_ref())
+        .map(OsStr::new);
+    let has_explicit_skip_auth = astrbot_skip_auth_env.is_some() || legacy_skip_auth_env.is_some();
+
+    if dashboard_host_env.is_none() && astrbot_dashboard_host_env.is_none() {
         command.env(DASHBOARD_HOST_ENV, DEFAULT_DASHBOARD_HOST);
     }
-    if env::var_os(DASHBOARD_PORT_ENV).is_none()
-        && env::var_os(ASTRBOT_DASHBOARD_PORT_ENV).is_none()
-    {
+    if dashboard_port_env.is_none() && astrbot_dashboard_port_env.is_none() {
         command.env(DASHBOARD_PORT_ENV, DEFAULT_DASHBOARD_PORT);
     }
-    if env::var_os(ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV).is_none()
-        && env::var_os(DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV).is_none()
-        && dashboard_host
-            .as_ref()
-            .is_none_or(|host| host.to_str().is_some_and(is_local_dashboard_host))
-    {
+    if should_skip_default_password_auth(has_explicit_skip_auth, effective_host) {
         command.env(ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV, "true");
     }
 }
 
+fn should_skip_default_password_auth(
+    has_explicit_skip_auth: bool,
+    effective_host: Option<&OsStr>,
+) -> bool {
+    if has_explicit_skip_auth {
+        return false;
+    }
+
+    let Some(effective_host) = effective_host else {
+        return true;
+    };
+    let Some(host) = effective_host.to_str() else {
+        return false;
+    };
+
+    is_local_dashboard_host(host)
+}
+
 fn is_local_dashboard_host(host: &str) -> bool {
-    matches!(
-        host.trim().to_ascii_lowercase().as_str(),
-        "127.0.0.1" | "localhost" | "::1"
-    )
+    let trimmed = host.trim();
+    trimmed.eq_ignore_ascii_case("127.0.0.1")
+        || trimmed.eq_ignore_ascii_case("localhost")
+        || trimmed.eq_ignore_ascii_case("::1")
 }
 
 impl BackendState {
@@ -237,7 +259,14 @@ impl BackendState {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, env, ffi::OsStr, process::Command, sync::Mutex};
+    use std::{
+        collections::HashMap,
+        env,
+        ffi::OsStr,
+        panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
+        process::Command,
+        sync::Mutex,
+    };
 
     #[cfg(unix)]
     use std::os::unix::ffi::OsStringExt;
@@ -267,45 +296,43 @@ mod tests {
             .map(|(_, value)| value.map(|v| v.to_string_lossy().into_owned()))
     }
 
-    struct DashboardEnvSnapshot {
-        previous: HashMap<&'static str, Option<std::ffi::OsString>>,
+    fn save_dashboard_env() -> HashMap<&'static str, Option<std::ffi::OsString>> {
+        DASHBOARD_ENV_KEYS
+            .iter()
+            .map(|&key| (key, env::var_os(key)))
+            .collect()
     }
 
-    impl DashboardEnvSnapshot {
-        fn capture() -> Self {
-            Self {
-                previous: DASHBOARD_ENV_KEYS
-                    .iter()
-                    .map(|&key| (key, env::var_os(key)))
-                    .collect(),
+    fn restore_dashboard_env(saved: HashMap<&'static str, Option<std::ffi::OsString>>) {
+        for (key, value) in saved {
+            match value {
+                Some(value) => env::set_var(key, value),
+                None => env::remove_var(key),
             }
         }
     }
 
-    impl Drop for DashboardEnvSnapshot {
-        fn drop(&mut self) {
-            for (key, previous) in &self.previous {
-                match previous {
-                    Some(value) => env::set_var(key, value),
-                    None => env::remove_var(key),
-                }
-            }
-        }
-    }
-
-    fn with_dashboard_env<FSetup, FTest>(setup: FSetup, test: FTest)
-    where
-        FSetup: FnOnce(),
-        FTest: FnOnce(),
-    {
-        let _lock = ENV_TEST_LOCK.lock().unwrap();
-        let _snapshot = DashboardEnvSnapshot::capture();
-
+    fn clear_dashboard_env() {
         for key in DASHBOARD_ENV_KEYS {
             env::remove_var(key);
         }
-        setup();
-        test();
+    }
+
+    fn with_clean_dashboard_env<F>(test: F)
+    where
+        F: FnOnce(),
+    {
+        let _lock = ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let saved = save_dashboard_env();
+
+        clear_dashboard_env();
+        let result = catch_unwind(AssertUnwindSafe(test));
+        restore_dashboard_env(saved);
+        if let Err(payload) = result {
+            resume_unwind(payload);
+        }
     }
 
     #[test]
@@ -334,93 +361,70 @@ mod tests {
 
     #[test]
     fn configure_desktop_dashboard_environment_enables_local_setup_without_default_password() {
-        with_dashboard_env(
-            || {},
-            || {
-                let mut command = Command::new("sh");
+        with_clean_dashboard_env(|| {
+            let mut command = Command::new("sh");
 
-                configure_desktop_dashboard_environment(&mut command);
+            configure_desktop_dashboard_environment(&mut command);
 
-                assert_eq!(
-                    get_command_env_value(
-                        &command,
-                        ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV
-                    ),
-                    Some(Some("true".to_string()))
-                );
-                assert_eq!(
-                    get_command_env_value(&command, DASHBOARD_HOST_ENV),
-                    Some(Some(DEFAULT_DASHBOARD_HOST.to_string()))
-                );
-            },
-        );
+            assert_eq!(
+                get_command_env_value(&command, ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV),
+                Some(Some("true".to_string()))
+            );
+            assert_eq!(
+                get_command_env_value(&command, DASHBOARD_HOST_ENV),
+                Some(Some(DEFAULT_DASHBOARD_HOST.to_string()))
+            );
+        });
     }
 
     #[test]
     fn configure_desktop_dashboard_environment_preserves_explicit_dashboard_env() {
-        with_dashboard_env(
-            || {
-                env::set_var(ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV, "false");
-                env::set_var(DASHBOARD_HOST_ENV, "localhost");
-                env::set_var(DASHBOARD_PORT_ENV, "7000");
-            },
-            || {
-                let mut command = Command::new("sh");
+        with_clean_dashboard_env(|| {
+            env::set_var(ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV, "false");
+            env::set_var(DASHBOARD_HOST_ENV, "localhost");
+            env::set_var(DASHBOARD_PORT_ENV, "7000");
+            let mut command = Command::new("sh");
 
-                configure_desktop_dashboard_environment(&mut command);
+            configure_desktop_dashboard_environment(&mut command);
 
-                assert_eq!(
-                    get_command_env_value(
-                        &command,
-                        ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV
-                    ),
-                    None
-                );
-                assert_eq!(get_command_env_value(&command, DASHBOARD_HOST_ENV), None);
-                assert_eq!(get_command_env_value(&command, DASHBOARD_PORT_ENV), None);
-            },
-        );
+            assert_eq!(
+                get_command_env_value(&command, ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV),
+                None
+            );
+            assert_eq!(get_command_env_value(&command, DASHBOARD_HOST_ENV), None);
+            assert_eq!(get_command_env_value(&command, DASHBOARD_PORT_ENV), None);
+        });
     }
 
     #[test]
     fn configure_desktop_dashboard_environment_does_not_skip_auth_for_remote_host() {
-        with_dashboard_env(
-            || env::set_var(DASHBOARD_HOST_ENV, "0.0.0.0"),
-            || {
-                let mut command = Command::new("sh");
+        with_clean_dashboard_env(|| {
+            env::set_var(DASHBOARD_HOST_ENV, "0.0.0.0");
+            let mut command = Command::new("sh");
 
-                configure_desktop_dashboard_environment(&mut command);
+            configure_desktop_dashboard_environment(&mut command);
 
-                assert_eq!(
-                    get_command_env_value(
-                        &command,
-                        ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV
-                    ),
-                    None
-                );
-            },
-        );
+            assert_eq!(
+                get_command_env_value(&command, ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV),
+                None
+            );
+        });
     }
 
     #[cfg(unix)]
     #[test]
     fn configure_desktop_dashboard_environment_does_not_skip_auth_for_non_utf8_host() {
-        with_dashboard_env(
-            || env::set_var(DASHBOARD_HOST_ENV, std::ffi::OsString::from_vec(vec![0xff])),
-            || {
-                let mut command = Command::new("sh");
+        with_clean_dashboard_env(|| {
+            env::set_var(DASHBOARD_HOST_ENV, std::ffi::OsString::from_vec(vec![0xff]));
+            let mut command = Command::new("sh");
 
-                configure_desktop_dashboard_environment(&mut command);
+            configure_desktop_dashboard_environment(&mut command);
 
-                assert_eq!(
-                    get_command_env_value(
-                        &command,
-                        ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV
-                    ),
-                    None
-                );
-                assert_eq!(get_command_env_value(&command, DASHBOARD_HOST_ENV), None);
-            },
-        );
+            assert_eq!(
+                get_command_env_value(&command, ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV),
+                None
+            );
+            assert_eq!(get_command_env_value(&command, DASHBOARD_HOST_ENV), None);
+        });
     }
 }
