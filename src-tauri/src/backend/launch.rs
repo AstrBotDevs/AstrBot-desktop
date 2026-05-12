@@ -52,9 +52,8 @@ fn configure_desktop_dashboard_environment(command: &mut Command) {
     let legacy_skip_auth_env = env::var_os(DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV);
 
     let effective_host = dashboard_host_env
-        .as_ref()
-        .or(astrbot_dashboard_host_env.as_ref())
-        .map(OsStr::new);
+        .as_deref()
+        .or(astrbot_dashboard_host_env.as_deref());
     let has_explicit_skip_auth = astrbot_skip_auth_env.is_some() || legacy_skip_auth_env.is_some();
 
     if dashboard_host_env.is_none() && astrbot_dashboard_host_env.is_none() {
@@ -260,10 +259,8 @@ impl BackendState {
 #[cfg(test)]
 mod tests {
     use std::{
-        collections::HashMap,
         env,
-        ffi::OsStr,
-        panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
+        ffi::{OsStr, OsString},
         process::Command,
         sync::Mutex,
     };
@@ -280,7 +277,7 @@ mod tests {
 
     static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
 
-    const DASHBOARD_ENV_KEYS: &[&str] = &[
+    const DASHBOARD_ENV_KEYS: [&str; 6] = [
         ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV,
         DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV,
         DASHBOARD_HOST_ENV,
@@ -296,25 +293,32 @@ mod tests {
             .map(|(_, value)| value.map(|v| v.to_string_lossy().into_owned()))
     }
 
-    fn save_dashboard_env() -> HashMap<&'static str, Option<std::ffi::OsString>> {
-        DASHBOARD_ENV_KEYS
-            .iter()
-            .map(|&key| (key, env::var_os(key)))
-            .collect()
+    struct DashboardEnvGuard {
+        saved: [Option<OsString>; 6],
     }
 
-    fn restore_dashboard_env(saved: HashMap<&'static str, Option<std::ffi::OsString>>) {
-        for (key, value) in saved {
-            match value {
-                Some(value) => env::set_var(key, value),
-                None => env::remove_var(key),
+    impl DashboardEnvGuard {
+        fn new() -> Self {
+            Self {
+                saved: DASHBOARD_ENV_KEYS.map(env::var_os),
+            }
+        }
+
+        fn clear() {
+            for key in DASHBOARD_ENV_KEYS {
+                env::remove_var(key);
             }
         }
     }
 
-    fn clear_dashboard_env() {
-        for key in DASHBOARD_ENV_KEYS {
-            env::remove_var(key);
+    impl Drop for DashboardEnvGuard {
+        fn drop(&mut self) {
+            for (key, value) in DASHBOARD_ENV_KEYS.iter().zip(self.saved.iter()) {
+                match value {
+                    Some(value) => env::set_var(key, value),
+                    None => env::remove_var(key),
+                }
+            }
         }
     }
 
@@ -325,14 +329,10 @@ mod tests {
         let _lock = ENV_TEST_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let saved = save_dashboard_env();
+        let _guard = DashboardEnvGuard::new();
 
-        clear_dashboard_env();
-        let result = catch_unwind(AssertUnwindSafe(test));
-        restore_dashboard_env(saved);
-        if let Err(payload) = result {
-            resume_unwind(payload);
-        }
+        DashboardEnvGuard::clear();
+        test();
     }
 
     #[test]
