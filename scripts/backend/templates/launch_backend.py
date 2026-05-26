@@ -136,6 +136,8 @@ def configure_windows_safe_default_ssl_context() -> None:
 
     import certifi
 
+    original_create_default_context = ssl.create_default_context
+
     def create_default_context(
         purpose: ssl.Purpose = ssl.Purpose.SERVER_AUTH,
         *,
@@ -143,27 +145,14 @@ def configure_windows_safe_default_ssl_context() -> None:
         capath: str | None = None,
         cadata: str | bytes | None = None,
     ) -> ssl.SSLContext:
-        protocol = (
-            ssl.PROTOCOL_TLS_SERVER
-            if purpose == ssl.Purpose.CLIENT_AUTH
-            else ssl.PROTOCOL_TLS_CLIENT
-        )
-        ssl_context = ssl.SSLContext(protocol)
-
-        if purpose == ssl.Purpose.SERVER_AUTH:
-            ssl_context.verify_mode = ssl.CERT_REQUIRED
-            ssl_context.check_hostname = True
-
         if cafile is None and capath is None and cadata is None:
             cafile = certifi.where()
-        if cafile is not None or capath is not None or cadata is not None:
-            ssl_context.load_verify_locations(
-                cafile=cafile,
-                capath=capath,
-                cadata=cadata,
-            )
-
-        return ssl_context
+        return original_create_default_context(
+            purpose,
+            cafile=cafile,
+            capath=capath,
+            cadata=cadata,
+        )
 
     create_default_context._astrbot_desktop_safe_context = True
     ssl.create_default_context = create_default_context
