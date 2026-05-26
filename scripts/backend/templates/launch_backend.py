@@ -5,6 +5,7 @@ import ctypes
 import json
 import os
 import runpy
+import ssl
 import sys
 import threading
 import time
@@ -122,6 +123,52 @@ def preload_windows_runtime_dlls() -> None:
                     continue
 
 
+def configure_windows_safe_default_ssl_context() -> None:
+    if sys.platform != "win32":
+        return
+    already_patched = getattr(
+        ssl.create_default_context,
+        "_astrbot_desktop_safe_context",
+        False,
+    )
+    if already_patched is True:
+        return
+
+    import certifi
+
+    def create_default_context(
+        purpose: ssl.Purpose = ssl.Purpose.SERVER_AUTH,
+        *,
+        cafile: str | None = None,
+        capath: str | None = None,
+        cadata: str | bytes | None = None,
+    ) -> ssl.SSLContext:
+        protocol = (
+            ssl.PROTOCOL_TLS_SERVER
+            if purpose == ssl.Purpose.CLIENT_AUTH
+            else ssl.PROTOCOL_TLS_CLIENT
+        )
+        ssl_context = ssl.SSLContext(protocol)
+
+        if purpose == ssl.Purpose.SERVER_AUTH:
+            ssl_context.verify_mode = ssl.CERT_REQUIRED
+            ssl_context.check_hostname = True
+
+        if cafile is None and capath is None and cadata is None:
+            cafile = certifi.where()
+        if cafile is not None or capath is not None or cadata is not None:
+            ssl_context.load_verify_locations(
+                cafile=cafile,
+                capath=capath,
+                cadata=cadata,
+            )
+
+        return ssl_context
+
+    create_default_context._astrbot_desktop_safe_context = True
+    ssl.create_default_context = create_default_context
+
+
 def resolve_startup_heartbeat_path() -> Path | None:
     raw = os.environ.get(STARTUP_HEARTBEAT_ENV, "").strip()
     if not raw:
@@ -231,6 +278,7 @@ def main() -> None:
     configure_stdio_utf8()
     configure_windows_dll_search_path()
     preload_windows_runtime_dlls()
+    configure_windows_safe_default_ssl_context()
     start_startup_heartbeat()
     configure_runtime_core_lock_path()
 

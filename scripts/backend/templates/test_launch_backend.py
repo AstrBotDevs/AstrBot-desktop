@@ -1,4 +1,5 @@
 import importlib.util
+import ssl
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,6 +15,49 @@ SPEC.loader.exec_module(launch_backend)
 
 
 class StartupHeartbeatTests(unittest.TestCase):
+    def test_windows_ssl_context_patch_avoids_default_context(self) -> None:
+        sentinel_context = mock.Mock(spec=ssl.SSLContext)
+        original_create_default_context = mock.Mock(
+            side_effect=AssertionError("original default context should not be used")
+        )
+        fake_certifi = mock.Mock()
+        fake_certifi.where.return_value = "certifi.pem"
+        loaded_locations: list[dict[str, object]] = []
+
+        def record_loaded_locations(**kwargs: object) -> None:
+            loaded_locations.append(kwargs)
+
+        def fake_ssl_context(protocol: int) -> mock.Mock:
+            self.assertEqual(protocol, ssl.PROTOCOL_TLS_CLIENT)
+            sentinel_context.check_hostname = False
+            sentinel_context.verify_mode = ssl.CERT_NONE
+            sentinel_context.load_verify_locations.side_effect = record_loaded_locations
+            return sentinel_context
+
+        with mock.patch.object(launch_backend.sys, "platform", "win32"):
+            with mock.patch.object(
+                launch_backend.ssl,
+                "create_default_context",
+                original_create_default_context,
+            ):
+                with mock.patch.object(
+                    launch_backend.ssl,
+                    "SSLContext",
+                    fake_ssl_context,
+                ):
+                    with mock.patch.dict("sys.modules", {"certifi": fake_certifi}):
+                        launch_backend.configure_windows_safe_default_ssl_context()
+                        patched_context = launch_backend.ssl.create_default_context()
+
+        self.assertIs(patched_context, sentinel_context)
+        self.assertEqual(
+            loaded_locations,
+            [{"cafile": "certifi.pem", "capath": None, "cadata": None}],
+        )
+        original_create_default_context.assert_not_called()
+        self.assertTrue(sentinel_context.check_hostname)
+        self.assertEqual(sentinel_context.verify_mode, ssl.CERT_REQUIRED)
+
     def test_atomic_write_json_cleans_up_temp_file_when_replace_fails(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             heartbeat_path = Path(temp_dir) / "heartbeat.json"
