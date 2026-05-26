@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import atexit
 import ctypes
+import functools
 import json
 import os
 import runpy
@@ -138,6 +139,8 @@ def configure_windows_safe_default_ssl_context() -> None:
 
     original_create_default_context = ssl.create_default_context
 
+    # The launcher owns this process, so patching ssl globally is intentional.
+    @functools.wraps(original_create_default_context)
     def create_default_context(
         purpose: ssl.Purpose = ssl.Purpose.SERVER_AUTH,
         *,
@@ -145,7 +148,12 @@ def configure_windows_safe_default_ssl_context() -> None:
         capath: str | None = None,
         cadata: str | bytes | None = None,
     ) -> ssl.SSLContext:
-        if cafile is None and capath is None and cadata is None:
+        if (
+            purpose == ssl.Purpose.SERVER_AUTH
+            and cafile is None
+            and capath is None
+            and cadata is None
+        ):
             cafile = certifi.where()
         return original_create_default_context(
             purpose,

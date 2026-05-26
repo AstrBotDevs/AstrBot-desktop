@@ -40,7 +40,9 @@ class StartupHeartbeatTests(unittest.TestCase):
         )
 
     def test_windows_ssl_context_patch_preserves_client_auth_defaults(self) -> None:
-        original_create_default_context = ssl.create_default_context
+        sentinel_context = mock.Mock(spec=ssl.SSLContext)
+        original_create_default_context = mock.Mock(return_value=sentinel_context)
+
         with mock.patch.object(launch_backend.sys, "platform", "win32"):
             with mock.patch.object(
                 launch_backend.ssl,
@@ -52,9 +54,13 @@ class StartupHeartbeatTests(unittest.TestCase):
                     ssl.Purpose.CLIENT_AUTH
                 )
 
-        self.assertEqual(patched_context.protocol, ssl.PROTOCOL_TLS_SERVER)
-        self.assertFalse(patched_context.check_hostname)
-        self.assertEqual(patched_context.verify_mode, ssl.CERT_NONE)
+        self.assertIs(patched_context, sentinel_context)
+        original_create_default_context.assert_called_once_with(
+            ssl.Purpose.CLIENT_AUTH,
+            cafile=None,
+            capath=None,
+            cadata=None,
+        )
 
     def test_windows_ssl_context_patch_passes_explicit_ca_parameters(self) -> None:
         sentinel_context = mock.Mock(spec=ssl.SSLContext)
