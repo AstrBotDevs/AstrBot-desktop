@@ -135,7 +135,14 @@ def configure_windows_safe_default_ssl_context() -> None:
     if already_patched is True:
         return
 
-    import certifi
+    try:
+        import certifi
+    except ImportError:
+        print(
+            "[ssl-context] certifi not available; skipping safe default context patch",
+            file=sys.stderr,
+        )
+        return
 
     original_create_default_context = ssl.create_default_context
 
