@@ -15,6 +15,9 @@ SPEC.loader.exec_module(launch_backend)
 
 
 class StartupHeartbeatTests(unittest.TestCase):
+    def setUp(self) -> None:
+        launch_backend._ORIGINAL_CREATE_DEFAULT_CONTEXT = None
+
     def test_windows_ssl_context_patch_uses_certifi_with_original_context(self) -> None:
         sentinel_context = mock.Mock(spec=ssl.SSLContext)
         original_create_default_context = mock.Mock(return_value=sentinel_context)
@@ -119,9 +122,7 @@ class StartupHeartbeatTests(unittest.TestCase):
                     second_patched = launch_backend.ssl.create_default_context
 
         self.assertIs(first_patched, second_patched)
-        self.assertTrue(
-            getattr(second_patched, "_astrbot_desktop_safe_context", False)
-        )
+        self.assertIsNotNone(launch_backend._ORIGINAL_CREATE_DEFAULT_CONTEXT)
 
     def test_windows_ssl_context_patch_handles_certifi_import_error(self) -> None:
         with mock.patch.object(launch_backend.sys, "platform", "win32"):

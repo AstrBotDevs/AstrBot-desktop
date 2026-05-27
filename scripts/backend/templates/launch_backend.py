@@ -124,15 +124,16 @@ def preload_windows_runtime_dlls() -> None:
                     continue
 
 
+_ORIGINAL_CREATE_DEFAULT_CONTEXT = None
+
+# We globally monkey-patch ssl.create_default_context on Windows.
+# This prevents OpenSSL Applink crashes caused by default CA loading
+# by enforcing the use of certifi's CA bundle for SERVER_AUTH.
 def configure_windows_safe_default_ssl_context() -> None:
+    global _ORIGINAL_CREATE_DEFAULT_CONTEXT
     if sys.platform != "win32":
         return
-    already_patched = getattr(
-        ssl.create_default_context,
-        "_astrbot_desktop_safe_context",
-        False,
-    )
-    if already_patched is True:
+    if _ORIGINAL_CREATE_DEFAULT_CONTEXT is not None:
         return
 
     try:
@@ -144,10 +145,10 @@ def configure_windows_safe_default_ssl_context() -> None:
         )
         return
 
-    original_create_default_context = ssl.create_default_context
+    _ORIGINAL_CREATE_DEFAULT_CONTEXT = ssl.create_default_context
 
     # The launcher owns this process, so patching ssl globally is intentional.
-    @functools.wraps(original_create_default_context)
+    @functools.wraps(_ORIGINAL_CREATE_DEFAULT_CONTEXT)
     def create_default_context(
         purpose: ssl.Purpose = ssl.Purpose.SERVER_AUTH,
         *,
@@ -162,14 +163,13 @@ def configure_windows_safe_default_ssl_context() -> None:
             and cadata is None
         ):
             cafile = certifi.where()
-        return original_create_default_context(
+        return _ORIGINAL_CREATE_DEFAULT_CONTEXT(
             purpose,
             cafile=cafile,
             capath=capath,
             cadata=cadata,
         )
 
-    create_default_context._astrbot_desktop_safe_context = True
     ssl.create_default_context = create_default_context
 
 
