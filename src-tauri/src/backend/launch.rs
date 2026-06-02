@@ -131,14 +131,25 @@ where
         }
     };
     let dashboard = parsed.get("dashboard");
-    DesktopDashboardConfig {
-        host: dashboard
-            .and_then(|value| value.get("host"))
-            .and_then(parse_dashboard_host),
-        port: dashboard
-            .and_then(|value| value.get("port"))
-            .and_then(parse_dashboard_port),
-    }
+    let (host, port) = if let Some(dashboard) = dashboard {
+        let raw_host = dashboard.get("host");
+        let parsed_host = raw_host.and_then(parse_dashboard_host);
+        if raw_host.is_some() && parsed_host.is_none() {
+            log("desktop config: ignoring invalid dashboard.host value");
+        }
+
+        let raw_port = dashboard.get("port");
+        let parsed_port = raw_port.and_then(parse_dashboard_port);
+        if raw_port.is_some() && parsed_port.is_none() {
+            log("desktop config: ignoring invalid dashboard.port value");
+        }
+
+        (parsed_host, parsed_port)
+    } else {
+        (None, None)
+    };
+
+    DesktopDashboardConfig { host, port }
 }
 
 fn parse_dashboard_host(value: &serde_json::Value) -> Option<String> {
@@ -585,8 +596,11 @@ mod tests {
             let root = tempfile::tempdir().expect("temp root");
             write_desktop_config(root.path(), r#"{"dashboard":{"host":" ","port":70000}}"#);
             let mut command = Command::new("sh");
+            let mut logs = Vec::new();
 
-            configure_desktop_dashboard_environment(&mut command, Some(root.path()), |_| {});
+            configure_desktop_dashboard_environment(&mut command, Some(root.path()), |message| {
+                logs.push(message.to_string())
+            });
 
             assert_eq!(
                 get_command_env_value(&command, DASHBOARD_HOST_ENV),
@@ -596,6 +610,12 @@ mod tests {
                 get_command_env_value(&command, DASHBOARD_PORT_ENV),
                 Some(Some(DEFAULT_DASHBOARD_PORT.to_string()))
             );
+            assert!(logs
+                .iter()
+                .any(|message| message.contains("invalid dashboard.host")));
+            assert!(logs
+                .iter()
+                .any(|message| message.contains("invalid dashboard.port")));
         });
     }
 }
