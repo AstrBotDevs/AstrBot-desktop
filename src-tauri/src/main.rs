@@ -28,6 +28,7 @@ mod ui_dispatch;
 mod update_channel;
 mod webui_paths;
 mod window;
+mod windows_shutdown;
 
 pub(crate) use app_constants::*;
 pub(crate) use app_helpers::{

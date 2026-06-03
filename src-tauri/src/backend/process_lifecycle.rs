@@ -17,6 +17,10 @@ use crate::{
 
 impl BackendState {
     pub(crate) fn stop_backend(&self) -> Result<(), String> {
+        self.stop_backend_with_timeout(Duration::from_millis(GRACEFUL_STOP_TIMEOUT_MS))
+    }
+
+    pub(crate) fn stop_backend_with_timeout(&self, timeout: Duration) -> Result<(), String> {
         self.stop_backend_log_rotation_worker();
         let mut guard = self
             .child
@@ -27,18 +31,14 @@ impl BackendState {
             return Ok(());
         };
 
-        if process_control::stop_child_process_gracefully(
-            child,
-            Duration::from_millis(GRACEFUL_STOP_TIMEOUT_MS),
-            append_desktop_log,
-        ) {
+        if process_control::stop_child_process_gracefully(child, timeout, append_desktop_log) {
             *guard = None;
             return Ok(());
         }
 
         Err(format!(
             "Backend process did not exit after {}ms graceful stop timeout.",
-            GRACEFUL_STOP_TIMEOUT_MS
+            timeout.as_millis()
         ))
     }
 

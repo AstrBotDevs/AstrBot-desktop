@@ -117,6 +117,7 @@ fn configure_setup(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
         if let Err(error) = tray::setup::setup_tray(&app_handle) {
             append_startup_log(&format!("failed to initialize tray: {error}"));
         }
+        crate::windows_shutdown::install(&app_handle);
 
         startup_task::spawn_startup_task(app_handle.clone(), append_startup_log);
         Ok(())

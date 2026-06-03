@@ -26,6 +26,13 @@ tauri-plugin-single-instance = "2.0"
 tauri-plugin-updater = "2.0"
 url = "2.5"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_System_Threading",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
