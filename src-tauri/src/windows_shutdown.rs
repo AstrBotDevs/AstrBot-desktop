@@ -8,11 +8,11 @@ mod platform {
 
     use tauri::{AppHandle, Manager};
     use windows_sys::Win32::{
-        Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+        Foundation::{GetLastError, SetLastError, HWND, LPARAM, LRESULT, WPARAM},
         System::Threading::SetProcessShutdownParameters,
         UI::WindowsAndMessaging::{
-            CallWindowProcW, SetWindowLongPtrW, GWLP_WNDPROC, WM_ENDSESSION, WM_QUERYENDSESSION,
-            WNDPROC,
+            CallWindowProcW, DefWindowProcW, SetWindowLongPtrW, GWLP_WNDPROC, WM_ENDSESSION,
+            WM_QUERYENDSESSION, WNDPROC,
         },
     };
 
@@ -23,6 +23,7 @@ mod platform {
     #[derive(Default)]
     struct ShutdownHookState {
         app_handle: Option<AppHandle>,
+        installed: bool,
         previous_wndproc: isize,
         cleanup_started: bool,
     }
@@ -60,15 +61,22 @@ mod platform {
         };
 
         guard.app_handle = Some(app_handle.clone());
-        if guard.previous_wndproc != 0 {
+        if guard.installed {
             return;
         }
 
-        let previous = unsafe { SetWindowLongPtrW(hwnd, GWLP_WNDPROC, shutdown_wndproc as isize) };
-        if previous == 0 {
-            append_shutdown_log("Windows shutdown handler install returned empty previous WndProc");
+        let previous = unsafe {
+            SetLastError(0);
+            SetWindowLongPtrW(hwnd, GWLP_WNDPROC, shutdown_wndproc as isize)
+        };
+        let last_error = unsafe { GetLastError() };
+        if previous == 0 && last_error != 0 {
+            append_shutdown_log(&format!(
+                "Windows shutdown handler install failed: error={last_error}"
+            ));
             return;
         }
+        guard.installed = true;
         guard.previous_wndproc = previous;
         append_shutdown_log("Windows shutdown handler installed");
     }
@@ -155,7 +163,7 @@ mod platform {
             .and_then(|hook| hook.lock().ok().map(|guard| guard.previous_wndproc))
             .unwrap_or_default();
         if previous == 0 {
-            return 0;
+            return DefWindowProcW(hwnd, msg, wparam, lparam);
         }
         let previous: WNDPROC = mem::transmute(previous);
         CallWindowProcW(previous, hwnd, msg, wparam, lparam)
