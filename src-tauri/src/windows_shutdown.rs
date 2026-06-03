@@ -2,7 +2,7 @@
 mod platform {
     use std::{
         mem,
-        sync::{Mutex, OnceLock},
+        sync::{Mutex, MutexGuard, OnceLock},
         time::Duration,
     };
 
@@ -30,6 +30,21 @@ mod platform {
 
     static SHUTDOWN_HOOK: OnceLock<Mutex<ShutdownHookState>> = OnceLock::new();
 
+    fn lock_shutdown_hook<'a>(
+        hook: &'a Mutex<ShutdownHookState>,
+        context: &str,
+    ) -> MutexGuard<'a, ShutdownHookState> {
+        match hook.lock() {
+            Ok(guard) => guard,
+            Err(error) => {
+                append_shutdown_log(&format!(
+                    "Windows shutdown handler lock poisoned {context}: {error}"
+                ));
+                error.into_inner()
+            }
+        }
+    }
+
     pub(crate) fn install(app_handle: &AppHandle) {
         unsafe {
             if SetProcessShutdownParameters(SHUTDOWN_PRIORITY_EARLY, 0) == 0 {
@@ -50,15 +65,7 @@ mod platform {
         };
 
         let hook = SHUTDOWN_HOOK.get_or_init(|| Mutex::new(ShutdownHookState::default()));
-        let mut guard = match hook.lock() {
-            Ok(guard) => guard,
-            Err(error) => {
-                append_shutdown_log(&format!(
-                    "Windows shutdown handler lock poisoned during install: {error}"
-                ));
-                return;
-            }
-        };
+        let mut guard = lock_shutdown_hook(hook, "during install");
 
         guard.app_handle = Some(app_handle.clone());
         if guard.installed {
@@ -93,12 +100,13 @@ mod platform {
                 1
             }
             WM_ENDSESSION => {
+                let previous_result = call_previous_wndproc(hwnd, msg, wparam, lparam);
                 if wparam != 0 {
                     append_shutdown_log("Windows end session confirmed, exiting desktop process");
                     std::process::exit(0);
                 }
                 reset_shutdown_cleanup();
-                call_previous_wndproc(hwnd, msg, wparam, lparam)
+                previous_result
             }
             _ => call_previous_wndproc(hwnd, msg, wparam, lparam),
         }
@@ -112,6 +120,8 @@ mod platform {
 
         append_shutdown_log("Windows shutdown requested, stopping backend quickly");
         let state = app_handle.state::<BackendState>();
+        // Keep this bounded wait inside WM_QUERYENDSESSION so taskkill is issued
+        // before Windows advances to the final session-ending phase.
         if let Err(error) =
             state.stop_backend_with_timeout(Duration::from_millis(SYSTEM_SHUTDOWN_STOP_TIMEOUT_MS))
         {
@@ -121,15 +131,7 @@ mod platform {
 
     fn take_shutdown_app_handle_for_cleanup() -> Option<AppHandle> {
         let hook = SHUTDOWN_HOOK.get()?;
-        let mut guard = match hook.lock() {
-            Ok(guard) => guard,
-            Err(error) => {
-                append_shutdown_log(&format!(
-                    "Windows shutdown handler lock poisoned during cleanup: {error}"
-                ));
-                return None;
-            }
-        };
+        let mut guard = lock_shutdown_hook(hook, "during cleanup");
         if guard.cleanup_started {
             return None;
         }
@@ -141,15 +143,9 @@ mod platform {
         let Some(hook) = SHUTDOWN_HOOK.get() else {
             return;
         };
-        match hook.lock() {
-            Ok(mut guard) => {
-                guard.cleanup_started = false;
-                append_shutdown_log("Windows shutdown canceled, cleanup flag reset");
-            }
-            Err(error) => append_shutdown_log(&format!(
-                "Windows shutdown handler lock poisoned while resetting cleanup: {error}"
-            )),
-        }
+        let mut guard = lock_shutdown_hook(hook, "while resetting cleanup");
+        guard.cleanup_started = false;
+        append_shutdown_log("Windows shutdown canceled, cleanup flag reset");
     }
 
     unsafe fn call_previous_wndproc(
@@ -160,7 +156,7 @@ mod platform {
     ) -> LRESULT {
         let previous = SHUTDOWN_HOOK
             .get()
-            .and_then(|hook| hook.lock().ok().map(|guard| guard.previous_wndproc))
+            .map(|hook| lock_shutdown_hook(hook, "while forwarding message").previous_wndproc)
             .unwrap_or_default();
         if previous == 0 {
             return DefWindowProcW(hwnd, msg, wparam, lparam);
