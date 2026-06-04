@@ -96,18 +96,18 @@ Not really. AstrBot Desktop is intended for local desktop usage and personal wor
 <!-- faq: lan-webui-access -->
 ### How can I access the WebUI from another device on my LAN?
 
-AstrBot Desktop listens on `127.0.0.1:6185` by default, so only the local machine can access the WebUI. If you explicitly want LAN access, set the dashboard host to `0.0.0.0` in the desktop config file.
+AstrBot Desktop listens on `127.0.0.1:6185` by default, so only the local machine can access the WebUI. If you explicitly want LAN access, set the dashboard host to `0.0.0.0` in AstrBot's command config.
 
 Config file path:
 
 ```text
-~/.astrbot/data/config/desktop.json
+~/.astrbot/data/cmd_config.json
 ```
 
 On Windows, this is usually:
 
 ```text
-C:\Users\<username>\.astrbot\data\config\desktop.json
+C:\Users\<username>\.astrbot\data\cmd_config.json
 ```
 
 Write this content:
@@ -127,9 +127,9 @@ Fully quit and restart AstrBot Desktop after saving the file, then visit this UR
 http://<LAN IP of the machine running AstrBot Desktop>:6185/
 ```
 
-To restore local-only access, remove the `dashboard` config or set `host` back to `127.0.0.1`, then restart the app.
+To restore local-only access, set `dashboard.host` back to `127.0.0.1`, then restart the app.
 
-Environment variables still work as advanced overrides and take precedence over `desktop.json`:
+Environment variables still work as advanced overrides and take precedence over `cmd_config.json`:
 
 ```bash
 ASTRBOT_DASHBOARD_HOST=0.0.0.0

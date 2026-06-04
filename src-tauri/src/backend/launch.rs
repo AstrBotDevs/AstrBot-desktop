@@ -28,21 +28,21 @@ const ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV: &str =
 const DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV: &str = "DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH";
 const DEFAULT_DASHBOARD_HOST: &str = "127.0.0.1";
 const DEFAULT_DASHBOARD_PORT: &str = "6185";
-const DESKTOP_CONFIG_RELATIVE_PATH: &str = "data/config/desktop.json";
+const CMD_CONFIG_RELATIVE_PATH: &str = "data/cmd_config.json";
 
 #[derive(Debug, Default)]
-struct DesktopDashboardConfig {
+struct CmdDashboardConfig {
     host: Option<String>,
     port: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
-struct DesktopFileConfig {
-    dashboard: Option<DesktopFileDashboard>,
+struct CmdConfigFile {
+    dashboard: Option<CmdConfigDashboard>,
 }
 
 #[derive(Debug, Deserialize)]
-struct DesktopFileDashboard {
+struct CmdConfigDashboard {
     host: Option<String>,
     port: Option<DesktopPortField>,
 }
@@ -54,8 +54,8 @@ enum DesktopPortField {
     Str(String),
 }
 
-impl DesktopDashboardConfig {
-    fn from_file_config(config: DesktopFileConfig, log: &mut dyn FnMut(&str)) -> Self {
+impl CmdDashboardConfig {
+    fn from_file_config(config: CmdConfigFile, log: &mut dyn FnMut(&str)) -> Self {
         let Some(dashboard) = config.dashboard else {
             return Self::default();
         };
@@ -63,7 +63,9 @@ impl DesktopDashboardConfig {
         let host = dashboard.host.and_then(|host| {
             let trimmed = host.trim();
             if trimmed.is_empty() {
-                log("desktop config: ignoring invalid dashboard.host value");
+                log(&format!(
+                    "cmd_config: ignoring invalid dashboard.host value: {host:?}"
+                ));
                 None
             } else {
                 Some(trimmed.to_string())
@@ -106,26 +108,26 @@ fn configure_desktop_dashboard_environment(
     let astrbot_dashboard_port_env = env::var_os(ASTRBOT_DASHBOARD_PORT_ENV);
     let astrbot_skip_auth_env = env::var_os(ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV);
     let legacy_skip_auth_env = env::var_os(DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV);
-    let desktop_config = read_desktop_dashboard_config(root_dir, log);
-    let (host_env_any, effective_host) = resolve_dashboard_value(
+    let cmd_config = read_cmd_dashboard_config(root_dir, log);
+    let (has_host_env, effective_host) = resolve_dashboard_value(
         dashboard_host_env,
         astrbot_dashboard_host_env,
-        desktop_config.host,
+        cmd_config.host,
         DEFAULT_DASHBOARD_HOST,
     );
-    let (port_env_any, effective_port) = resolve_dashboard_value(
+    let (has_port_env, effective_port) = resolve_dashboard_value(
         dashboard_port_env,
         astrbot_dashboard_port_env,
-        desktop_config.port,
+        cmd_config.port,
         DEFAULT_DASHBOARD_PORT,
     );
 
     let has_explicit_skip_auth = astrbot_skip_auth_env.is_some() || legacy_skip_auth_env.is_some();
 
-    if host_env_any.is_none() {
+    if !has_host_env {
         command.env(DASHBOARD_HOST_ENV, &effective_host);
     }
-    if port_env_any.is_none() {
+    if !has_port_env {
         command.env(DASHBOARD_PORT_ENV, &effective_port);
     }
     if should_skip_default_password_auth(has_explicit_skip_auth, Some(effective_host.as_os_str())) {
@@ -138,57 +140,60 @@ fn resolve_dashboard_value(
     legacy_env: Option<OsString>,
     config: Option<String>,
     default: &str,
-) -> (Option<OsString>, OsString) {
-    let env_value = primary_env.or(legacy_env);
-    let effective = env_value
-        .clone()
-        .or_else(|| config.map(OsString::from))
+) -> (bool, OsString) {
+    if let Some(value) = primary_env.or(legacy_env) {
+        return (true, value);
+    }
+    let effective = config
+        .map(OsString::from)
         .unwrap_or_else(|| OsString::from(default));
-    (env_value, effective)
+    (false, effective)
 }
 
-fn read_desktop_dashboard_config(
+fn read_cmd_dashboard_config(
     root_dir: Option<&Path>,
     log: &mut dyn FnMut(&str),
-) -> DesktopDashboardConfig {
+) -> CmdDashboardConfig {
     let Some(root_dir) = root_dir else {
-        return DesktopDashboardConfig::default();
+        return CmdDashboardConfig::default();
     };
-    let config_path = root_dir.join(DESKTOP_CONFIG_RELATIVE_PATH);
+    let config_path = root_dir.join(CMD_CONFIG_RELATIVE_PATH);
     if !config_path.is_file() {
-        return DesktopDashboardConfig::default();
+        return CmdDashboardConfig::default();
     }
 
     let raw = match fs::read_to_string(&config_path) {
         Ok(raw) => raw,
         Err(error) => {
             log(&format!(
-                "failed to read desktop config {}: {}",
+                "failed to read cmd_config {}: {}",
                 config_path.display(),
                 error
             ));
-            return DesktopDashboardConfig::default();
+            return CmdDashboardConfig::default();
         }
     };
-    let parsed: DesktopFileConfig = match serde_json::from_str(&raw) {
+    let parsed: CmdConfigFile = match serde_json::from_str(&raw) {
         Ok(parsed) => parsed,
         Err(error) => {
             log(&format!(
-                "failed to parse desktop config {}: {}",
+                "failed to parse cmd_config {}: {}",
                 config_path.display(),
                 error
             ));
-            return DesktopDashboardConfig::default();
+            return CmdDashboardConfig::default();
         }
     };
-    DesktopDashboardConfig::from_file_config(parsed, log)
+    CmdDashboardConfig::from_file_config(parsed, log)
 }
 
 fn parse_dashboard_port_number(port: u64, log: &mut dyn FnMut(&str)) -> Option<String> {
     if (1..=65535).contains(&port) {
         Some(port.to_string())
     } else {
-        log("desktop config: ignoring invalid dashboard.port value");
+        log(&format!(
+            "cmd_config: ignoring invalid dashboard.port value: {port}"
+        ));
         None
     }
 }
@@ -198,7 +203,9 @@ fn parse_dashboard_port_string(port: &str, log: &mut dyn FnMut(&str)) -> Option<
     match trimmed.parse::<u64>() {
         Ok(parsed) => parse_dashboard_port_number(parsed, log),
         Err(_) => {
-            log("desktop config: ignoring invalid dashboard.port value");
+            log(&format!(
+                "cmd_config: ignoring invalid dashboard.port value: {port:?}"
+            ));
             None
         }
     }
@@ -411,9 +418,9 @@ mod tests {
     use super::{
         configure_desktop_dashboard_environment, sanitize_packaged_python_environment,
         ASTRBOT_DASHBOARD_HOST_ENV, ASTRBOT_DASHBOARD_PORT_ENV,
-        ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV, DASHBOARD_HOST_ENV, DASHBOARD_PORT_ENV,
-        DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV, DEFAULT_DASHBOARD_HOST, DEFAULT_DASHBOARD_PORT,
-        DESKTOP_CONFIG_RELATIVE_PATH,
+        ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV, CMD_CONFIG_RELATIVE_PATH,
+        DASHBOARD_HOST_ENV, DASHBOARD_PORT_ENV, DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV,
+        DEFAULT_DASHBOARD_HOST, DEFAULT_DASHBOARD_PORT,
     };
 
     static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
@@ -569,18 +576,18 @@ mod tests {
         });
     }
 
-    fn write_desktop_config(root: &Path, contents: &str) {
-        let config_path = root.join(DESKTOP_CONFIG_RELATIVE_PATH);
+    fn write_cmd_config(root: &Path, contents: &str) {
+        let config_path = root.join(CMD_CONFIG_RELATIVE_PATH);
         fs::create_dir_all(config_path.parent().expect("config parent"))
             .expect("create config dir");
-        fs::write(config_path, contents).expect("write desktop config");
+        fs::write(config_path, contents).expect("write cmd config");
     }
 
     #[test]
-    fn configure_desktop_dashboard_environment_reads_desktop_config() {
+    fn configure_desktop_dashboard_environment_reads_cmd_config() {
         with_clean_dashboard_env(|| {
             let root = tempfile::tempdir().expect("temp root");
-            write_desktop_config(
+            write_cmd_config(
                 root.path(),
                 r#"{"dashboard":{"host":"0.0.0.0","port":6185}}"#,
             );
@@ -604,10 +611,10 @@ mod tests {
     }
 
     #[test]
-    fn configure_desktop_dashboard_environment_env_overrides_desktop_config() {
+    fn configure_desktop_dashboard_environment_env_overrides_cmd_config() {
         with_clean_dashboard_env(|| {
             let root = tempfile::tempdir().expect("temp root");
-            write_desktop_config(
+            write_cmd_config(
                 root.path(),
                 r#"{"dashboard":{"host":"0.0.0.0","port":6185}}"#,
             );
@@ -623,10 +630,10 @@ mod tests {
     }
 
     #[test]
-    fn configure_desktop_dashboard_environment_ignores_invalid_desktop_config() {
+    fn configure_desktop_dashboard_environment_ignores_invalid_cmd_config() {
         with_clean_dashboard_env(|| {
             let root = tempfile::tempdir().expect("temp root");
-            write_desktop_config(root.path(), r#"{"dashboard":{"host":" ","port":70000}}"#);
+            write_cmd_config(root.path(), r#"{"dashboard":{"host":" ","port":70000}}"#);
             let mut command = Command::new("sh");
             let mut logs = Vec::new();
 
