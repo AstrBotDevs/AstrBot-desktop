@@ -3,13 +3,6 @@ use std::{fs, io::Write, path::Path, sync::Mutex};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DesktopSettings {
-    pub(crate) launch_at_login: bool,
-    pub(crate) silent_launch: bool,
-    pub(crate) close_to_tray: bool,
-}
-
 #[derive(Debug)]
 pub(crate) struct DesktopSettingsCache {
     settings: Mutex<DesktopSettings>,
@@ -23,37 +16,14 @@ impl DesktopSettingsCache {
     }
 
     pub(crate) fn get(&self) -> DesktopSettings {
-        match self.settings.lock() {
-            Ok(guard) => *guard,
-            Err(error) => {
-                crate::append_desktop_log(&format!(
-                    "desktop settings cache lock poisoned, returning inner value: {error}"
-                ));
-                *error.into_inner()
-            }
-        }
+        self.settings
+            .lock()
+            .expect("desktop settings cache lock")
+            .clone()
     }
 
     pub(crate) fn set(&self, settings: DesktopSettings) {
-        match self.settings.lock() {
-            Ok(mut guard) => *guard = settings,
-            Err(error) => {
-                crate::append_desktop_log(&format!(
-                    "desktop settings cache lock poisoned, updating inner value: {error}"
-                ));
-                *error.into_inner() = settings;
-            }
-        }
-    }
-}
-
-impl Default for DesktopSettings {
-    fn default() -> Self {
-        Self {
-            launch_at_login: false,
-            silent_launch: false,
-            close_to_tray: true,
-        }
+        *self.settings.lock().expect("desktop settings cache lock") = settings;
     }
 }
 
@@ -76,19 +46,19 @@ fn default_close_to_tray() -> bool {
     true
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct DesktopSettingsState {
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct DesktopSettings {
     #[serde(rename = "launchAtLogin", default = "default_launch_at_login")]
-    launch_at_login: bool,
+    pub(crate) launch_at_login: bool,
     #[serde(rename = "silentLaunch", default = "default_silent_launch")]
-    silent_launch: bool,
+    pub(crate) silent_launch: bool,
     #[serde(rename = "closeToTray", default = "default_close_to_tray")]
-    close_to_tray: bool,
+    pub(crate) close_to_tray: bool,
     #[serde(flatten)]
     other: Map<String, Value>,
 }
 
-impl Default for DesktopSettingsState {
+impl Default for DesktopSettings {
     fn default() -> Self {
         Self {
             launch_at_login: default_launch_at_login(),
@@ -99,21 +69,21 @@ impl Default for DesktopSettingsState {
     }
 }
 
-impl From<DesktopSettingsState> for DesktopSettings {
-    fn from(state: DesktopSettingsState) -> Self {
-        DesktopSettings {
-            launch_at_login: state.launch_at_login,
-            silent_launch: state.silent_launch,
-            close_to_tray: state.close_to_tray,
+impl DesktopSettings {
+    fn set(&mut self, key: DesktopSettingKey, value: bool) {
+        match key {
+            DesktopSettingKey::LaunchAtLogin => self.launch_at_login = value,
+            DesktopSettingKey::SilentLaunch => self.silent_launch = value,
+            DesktopSettingKey::CloseToTray => self.close_to_tray = value,
         }
     }
 }
 
-fn load_state(path: &Path) -> Result<DesktopSettingsState, String> {
+fn load_state(path: &Path) -> Result<DesktopSettings, String> {
     let raw = match fs::read_to_string(path) {
         Ok(raw) => raw,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(DesktopSettingsState::default());
+            return Ok(DesktopSettings::default());
         }
         Err(error) => {
             return Err(format!(
@@ -124,7 +94,7 @@ fn load_state(path: &Path) -> Result<DesktopSettingsState, String> {
         }
     };
 
-    match serde_json::from_str::<DesktopSettingsState>(&raw) {
+    match serde_json::from_str::<DesktopSettings>(&raw) {
         Ok(state) => Ok(state),
         Err(error) => {
             crate::append_desktop_log(&format!(
@@ -132,7 +102,7 @@ fn load_state(path: &Path) -> Result<DesktopSettingsState, String> {
                 path.display(),
                 error
             ));
-            let default_state = DesktopSettingsState::default();
+            let default_state = DesktopSettings::default();
             if let Err(save_error) = save_state(path, &default_state) {
                 crate::append_desktop_log(&format!(
                     "failed to persist reset desktop settings state {}: {}",
@@ -159,7 +129,7 @@ fn ensure_parent_dir(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn save_state(path: &Path, state: &DesktopSettingsState) -> Result<(), String> {
+fn save_state(path: &Path, state: &DesktopSettings) -> Result<(), String> {
     ensure_parent_dir(path)?;
 
     let serialized = serde_json::to_string_pretty(state)
@@ -204,7 +174,7 @@ pub(crate) fn read_desktop_settings(packaged_root_dir: Option<&Path>) -> Desktop
     };
 
     match load_state(&state_path) {
-        Ok(state) => DesktopSettings::from(state),
+        Ok(state) => state,
         Err(error) => {
             crate::append_desktop_log(&error);
             DesktopSettings::default()
@@ -226,13 +196,9 @@ pub(crate) fn write_desktop_setting(
     };
 
     let mut state = load_state(&state_path)?;
-    match key {
-        DesktopSettingKey::LaunchAtLogin => state.launch_at_login = value,
-        DesktopSettingKey::SilentLaunch => state.silent_launch = value,
-        DesktopSettingKey::CloseToTray => state.close_to_tray = value,
-    }
+    state.set(key, value);
     save_state(&state_path, &state)?;
-    Ok(DesktopSettings::from(state))
+    Ok(state)
 }
 
 #[cfg(test)]
@@ -258,16 +224,22 @@ mod tests {
         root.join("data").join("desktop_state.json")
     }
 
+    fn settings(
+        launch_at_login: bool,
+        silent_launch: bool,
+        close_to_tray: bool,
+    ) -> DesktopSettings {
+        DesktopSettings {
+            launch_at_login,
+            silent_launch,
+            close_to_tray,
+            ..DesktopSettings::default()
+        }
+    }
+
     #[test]
     fn desktop_settings_default_preserves_existing_close_to_tray_behavior() {
-        assert_eq!(
-            DesktopSettings::default(),
-            DesktopSettings {
-                launch_at_login: false,
-                silent_launch: false,
-                close_to_tray: true,
-            }
-        );
+        assert_eq!(DesktopSettings::default(), settings(false, false, true));
     }
 
     #[test]
@@ -283,11 +255,7 @@ mod tests {
 
         assert_eq!(
             read_desktop_settings(Some(&root)),
-            DesktopSettings {
-                launch_at_login: true,
-                silent_launch: true,
-                close_to_tray: false,
-            }
+            settings(true, true, false)
         );
     }
 
@@ -300,24 +268,16 @@ mod tests {
 
         assert_eq!(
             read_desktop_settings(Some(&root)),
-            DesktopSettings {
-                launch_at_login: false,
-                silent_launch: true,
-                close_to_tray: true,
-            }
+            settings(false, true, true)
         );
     }
 
     #[test]
     fn desktop_settings_cache_returns_updated_value_without_reloading_file() {
         let cache = DesktopSettingsCache::new(DesktopSettings::default());
-        let updated = DesktopSettings {
-            launch_at_login: true,
-            silent_launch: true,
-            close_to_tray: false,
-        };
+        let updated = settings(true, true, false);
 
-        cache.set(updated);
+        cache.set(updated.clone());
 
         assert_eq!(cache.get(), updated);
     }

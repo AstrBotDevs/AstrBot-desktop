@@ -32,7 +32,40 @@ fn set_checked_safe(item: &tauri::menu::CheckMenuItem<tauri::Wry>, checked: bool
     }
 }
 
+fn persist_bool_setting_and_update_tray(
+    app_handle: &AppHandle,
+    key: desktop_settings::DesktopSettingKey,
+    new_value: bool,
+    previous_value: bool,
+    item: &tauri::menu::CheckMenuItem<tauri::Wry>,
+    item_name: &str,
+) {
+    match desktop_settings::write_desktop_setting(
+        runtime_paths::default_packaged_root_dir().as_deref(),
+        key,
+        new_value,
+    ) {
+        Ok(updated_settings) => {
+            app_handle
+                .state::<DesktopSettingsCache>()
+                .set(updated_settings);
+            set_checked_safe(item, new_value, item_name);
+        }
+        Err(error) => {
+            append_desktop_log(&format!(
+                "failed to persist {} setting: {}",
+                item_name, error
+            ));
+            set_checked_safe(item, previous_value, item_name);
+        }
+    }
+}
+
 fn handle_launch_at_login_toggle(app_handle: &AppHandle) {
+    let Some(tray_state) = app_handle.try_state::<TrayMenuState>() else {
+        return;
+    };
+
     let current_enabled = match app_handle.autolaunch().is_enabled() {
         Ok(value) => value,
         Err(error) => {
@@ -59,66 +92,22 @@ fn handle_launch_at_login_toggle(app_handle: &AppHandle) {
             if desired_enabled { "enable" } else { "disable" },
             error
         ));
-        if let Some(tray_state) = app_handle.try_state::<TrayMenuState>() {
-            set_checked_safe(
-                &tray_state.launch_at_login_item,
-                current_enabled,
-                actions::TRAY_MENU_LAUNCH_AT_LOGIN,
-            );
-        }
+        set_checked_safe(
+            &tray_state.launch_at_login_item,
+            current_enabled,
+            actions::TRAY_MENU_LAUNCH_AT_LOGIN,
+        );
         return;
     }
 
-    if let Err(error) = desktop_settings::write_desktop_setting(
-        runtime_paths::default_packaged_root_dir().as_deref(),
+    persist_bool_setting_and_update_tray(
+        app_handle,
         desktop_settings::DesktopSettingKey::LaunchAtLogin,
         desired_enabled,
-    ) {
-        append_desktop_log(&format!(
-            "failed to persist launch-at-login setting: {error}"
-        ));
-    } else {
-        let mut updated = app_handle.state::<DesktopSettingsCache>().get();
-        updated.launch_at_login = desired_enabled;
-        app_handle.state::<DesktopSettingsCache>().set(updated);
-    }
-
-    if let Some(tray_state) = app_handle.try_state::<TrayMenuState>() {
-        set_checked_safe(
-            &tray_state.launch_at_login_item,
-            desired_enabled,
-            actions::TRAY_MENU_LAUNCH_AT_LOGIN,
-        );
-    }
-}
-
-fn persist_bool_setting(
-    app_handle: &AppHandle,
-    key: desktop_settings::DesktopSettingKey,
-    value: bool,
-    previous_value: bool,
-    item: &tauri::menu::CheckMenuItem<tauri::Wry>,
-    item_name: &str,
-) {
-    match desktop_settings::write_desktop_setting(
-        runtime_paths::default_packaged_root_dir().as_deref(),
-        key,
-        value,
-    ) {
-        Ok(updated_settings) => {
-            app_handle
-                .state::<DesktopSettingsCache>()
-                .set(updated_settings);
-            set_checked_safe(item, value, item_name);
-        }
-        Err(error) => {
-            append_desktop_log(&format!(
-                "failed to persist {} setting: {}",
-                item_name, error
-            ));
-            set_checked_safe(item, previous_value, item_name);
-        }
-    }
+        current_enabled,
+        &tray_state.launch_at_login_item,
+        actions::TRAY_MENU_LAUNCH_AT_LOGIN,
+    );
 }
 
 fn handle_silent_launch_toggle(app_handle: &AppHandle) {
@@ -126,7 +115,7 @@ fn handle_silent_launch_toggle(app_handle: &AppHandle) {
         return;
     };
     let current_settings = app_handle.state::<DesktopSettingsCache>().get();
-    persist_bool_setting(
+    persist_bool_setting_and_update_tray(
         app_handle,
         desktop_settings::DesktopSettingKey::SilentLaunch,
         !current_settings.silent_launch,
@@ -141,7 +130,7 @@ fn handle_close_to_tray_toggle(app_handle: &AppHandle) {
         return;
     };
     let current_settings = app_handle.state::<DesktopSettingsCache>().get();
-    persist_bool_setting(
+    persist_bool_setting_and_update_tray(
         app_handle,
         desktop_settings::DesktopSettingKey::CloseToTray,
         !current_settings.close_to_tray,
