@@ -9,6 +9,7 @@ import {
   normalizeDesktopVersionOverride,
   readAstrbotRuntimeVersion,
   readAstrbotVersionFromPyproject,
+  resolveAstrbotRuntimeVersionPath,
   syncDesktopVersionFiles,
   validateAstrbotRuntimeVersion,
 } from './version-sync.mjs';
@@ -43,7 +44,8 @@ const createTempDesktopProject = async ({ cargoLockContents, version = '0.1.0' }
 
 const createTempAstrBotSource = async ({ pyprojectVersion = '1.2.3', runtimeVersion = '1.2.3' }) => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), 'astrbot-source-'));
-  const configDir = path.join(tempDir, 'astrbot', 'core', 'config');
+  const runtimeVersionPath = resolveAstrbotRuntimeVersionPath({ sourceDir: tempDir });
+  const configDir = path.dirname(runtimeVersionPath);
   await mkdir(configDir, { recursive: true });
   await writeFile(
     path.join(tempDir, 'pyproject.toml'),
@@ -51,7 +53,7 @@ const createTempAstrBotSource = async ({ pyprojectVersion = '1.2.3', runtimeVers
     'utf8',
   );
   await writeFile(
-    path.join(configDir, 'default.py'),
+    runtimeVersionPath,
     `import os\n\nVERSION = "${runtimeVersion}"\n`,
     'utf8',
   );
@@ -119,6 +121,30 @@ test('validateAstrbotRuntimeVersion rejects runtime version drift', async () => 
     await assert.rejects(
       validateAstrbotRuntimeVersion({ sourceDir: tempDir, expectedVersion }),
       /pyproject\.toml has 4\.26\.0-beta\.10, but runtime VERSION is 4\.26\.0-beta\.9/,
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('validateAstrbotRuntimeVersion allows drift when no expected version is supplied', async () => {
+  const tempDir = await createTempAstrBotSource({
+    pyprojectVersion: '4.26.0-beta.10',
+    runtimeVersion: '4.26.0-beta.9',
+  });
+  try {
+    await validateAstrbotRuntimeVersion({ sourceDir: tempDir });
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('validateAstrbotRuntimeVersion still rejects 0.0.0 when no expected version is supplied', async () => {
+  const tempDir = await createTempAstrBotSource({ runtimeVersion: '0.0.0' });
+  try {
+    await assert.rejects(
+      validateAstrbotRuntimeVersion({ sourceDir: tempDir }),
+      /runtime VERSION resolved to 0\.0\.0/,
     );
   } finally {
     await rm(tempDir, { recursive: true, force: true });

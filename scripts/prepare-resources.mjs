@@ -61,9 +61,10 @@ const main = async () => {
   const astrbotVersion =
     desktopVersionOverride || (await readAstrbotVersionFromPyproject({ sourceDir }));
 
-  if (!desktopVersionOverride) {
-    await validateAstrbotRuntimeVersion({ sourceDir, expectedVersion: astrbotVersion });
-  }
+  await validateAstrbotRuntimeVersion({
+    sourceDir,
+    expectedVersion: desktopVersionOverride ? undefined : astrbotVersion,
+  });
 
   if (desktopVersionOverride && needsSourceRepo) {
     const sourceVersion = await readAstrbotVersionFromPyproject({ sourceDir });
