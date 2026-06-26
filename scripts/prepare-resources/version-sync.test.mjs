@@ -47,11 +47,13 @@ const createTempAstrBotSource = async ({ pyprojectVersion = '1.2.3', runtimeVers
   const runtimeVersionPath = resolveAstrbotRuntimeVersionPath({ sourceDir: tempDir });
   const configDir = path.dirname(runtimeVersionPath);
   await mkdir(configDir, { recursive: true });
+  await mkdir(path.join(tempDir, 'astrbot'), { recursive: true });
   await writeFile(
     path.join(tempDir, 'pyproject.toml'),
     `[project]\nname = "AstrBot"\nversion = "${pyprojectVersion}"\n`,
     'utf8',
   );
+  await writeFile(path.join(tempDir, 'astrbot', '__init__.py'), `__version__ = "${runtimeVersion}"\n`, 'utf8');
   await writeFile(
     runtimeVersionPath,
     `import os\n\nVERSION = "${runtimeVersion}"\n`,
@@ -94,6 +96,19 @@ test('readAstrbotRuntimeVersion reads static VERSION from default.py', async () 
   try {
     const version = await readAstrbotRuntimeVersion({ sourceDir: tempDir });
     assert.equal(version, '4.26.0-beta.10');
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('readAstrbotRuntimeVersion resolves VERSION imported from package __version__', async () => {
+  const tempDir = await createTempAstrBotSource({ runtimeVersion: '4.26.1' });
+  try {
+    const runtimeVersionPath = resolveAstrbotRuntimeVersionPath({ sourceDir: tempDir });
+    await writeFile(runtimeVersionPath, `from astrbot import __version__\n\nVERSION = __version__\n`, 'utf8');
+
+    const version = await readAstrbotRuntimeVersion({ sourceDir: tempDir });
+    assert.equal(version, '4.26.1');
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
