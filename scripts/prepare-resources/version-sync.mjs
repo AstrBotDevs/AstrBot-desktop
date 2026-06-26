@@ -52,6 +52,21 @@ export const readAstrbotVersionFromPyproject = async ({ sourceDir }) => {
 export const resolveAstrbotRuntimeVersionPath = ({ sourceDir }) =>
   path.join(sourceDir, 'astrbot', 'core', 'config', 'default.py');
 
+const readAstrbotPackageVersion = async ({ sourceDir }) => {
+  const initPath = path.join(sourceDir, 'astrbot', '__init__.py');
+  if (!existsSync(initPath)) {
+    throw new Error(`Cannot find AstrBot package version file: ${initPath}`);
+  }
+
+  const content = await readFile(initPath, 'utf8');
+  const match = /^\s*__version__\s*=\s*["']([^"']+)["']\s*(?:#.*)?$/m.exec(content);
+  if (!match) {
+    throw new Error(`Cannot resolve AstrBot package __version__ from ${initPath}`);
+  }
+
+  return match[1].trim();
+};
+
 export const readAstrbotRuntimeVersion = async ({ sourceDir }) => {
   const defaultConfigPath = resolveAstrbotRuntimeVersionPath({ sourceDir });
   if (!existsSync(defaultConfigPath)) {
@@ -61,6 +76,10 @@ export const readAstrbotRuntimeVersion = async ({ sourceDir }) => {
   const content = await readFile(defaultConfigPath, 'utf8');
   const match = /^\s*VERSION\s*=\s*["']([^"']+)["']\s*(?:#.*)?$/m.exec(content);
   if (!match) {
+    if (/^\s*VERSION\s*=\s*__version__\s*(?:#.*)?$/m.test(content)) {
+      return readAstrbotPackageVersion({ sourceDir });
+    }
+
     throw new Error(`Cannot resolve AstrBot runtime VERSION from ${defaultConfigPath}`);
   }
 
