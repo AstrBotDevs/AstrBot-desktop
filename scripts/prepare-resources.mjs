@@ -18,8 +18,10 @@ import { createPrepareResourcesContext } from './prepare-resources/context.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 
-const resolveAstrbotVersionForSync = async ({ context, needsSourceRepo }) => {
+const resolveAstrbotVersionForSync = async ({ context }) => {
   const {
+    mode,
+    projectRoot,
     sourceDir,
     sourceRepoUrl,
     sourceRepoRef,
@@ -28,6 +30,9 @@ const resolveAstrbotVersionForSync = async ({ context, needsSourceRepo }) => {
     desktopVersionInput,
     desktopVersionOverride,
   } = context;
+  const needsSourceRepo = mode !== 'version' || !desktopVersionOverride;
+
+  ensureStartupShellAssets(projectRoot);
 
   if (!needsSourceRepo) {
     console.log(
@@ -74,7 +79,6 @@ const main = async () => {
     desktopVersionInput,
     desktopVersionOverride,
   } = context;
-  const needsSourceRepo = mode !== 'version' || !desktopVersionOverride;
   await mkdir(path.join(projectRoot, 'resources'), { recursive: true });
 
   if (desktopVersionInput && desktopVersionInput !== desktopVersionOverride) {
@@ -83,9 +87,7 @@ const main = async () => {
     );
   }
 
-  ensureStartupShellAssets(projectRoot);
-
-  const astrbotVersion = await resolveAstrbotVersionForSync({ context, needsSourceRepo });
+  const astrbotVersion = await resolveAstrbotVersionForSync({ context });
 
   await syncDesktopVersionFiles({ projectRoot, version: astrbotVersion });
   if (desktopVersionOverride) {
