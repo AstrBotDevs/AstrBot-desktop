@@ -26,6 +26,9 @@ fn configure_linux_webkit_workarounds() {
         std::env::var_os(WAYLAND_DISPLAY_ENV).as_deref(),
     ) {
         std::env::set_var(WEBKIT_DISABLE_DMABUF_RENDERER_ENV, "1");
+        append_startup_log(&format!(
+            "applied Linux WebKit workaround: set {WEBKIT_DISABLE_DMABUF_RENDERER_ENV}=1"
+        ));
     }
 }
 
