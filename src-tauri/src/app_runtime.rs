@@ -9,9 +9,18 @@ use crate::{
     DEFAULT_SHELL_LOCALE, DESKTOP_LOG_FILE, STARTUP_MODE_ENV,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StartupWindowAction {
+    KeepHidden,
+    Show,
+}
+
+#[cfg(target_os = "linux")]
 const WEBKIT_DISABLE_DMABUF_RENDERER_ENV: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
+#[cfg(target_os = "linux")]
 const WAYLAND_DISPLAY_ENV: &str = "WAYLAND_DISPLAY";
 
+#[cfg(any(target_os = "linux", test))]
 fn should_set_webkit_dmabuf_renderer_env(
     existing_value: Option<&std::ffi::OsStr>,
     wayland_display: Option<&std::ffi::OsStr>,
@@ -148,6 +157,14 @@ fn configure_page_load_events(builder: Builder<tauri::Wry>) -> Builder<tauri::Wr
     })
 }
 
+fn startup_window_action(silent_launch: bool) -> StartupWindowAction {
+    if silent_launch {
+        StartupWindowAction::KeepHidden
+    } else {
+        StartupWindowAction::Show
+    }
+}
+
 fn configure_setup(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
     builder.setup(|app| {
         let app_handle = app.handle().clone();
@@ -157,13 +174,23 @@ fn configure_setup(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
         crate::windows_shutdown::install(&app_handle);
 
         let desktop_settings = app_handle.state::<DesktopSettingsCache>().get();
-        if desktop_settings.silent_launch {
-            append_startup_log("silent launch enabled, hiding main window");
-            window::actions::hide_main_window(
-                &app_handle,
-                DEFAULT_SHELL_LOCALE,
-                append_desktop_log,
-            );
+        match startup_window_action(desktop_settings.silent_launch) {
+            StartupWindowAction::KeepHidden => {
+                append_startup_log("silent launch enabled, keeping main window hidden");
+                tray::labels::update_tray_menu_labels_with_visibility(
+                    &app_handle,
+                    DEFAULT_SHELL_LOCALE,
+                    Some(false),
+                    append_desktop_log,
+                );
+            }
+            StartupWindowAction::Show => {
+                window::actions::show_main_window(
+                    &app_handle,
+                    DEFAULT_SHELL_LOCALE,
+                    append_desktop_log,
+                );
+            }
         }
 
         startup_task::spawn_startup_task(app_handle.clone(), append_startup_log);
@@ -261,5 +288,11 @@ mod tests {
             Some(std::ffi::OsStr::new("1")),
             None
         ));
+    }
+
+    #[test]
+    fn startup_window_action_keeps_window_hidden_for_silent_launch() {
+        assert_eq!(startup_window_action(true), StartupWindowAction::KeepHidden);
+        assert_eq!(startup_window_action(false), StartupWindowAction::Show);
     }
 }
