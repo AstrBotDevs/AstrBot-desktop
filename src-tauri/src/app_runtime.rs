@@ -185,6 +185,7 @@ fn apply_startup_window_visibility(app_handle: &tauri::AppHandle, silent_launch:
         append_startup_log("silent launch enabled, keeping main window hidden");
         window::actions::hide_main_window(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log);
     } else {
+        append_startup_log("silent launch disabled, showing main window");
         window::actions::show_main_window(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log);
     }
 }
