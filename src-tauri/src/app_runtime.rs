@@ -14,7 +14,7 @@ const WEBKIT_DISABLE_DMABUF_RENDERER_ENV: &str = "WEBKIT_DISABLE_DMABUF_RENDERER
 #[cfg(target_os = "linux")]
 const WAYLAND_DISPLAY_ENV: &str = "WAYLAND_DISPLAY";
 
-#[cfg(any(target_os = "linux", test))]
+#[cfg(target_os = "linux")]
 fn should_set_webkit_dmabuf_renderer_env(
     existing_value: Option<&std::ffi::OsStr>,
     wayland_display: Option<&std::ffi::OsStr>,
@@ -244,7 +244,7 @@ pub(crate) fn run() {
         .run(handle_run_event);
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
 
