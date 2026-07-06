@@ -19,6 +19,7 @@
         "minWidth": 980,
         "minHeight": 680,
         "resizable": true,
+        "visible": false,
         "fullscreen": false,
         "backgroundThrottling": "disabled"
       }

@@ -19,3 +19,19 @@ test('main Tauri window disables background throttling', async () => {
     'expected the main window to disable background throttling',
   );
 });
+
+test('main Tauri window starts hidden to avoid silent-launch flash', async () => {
+  const tauriConfig = JSON.parse(await readFile(tauriConfigPath, 'utf8'));
+  const windows = tauriConfig?.app?.windows;
+
+  assert.ok(Array.isArray(windows), 'expected tauri config app.windows to be an array');
+
+  const mainWindow = windows.find((windowConfig) => windowConfig.label === 'main');
+
+  assert.ok(mainWindow, 'expected tauri config to define a main window');
+  assert.equal(
+    mainWindow.visible,
+    false,
+    'expected the main window to stay hidden until startup settings are applied',
+  );
+});
