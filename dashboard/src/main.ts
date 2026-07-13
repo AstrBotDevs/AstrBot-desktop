@@ -31,6 +31,7 @@ import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker';
 import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker';
 import { setupHttpClient } from './api/http';
 import { waitForRouterReadyInBackground } from './utils/routerReadiness.mjs';
+import { waitForDesktopBackendReady } from './utils/desktopBackendReadiness.mjs';
 
 setupHttpClient();
 
@@ -101,7 +102,7 @@ function setupThemeSync(pinia: ReturnType<typeof createPinia>) {
 }
 
 // 初始化新的i18n系统，等待完成后再挂载应用
-setupI18n().then(async () => {
+waitForDesktopBackendReady().then(() => setupI18n()).then(async () => {
   console.log('🌍 新i18n系统初始化完成');
 
   const app = createApp(App);

@@ -43,9 +43,7 @@ where
 }
 
 pub fn workspace_root_dir() -> PathBuf {
-    let candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
     candidate
         .canonicalize()
         .unwrap_or_else(|_| candidate.to_path_buf())

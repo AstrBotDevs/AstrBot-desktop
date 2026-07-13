@@ -1,6 +1,7 @@
 .DS_Store
 .claude/
 .pnpm-store/
+.env
 
 # dependencies/cache
 node_modules/

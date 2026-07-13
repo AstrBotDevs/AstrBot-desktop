@@ -65,11 +65,12 @@ export default defineConfig(({ command }) => ({
   },
   optimizeDeps: {
     exclude: ['vuetify'],
-    entries: ['./src/**/*.vue']
+    entries: ['./index.html', './src/main.ts', './src/**/*.vue']
   },
   server: {
     host: '0.0.0.0',
-    port: 3000,
+    port: 1420,
+    strictPort: true,
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:6185/',

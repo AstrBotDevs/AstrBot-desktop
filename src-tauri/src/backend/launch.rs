@@ -369,6 +369,10 @@ impl BackendState {
             return launch_plan::resolve_custom_launch(custom_cmd);
         }
 
+        if cfg!(debug_assertions) {
+            return launch_plan::resolve_dev_launch();
+        }
+
         if let Some(plan) =
             launch_plan::resolve_packaged_launch(app, DEFAULT_SHELL_LOCALE, append_desktop_log)?
         {

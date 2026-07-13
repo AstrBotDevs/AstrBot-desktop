@@ -3,7 +3,6 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import {
-  patchDesktopReleaseUpdateIndicator,
   patchMonacoCssNestingWarnings,
   verifyDesktopBridgeArtifacts,
 } from './desktop-bridge-checks.mjs';
@@ -58,28 +57,22 @@ const resolveDesktopReleaseBaseUrl = () => {
 };
 
 export const prepareWebui = async ({
-  sourceDir,
   projectRoot,
-  sourceRepoRef,
-  isSourceRepoRefVersionTag,
   isDesktopBridgeExpectationStrict,
 }) => {
-  const dashboardDir = path.join(sourceDir, 'dashboard');
-  ensurePackageInstall(dashboardDir, 'AstrBot dashboard');
+  const dashboardDir = path.join(projectRoot, 'dashboard');
+  ensurePackageInstall(dashboardDir, 'AstrBot Desktop dashboard');
   await patchMonacoCssNestingWarnings({ dashboardDir, projectRoot });
-  await patchDesktopReleaseUpdateIndicator({ dashboardDir, projectRoot });
   await verifyDesktopBridgeArtifacts({
     dashboardDir,
     projectRoot,
-    sourceRepoRef,
-    isSourceRepoRefVersionTag,
     isDesktopBridgeExpectationStrict,
   });
-  runPnpmChecked(['--dir', dashboardDir, 'build'], sourceDir, {
+  runPnpmChecked(['--dir', dashboardDir, 'build'], dashboardDir, {
     VITE_ASTRBOT_RELEASE_BASE_URL: resolveDesktopReleaseBaseUrl(),
   });
 
-  const sourceWebuiDir = path.join(sourceDir, 'dashboard', 'dist');
+  const sourceWebuiDir = path.join(dashboardDir, 'dist');
   if (!existsSync(path.join(sourceWebuiDir, 'index.html'))) {
     throw new Error(`WebUI build output missing: ${sourceWebuiDir}`);
   }

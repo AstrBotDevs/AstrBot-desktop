@@ -4,7 +4,7 @@
   "version": "4.26.5",
   "identifier": "com.astrbot.desktop.tauri",
   "build": {
-    "beforeDevCommand": "",
+    "beforeDevCommand": "pnpm run dev:dashboard",
     "beforeBuildCommand": "pnpm run prepare:resources",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../ui"

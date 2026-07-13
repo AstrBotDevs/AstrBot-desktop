@@ -74,7 +74,7 @@ mod platform {
 
         let previous = unsafe {
             SetLastError(0);
-            SetWindowLongPtrW(hwnd, GWLP_WNDPROC, shutdown_wndproc as isize)
+            SetWindowLongPtrW(hwnd, GWLP_WNDPROC, shutdown_wndproc as *const () as isize)
         };
         let last_error = unsafe { GetLastError() };
         if previous == 0 && last_error != 0 {

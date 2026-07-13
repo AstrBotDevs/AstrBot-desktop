@@ -4,6 +4,13 @@ import assert from 'node:assert/strict';
 
 const tauriConfigPath = new URL('../../src-tauri/tauri.conf.json', import.meta.url);
 
+test('Tauri development mode starts the repository dashboard server', async () => {
+  const tauriConfig = JSON.parse(await readFile(tauriConfigPath, 'utf8'));
+
+  assert.equal(tauriConfig.build.beforeDevCommand, 'pnpm run dev:dashboard');
+  assert.equal(tauriConfig.build.devUrl, 'http://localhost:1420');
+});
+
 test('main Tauri window disables background throttling', async () => {
   const tauriConfig = JSON.parse(await readFile(tauriConfigPath, 'utf8'));
   const windows = tauriConfig?.app?.windows;

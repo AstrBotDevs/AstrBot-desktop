@@ -57,6 +57,7 @@ help:
 
 deps:
 	pnpm install
+	pnpm run install:dashboard
 
 sync-version:
 	pnpm run sync:version

@@ -27,6 +27,23 @@ fn resolve_launch_startup_heartbeat_path(
     )
 }
 
+fn resolve_dev_webui_dir(project_root: &Path, explicit: Option<PathBuf>) -> Option<PathBuf> {
+    explicit.or_else(|| {
+        let dashboard_dist = project_root.join("dashboard").join("dist");
+        dashboard_dist
+            .join("index.html")
+            .is_file()
+            .then_some(dashboard_dist)
+            .or_else(|| {
+                let startup_shell = project_root.join("ui");
+                startup_shell
+                    .join("index.html")
+                    .is_file()
+                    .then_some(startup_shell)
+            })
+    })
+}
+
 pub fn resolve_custom_launch(custom_cmd: String) -> Result<LaunchPlan, String> {
     let mut pieces = shlex::split(&custom_cmd)
         .ok_or_else(|| format!("Invalid ASTRBOT_BACKEND_CMD: {custom_cmd}"))?;
@@ -176,22 +193,19 @@ pub fn resolve_dev_launch() -> Result<LaunchPlan, String> {
     })?;
 
     let mut args = vec!["run".to_string(), "main.py".to_string()];
-    let webui_dir = env::var("ASTRBOT_WEBUI_DIR")
-        .ok()
-        .map(PathBuf::from)
-        .or_else(|| {
-            let candidate = source_root.join("dashboard").join("dist");
-            if candidate.join("index.html").is_file() {
-                Some(candidate)
-            } else {
-                None
-            }
-        });
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+    let webui_dir = resolve_dev_webui_dir(
+        &project_root,
+        env::var("ASTRBOT_WEBUI_DIR").ok().map(PathBuf::from),
+    );
     if let Some(path) = &webui_dir {
         args.push("--webui-dir".to_string());
         args.push(path.to_string_lossy().to_string());
     }
-    let root_dir = env::var(crate::ASTRBOT_ROOT_ENV).ok().map(PathBuf::from);
+    let root_dir = env::var(crate::ASTRBOT_ROOT_ENV)
+        .ok()
+        .map(PathBuf::from)
+        .or_else(runtime_paths::default_packaged_root_dir);
     let startup_heartbeat_path = resolve_launch_startup_heartbeat_path(root_dir.as_deref(), false);
 
     Ok(LaunchPlan {
@@ -210,6 +224,7 @@ pub fn resolve_dev_launch() -> Result<LaunchPlan, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     struct EnvVarGuard {
         key: &'static str,
@@ -255,5 +270,28 @@ mod tests {
             plan.startup_heartbeat_path,
             Some(PathBuf::from("/tmp/astrbot-root").join("data/backend-startup-heartbeat.json"))
         );
+    }
+
+    #[test]
+    fn resolve_dev_webui_dir_falls_back_to_tracked_startup_shell() {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos();
+        let project_root = env::temp_dir().join(format!(
+            "astrbot-desktop-dev-webui-{}-{timestamp}",
+            std::process::id()
+        ));
+        let startup_shell = project_root.join("ui");
+        fs::create_dir_all(&startup_shell).expect("create startup shell");
+        fs::write(startup_shell.join("index.html"), "<!doctype html>")
+            .expect("create startup shell index");
+
+        assert_eq!(
+            resolve_dev_webui_dir(&project_root, None),
+            Some(startup_shell)
+        );
+
+        fs::remove_dir_all(project_root).expect("cleanup dev webui fixture");
     }
 }

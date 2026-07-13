@@ -21,6 +21,27 @@ make doctor
 
 ## 2. 快速开始
 
+先从示例创建本机配置：
+
+```bash
+cp .env.example .env
+```
+
+Windows PowerShell：
+
+```powershell
+Copy-Item .env.example .env
+```
+
+默认配置从远端获取 AstrBot 后端源码：
+
+```dotenv
+ASTRBOT_SOURCE_GIT_URL=https://github.com/AstrBotDevs/AstrBot.git
+ASTRBOT_SOURCE_GIT_REF=master
+```
+
+`.env` 仅用于本机且已被 Git 忽略。`pnpm run dev` 会自动把远端源码准备到 `vendor/AstrBot` 后再启动；`pnpm run build` 和资源准备脚本也会自动加载 `.env`。已有的进程环境变量优先级高于 `.env`。仅在明确需要使用现有本地源码时才设置 `ASTRBOT_SOURCE_DIR`。
+
 推荐直接使用 Makefile：
 
 ```bash
@@ -32,7 +53,7 @@ make build
 
 常见含义：
 
-- `make deps`：安装前端/脚本依赖。
+- `make deps`：安装根目录脚本依赖和 `dashboard/` 前端依赖。
 - `make prepare`：准备 WebUI 与后端运行时资源。
 - `make dev`：启动 Tauri 开发模式。
 - `make build`：执行正式构建。
@@ -42,6 +63,17 @@ make build
 ```text
 src-tauri/target/release/bundle/
 ```
+
+`make dev` 会通过 Tauri 的 `beforeDevCommand` 自动启动 `dashboard/` 的 Vite 服务（`http://localhost:1420`）。调试构建会保持该页面并通过 Vite 代理访问 `6185` 后端，因此前端修改支持热更新；正式构建仍由后端提供 `resources/webui`。只开发前端时也可以运行：
+
+```bash
+pnpm run install:dashboard
+pnpm --dir dashboard dev
+```
+
+独立前端开发服务默认监听 `1420`，并把 `/api` 代理到本机 AstrBot 后端 `http://127.0.0.1:6185/`。
+
+本地执行 `pnpm run build` 时，如果未设置 `TAURI_SIGNING_PRIVATE_KEY`，启动脚本会保留 MSI/NSIS 安装包构建，但跳过需要发布私钥的 updater 签名产物。正式发布流水线提供该私钥，因此仍会按 `tauri.conf.json` 生成并签名 updater artifacts。
 
 ## 3. 常用维护命令
 
@@ -117,8 +149,8 @@ beforeBuildCommand = pnpm run prepare:resources
 
 构建时会自动完成以下步骤：
 
-1. 拉取或更新 AstrBot 源码。
-2. 构建并同步 `resources/webui`。
+1. 从本仓库 `dashboard/` 构建并同步 `resources/webui`，此步骤不读取 AstrBot 源仓库。
+2. 拉取、更新或使用显式指定的 AstrBot 源码，仅用于版本同步和后端资源准备。
 3. 准备 `resources/backend`（包括运行时与启动脚本）。
 4. 执行 Tauri 打包。
 

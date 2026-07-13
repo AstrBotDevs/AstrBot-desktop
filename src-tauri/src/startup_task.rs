@@ -19,6 +19,10 @@ where
 
         match startup_result {
             Ok(()) => {
+                if cfg!(debug_assertions) {
+                    log("backend ready; keeping the dashboard Vite dev server loaded");
+                    return;
+                }
                 if let Err(error) = ui_dispatch::run_on_main_thread_dispatch(
                     &startup_app_handle,
                     "navigate backend",

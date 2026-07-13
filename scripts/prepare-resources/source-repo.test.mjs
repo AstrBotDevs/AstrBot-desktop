@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
 
 import {
   getSourceRefInfo,
@@ -45,8 +46,8 @@ test('getSourceRefInfo respects explicit commit hint env flag', () => {
 
 test('resolveSourceDir honors override and default project layout', () => {
   const resolvedOverride = resolveSourceDir('/project/root', './vendor/custom', '/work');
-  assert.equal(resolvedOverride, '/work/vendor/custom');
+  assert.equal(resolvedOverride, path.resolve('/work', 'vendor/custom'));
 
   const resolvedDefault = resolveSourceDir('/project/root', '', '/work');
-  assert.equal(resolvedDefault, '/project/root/vendor/AstrBot');
+  assert.equal(resolvedDefault, path.join('/project/root', 'vendor', 'AstrBot'));
 });

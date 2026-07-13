@@ -60,69 +60,17 @@ export const patchMonacoCssNestingWarnings = async ({ dashboardDir, projectRoot 
   }
 };
 
-export const patchDesktopReleaseUpdateIndicator = async ({ dashboardDir, projectRoot }) => {
-  const file = path.join(
-    dashboardDir,
-    'src',
-    'layouts',
-    'full',
-    'vertical-header',
-    'VerticalHeader.vue',
-  );
-  if (!existsSync(file)) {
-    return;
-  }
-
-  const source = await readFile(file, 'utf8');
-  if (source.includes('const backendHasNewVersion = !isDesktopReleaseMode.value && res.data.data.has_new_version;')) {
-    return;
-  }
-
-  const targetPattern =
-    /^(\s*)hasNewVersion\.value\s*=\s*res\.data\.data\.has_new_version;\s*\n\s*if\s*\(\s*res\.data\.data\.has_new_version\s*\)\s*\{/m;
-
-  if (!targetPattern.test(source)) {
-    console.warn(
-      `[prepare-resources] Could not patch desktop release update banner gating in ${path.relative(projectRoot, file)} because the expected update check pattern was not found.`,
-    );
-    return;
-  }
-
-  const patched = source.replace(
-    targetPattern,
-    (_, indent) =>
-      `${indent}const backendHasNewVersion = !isDesktopReleaseMode.value && res.data.data.has_new_version;\n` +
-      `${indent}hasNewVersion.value = backendHasNewVersion;\n\n` +
-      `${indent}if (backendHasNewVersion) {`,
-  );
-  if (patched !== source) {
-    await writeFile(file, patched, 'utf8');
-    console.log(
-      `[prepare-resources] Patched desktop release update banner gating in ${path.relative(projectRoot, file)}`,
-    );
-  }
-};
-
 export const verifyDesktopBridgeArtifacts = async ({
   dashboardDir,
   projectRoot,
-  sourceRepoRef,
-  isSourceRepoRefVersionTag,
   isDesktopBridgeExpectationStrict,
 }) => {
   const issues = [];
-  const isTaggedRelease = isSourceRepoRefVersionTag;
-  if (!isDesktopBridgeExpectationStrict && isTaggedRelease) {
-    console.warn(
-      `[prepare-resources] Desktop bridge required checks downgraded to warnings for source ref ${sourceRepoRef}. ` +
-        'Set ASTRBOT_DESKTOP_STRICT_BRIDGE_EXPECTATIONS=1 to enforce.',
-    );
-  }
 
   for (const expectation of getDesktopBridgeExpectations()) {
     const mustPass = shouldEnforceDesktopBridgeExpectation(expectation, {
       isDesktopBridgeExpectationStrict,
-      isTaggedRelease,
+      isTaggedRelease: false,
     });
     const file = path.join(dashboardDir, ...expectation.filePath);
     if (!existsSync(file)) {
@@ -140,7 +88,7 @@ export const verifyDesktopBridgeArtifacts = async ({
 
     const source = await readFile(file, 'utf8');
     if (!expectation.pattern.test(source)) {
-      const message = `[prepare-resources] Expected ${expectation.label} in ${path.relative(projectRoot, file)}. ${expectation.hint || ''} Please sync AstrBot dashboard sources.`;
+      const message = `[prepare-resources] Expected ${expectation.label} in ${path.relative(projectRoot, file)}. ${expectation.hint || ''} Please update the repository-owned dashboard implementation.`;
       if (mustPass) {
         issues.push(message);
       } else {
