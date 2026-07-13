@@ -512,9 +512,10 @@ function checkUpdate() {
   updatesApi
     .check()
     .then((res) => {
-      hasNewVersion.value = res.data.data.has_new_version;
+      const backendHasNewVersion = !isDesktopReleaseMode.value && res.data.data.has_new_version;
+      hasNewVersion.value = backendHasNewVersion;
 
-      if (res.data.data.has_new_version) {
+      if (backendHasNewVersion) {
         releaseMessage.value = res.data.message || "";
         updateStatus.value = t("core.header.version.hasNewVersion");
       } else {

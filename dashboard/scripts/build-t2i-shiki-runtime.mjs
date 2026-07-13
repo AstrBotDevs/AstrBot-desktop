@@ -11,12 +11,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dashboardRoot = path.resolve(__dirname, "..");
 const runtimeOutputFile = path.resolve(
   dashboardRoot,
-  "..",
-  "astrbot",
-  "core",
-  "utils",
+  "public",
   "t2i",
-  "template",
   "shiki_runtime.iife.js",
 );
 const shikiRequire = createRequire(require.resolve("shiki/package.json"));
