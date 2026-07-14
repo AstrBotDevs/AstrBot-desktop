@@ -12,13 +12,18 @@
     "sync:version": "node scripts/prepare-resources.mjs version",
     "test:prepare-resources": "node --test \"scripts/**/*.test.mjs\"",
     "install:dashboard": "pnpm --dir dashboard install --frozen-lockfile",
+    "install:dashboard:new": "pnpm --dir new-dashboard install",
     "dev:dashboard": "pnpm --dir dashboard dev",
+    "dev:dashboard:new": "pnpm --dir new-dashboard dev",
     "typecheck:dashboard": "pnpm --dir dashboard typecheck",
+    "typecheck:dashboard:new": "pnpm --dir new-dashboard typecheck",
     "prepare:webui": "node scripts/prepare-resources.mjs webui",
     "prepare:backend": "node scripts/prepare-resources.mjs backend",
     "prepare:resources": "pnpm run prepare:webui && pnpm run prepare:backend",
     "dev": "node scripts/run-tauri.mjs dev",
-    "build": "node scripts/run-tauri.mjs build"
+    "dev:new": "node scripts/run-tauri-new.mjs dev",
+    "build": "node scripts/run-tauri.mjs build",
+    "build:new": "node scripts/run-tauri-new.mjs build"
   },
   "devDependencies": {
     "yaml": "^2.8.1"
