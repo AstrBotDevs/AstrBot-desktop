@@ -20,6 +20,11 @@ describe('route migration manifest', () => {
       '/auth/setup',
       '/welcome',
       '/about',
+      '/dashboard/default',
+      '/console',
+      '/trace',
+      '/conversation',
+      '/session-management',
     ]);
   });
 

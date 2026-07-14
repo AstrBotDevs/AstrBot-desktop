@@ -12,6 +12,11 @@ const LoginPage = lazy(() => import('@/routes/auth/LoginPage'));
 const SetupPage = lazy(() => import('@/routes/auth/SetupPage'));
 const WelcomePage = lazy(() => import('@/routes/welcome/WelcomePage'));
 const AboutPage = lazy(() => import('@/routes/about/AboutPage'));
+const StatsPage = lazy(() => import('@/routes/monitoring/StatsPage'));
+const ConsolePage = lazy(() => import('@/routes/monitoring/ConsolePage'));
+const TracePage = lazy(() => import('@/routes/monitoring/TracePage'));
+const ConversationPage = lazy(() => import('@/routes/monitoring/ConversationPage'));
+const SessionManagementPage = lazy(() => import('@/routes/monitoring/SessionManagementPage'));
 
 function loading(element: React.ReactNode) {
   return <Suspense fallback={<div className="route-loading" role="status">Loading…</div>}>{element}</Suspense>;
@@ -22,6 +27,11 @@ const reactRouteElements: Partial<Record<string, React.ReactNode>> = {
   '/auth/setup': <BlankLayout>{loading(<SetupPage />)}</BlankLayout>,
   '/welcome': <FullLayout>{loading(<WelcomePage />)}</FullLayout>,
   '/about': <FullLayout>{loading(<AboutPage />)}</FullLayout>,
+  '/dashboard/default': <FullLayout>{loading(<StatsPage />)}</FullLayout>,
+  '/console': <FullLayout>{loading(<ConsolePage />)}</FullLayout>,
+  '/trace': <FullLayout>{loading(<TracePage />)}</FullLayout>,
+  '/conversation': <FullLayout>{loading(<ConversationPage />)}</FullLayout>,
+  '/session-management': <FullLayout>{loading(<SessionManagementPage />)}</FullLayout>,
 };
 
 function resolveReactRoute(path: string) {
