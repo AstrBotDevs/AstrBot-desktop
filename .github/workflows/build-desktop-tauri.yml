@@ -387,6 +387,7 @@ jobs:
           ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS: ${{ vars.ASTRBOT_DESKTOP_CRYPTOGRAPHY_FALLBACK_VERSIONS || '' }}
           ASTRBOT_MACOS_BUILD_MAX_ATTEMPTS: ${{ vars.ASTRBOT_MACOS_BUILD_MAX_ATTEMPTS || '3' }}
           ASTRBOT_MACOS_BUILD_RETRY_SLEEP_SECONDS: ${{ vars.ASTRBOT_MACOS_BUILD_RETRY_SLEEP_SECONDS || '8' }}
+          ASTRBOT_MACOS_NOTARIZATION_ENABLED: ${{ vars.ASTRBOT_MACOS_NOTARIZATION_ENABLED || 'true' }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -397,6 +398,25 @@ jobs:
           max_attempts_default=3
           max_attempts_upper_bound=6
           retry_sleep_seconds_default=8
+
+          notarization_enabled="$(printf '%s' "${ASTRBOT_MACOS_NOTARIZATION_ENABLED}" | tr '[:upper:]' '[:lower:]')"
+          case "${notarization_enabled}" in
+            1|true|yes|on)
+              if [ -z "${APPLE_ID:-}" ] || [ -z "${APPLE_PASSWORD:-}" ] || [ -z "${APPLE_TEAM_ID:-}" ]; then
+                echo "::error::APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID are required when macOS notarization is enabled." >&2
+                exit 1
+              fi
+              echo "macOS notarization enabled for team ${APPLE_TEAM_ID}."
+              ;;
+            0|false|no|off)
+              unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+              echo "macOS notarization disabled; producing Developer ID signed artifacts."
+              ;;
+            *)
+              echo "::error::ASTRBOT_MACOS_NOTARIZATION_ENABLED must be a boolean value." >&2
+              exit 1
+              ;;
+          esac
 
           max_attempts="${ASTRBOT_MACOS_BUILD_MAX_ATTEMPTS}"
           retry_sleep_seconds="${ASTRBOT_MACOS_BUILD_RETRY_SLEEP_SECONDS}"

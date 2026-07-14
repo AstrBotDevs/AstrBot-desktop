@@ -95,6 +95,13 @@ test('macOS workflow requires one certificate and derives its team ID', async ()
   assert.equal(buildStep.env?.APPLE_CERTIFICATE, undefined);
   assert.equal(buildStep.env?.APPLE_CERTIFICATE_PASSWORD, undefined);
   assert.equal(buildStep.env?.APPLE_TEAM_ID, undefined);
+  assert.equal(
+    buildStep.env?.ASTRBOT_MACOS_NOTARIZATION_ENABLED,
+    "${{ vars.ASTRBOT_MACOS_NOTARIZATION_ENABLED || 'true' }}",
+  );
+  assert.match(buildStep.run, /unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID/);
+  assert.match(buildStep.run, /producing Developer ID signed artifacts/);
+  assert.match(buildStep.run, /APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID are required/);
 });
 
 test('release workflow disables generated release notes for nightly builds', async () => {
