@@ -43,3 +43,9 @@ export const routeMigrationManifest: readonly RouteMigrationEntry[] = [
 export const migratedRoutePaths = routeMigrationManifest
   .filter((route) => route.runtime === 'react')
   .map((route) => route.path);
+
+const publicRoutePaths = new Set(['/auth/login', '/auth/setup']);
+
+export function routeRequiresAuth(path: string) {
+  return !publicRoutePaths.has(path);
+}

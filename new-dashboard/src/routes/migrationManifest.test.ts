@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { migratedRoutePaths, routeMigrationManifest } from './migrationManifest';
+import {
+  migratedRoutePaths,
+  routeMigrationManifest,
+  routeRequiresAuth,
+} from './migrationManifest';
 
 describe('route migration manifest', () => {
   it('contains each legacy route only once', () => {
@@ -26,5 +30,11 @@ describe('route migration manifest', () => {
       '/chat/:conversationId',
     ];
     expect(requiredPaths.every((path) => paths.has(path))).toBe(true);
+  });
+
+  it('keeps only authentication entry routes public', () => {
+    expect(routeRequiresAuth('/auth/login')).toBe(false);
+    expect(routeRequiresAuth('/auth/setup')).toBe(false);
+    expect(routeRequiresAuth('/dashboard/default')).toBe(true);
   });
 });

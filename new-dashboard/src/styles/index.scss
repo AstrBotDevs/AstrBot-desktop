@@ -70,3 +70,19 @@ textarea {
 .headless-dialog__description {
   margin: 8px 0 0;
 }
+
+.not-found {
+  display: grid;
+  place-content: center;
+  min-height: 100%;
+  padding: 24px;
+  text-align: center;
+}
+
+.not-found__code {
+  margin: 0;
+  color: var(--astrbot-primary);
+  font-size: clamp(64px, 12vw, 128px);
+  font-weight: 700;
+  line-height: 1;
+}
