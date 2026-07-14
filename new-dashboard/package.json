@@ -7,18 +7,29 @@
     "dev": "vite --host",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
+    "test": "vitest run",
     "preview": "vite preview --port 5051"
   },
   "dependencies": {
+    "@hookform/resolvers": "5.4.0",
+    "@radix-ui/react-dialog": "1.1.19",
+    "i18next": "26.3.6",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react-dom": "19.1.0",
+    "react-hook-form": "7.80.0",
+    "react-i18next": "17.0.8",
+    "react-router-dom": "7.18.0",
+    "yup": "1.7.1",
+    "zustand": "5.0.14"
   },
   "devDependencies": {
     "@types/node": "20.19.9",
     "@types/react": "19.1.8",
     "@types/react-dom": "19.1.6",
     "@vitejs/plugin-react": "4.6.0",
+    "sass": "1.101.0",
     "typescript": "5.1.6",
-    "vite": "6.4.1"
+    "vite": "6.4.1",
+    "vitest": "3.2.4"
   }
 }

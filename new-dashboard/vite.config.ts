@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@legacy-i18n': fileURLToPath(new URL('../dashboard/src/i18n', import.meta.url)),
     },
   },
   server: {

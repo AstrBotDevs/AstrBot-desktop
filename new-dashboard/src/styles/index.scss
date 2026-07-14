@@ -1,0 +1,72 @@
+@use './tokens';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: var(--astrbot-background);
+  color: var(--astrbot-text);
+  font-family: var(--astrbot-font-family);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.dashboard-bootstrap {
+  width: 100%;
+  height: 100%;
+}
+
+.dashboard-bootstrap__error,
+.app-error {
+  display: grid;
+  place-content: center;
+  min-height: 100%;
+  padding: 24px;
+  text-align: center;
+}
+
+.headless-dialog__overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 45%);
+}
+
+.headless-dialog__content {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid var(--astrbot-border);
+  border-radius: var(--astrbot-radius-card);
+  background: var(--astrbot-surface);
+  color: var(--astrbot-text);
+  transform: translate(-50%, -50%);
+}
+
+.headless-dialog__title {
+  margin: 0;
+}
+
+.headless-dialog__description {
+  margin: 8px 0 0;
+}

@@ -1,0 +1,45 @@
+export type RouteRuntime = 'legacy' | 'react';
+
+export type RouteMigrationEntry = {
+  path: string;
+  runtime: RouteRuntime;
+};
+
+export const routeMigrationManifest: readonly RouteMigrationEntry[] = [
+  { path: '/', runtime: 'legacy' },
+  { path: '/main', runtime: 'legacy' },
+  { path: '/auth/login', runtime: 'legacy' },
+  { path: '/auth/setup', runtime: 'legacy' },
+  { path: '/welcome', runtime: 'legacy' },
+  { path: '/about', runtime: 'legacy' },
+  { path: '/dashboard/default', runtime: 'legacy' },
+  { path: '/console', runtime: 'legacy' },
+  { path: '/trace', runtime: 'legacy' },
+  { path: '/conversation', runtime: 'legacy' },
+  { path: '/session-management', runtime: 'legacy' },
+  { path: '/platforms', runtime: 'legacy' },
+  { path: '/providers', runtime: 'legacy' },
+  { path: '/config', runtime: 'legacy' },
+  { path: '/normal', runtime: 'legacy' },
+  { path: '/system', runtime: 'legacy' },
+  { path: '/settings', runtime: 'legacy' },
+  { path: '/persona', runtime: 'legacy' },
+  { path: '/subagent', runtime: 'legacy' },
+  { path: '/cron', runtime: 'legacy' },
+  { path: '/extension', runtime: 'legacy' },
+  { path: '/extension/:pluginId', runtime: 'legacy' },
+  { path: '/extension-marketplace', runtime: 'legacy' },
+  { path: '/plugin-page/:pluginName/:pageName', runtime: 'legacy' },
+  { path: '/knowledge-base', runtime: 'legacy' },
+  { path: '/knowledge-base/:kbId', runtime: 'legacy' },
+  { path: '/knowledge-base/:kbId/document/:docId', runtime: 'legacy' },
+  { path: '/alkaid/knowledge-base', runtime: 'legacy' },
+  { path: '/chat', runtime: 'legacy' },
+  { path: '/chat/:conversationId', runtime: 'legacy' },
+  { path: '/chatbox', runtime: 'legacy' },
+  { path: '/chatbox/:conversationId', runtime: 'legacy' },
+] as const;
+
+export const migratedRoutePaths = routeMigrationManifest
+  .filter((route) => route.runtime === 'react')
+  .map((route) => route.path);
