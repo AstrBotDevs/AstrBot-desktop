@@ -13,10 +13,14 @@ describe('route migration manifest', () => {
     expect(new Set(paths).size).toBe(paths.length);
   });
 
-  it('starts with every route on the legacy runtime', () => {
+  it('tracks the completed authentication and static route batch', () => {
     expect(routeMigrationManifest.length).toBeGreaterThan(0);
-    expect(routeMigrationManifest.every((route) => route.runtime === 'legacy')).toBe(true);
-    expect(migratedRoutePaths).toEqual([]);
+    expect(migratedRoutePaths).toEqual([
+      '/auth/login',
+      '/auth/setup',
+      '/welcome',
+      '/about',
+    ]);
   });
 
   it('tracks the routes required for the first migration batches', () => {
