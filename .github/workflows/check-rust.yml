@@ -67,21 +67,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-${{ steps.rust-version.outputs.rustc_hash }}-
 
-      - name: Ensure Tauri resource placeholders
-        if: steps.detect-tauri.outputs.has_tauri == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p resources/webui resources/backend
-
-          if [ ! -f resources/webui/index.html ]; then
-            printf '%s\n' '<!doctype html><title>AstrBot Placeholder</title>' > resources/webui/index.html
-          fi
-
-          if [ ! -f resources/backend/runtime-manifest.json ]; then
-            printf '%s\n' '{"mode":"ci-placeholder","python":"python/bin/python3","entrypoint":"launch_backend.py","app":"app"}' > resources/backend/runtime-manifest.json
-          fi
-
       - name: rustfmt
         if: steps.detect-tauri.outputs.has_tauri == 'true'
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check

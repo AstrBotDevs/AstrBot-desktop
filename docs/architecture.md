@@ -8,7 +8,7 @@
 系统由三层组成：
 
 1. 桌面壳层（`src-tauri`，Tauri + Rust）
-2. WebUI 资源层（`resources/webui`）
+2. WebUI 源码与资源层（`dashboard` -> `resources/webui`）
 3. 后端运行时层（`resources/backend` + CPython runtime）
 
 桌面壳层负责：

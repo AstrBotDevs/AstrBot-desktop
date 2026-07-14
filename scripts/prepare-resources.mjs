@@ -14,9 +14,12 @@ import {
 } from './prepare-resources/mode-tasks.mjs';
 import { runModeTasks } from './prepare-resources/mode-dispatch.mjs';
 import { createPrepareResourcesContext } from './prepare-resources/context.mjs';
+import { loadProjectEnv } from './project-env.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
+
+loadProjectEnv();
 
 const prepareAstrbotVersionSync = async ({ context }) => {
   const {
@@ -33,6 +36,13 @@ const prepareAstrbotVersionSync = async ({ context }) => {
   const needsSourceRepo = mode !== 'version' || !desktopVersionOverride;
 
   ensureStartupShellAssets(projectRoot);
+
+  if (mode === 'webui') {
+    console.log(
+      '[prepare-resources] Build the repository-owned dashboard without resolving AstrBot backend sources.',
+    );
+    return null;
+  }
 
   if (!needsSourceRepo) {
     console.log(
@@ -89,13 +99,15 @@ const main = async () => {
 
   const astrbotVersion = await prepareAstrbotVersionSync({ context });
 
-  await syncDesktopVersionFiles({ projectRoot, version: astrbotVersion });
-  if (desktopVersionOverride) {
-    console.log(
-      `[prepare-resources] Synced desktop version to override ${astrbotVersion} (ASTRBOT_DESKTOP_VERSION)`,
-    );
-  } else {
-    console.log(`[prepare-resources] Synced desktop version to AstrBot ${astrbotVersion}`);
+  if (astrbotVersion) {
+    await syncDesktopVersionFiles({ projectRoot, version: astrbotVersion });
+    if (desktopVersionOverride) {
+      console.log(
+        `[prepare-resources] Synced desktop version to override ${astrbotVersion} (ASTRBOT_DESKTOP_VERSION)`,
+      );
+    } else {
+      console.log(`[prepare-resources] Synced desktop version to AstrBot ${astrbotVersion}`);
+    }
   }
 
   await runModeTasks(mode, context);

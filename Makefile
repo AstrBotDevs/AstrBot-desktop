@@ -57,6 +57,7 @@ help:
 
 deps:
 	pnpm install
+	pnpm run install:dashboard
 
 sync-version:
 	pnpm run sync:version
@@ -119,6 +120,7 @@ test:
 	fi
 
 doctor:
+	@node scripts/check-node-version.mjs
 	@echo "node:  $$(node -v)"
 	@echo "pnpm:  $$(pnpm -v)"
 	@echo "rustc: $$(rustc -V)"

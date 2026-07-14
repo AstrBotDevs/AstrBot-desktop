@@ -64,4 +64,27 @@ pub fn should_inject_desktop_bridge(backend_url: &str, page_url: &Url) -> bool {
         return false;
     };
     origin_policy::tray_origin_decision(&backend_url, page_url).uses_backend_origin
+        || (cfg!(debug_assertions) && origin_policy::is_loopback_http_url(page_url))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug_build_injects_bridge_into_loopback_vite_server() {
+        let page = Url::parse("http://localhost:1420").expect("parse dev server url");
+
+        assert!(should_inject_desktop_bridge("http://127.0.0.1:6185", &page));
+    }
+
+    #[test]
+    fn bridge_is_not_injected_into_remote_pages() {
+        let page = Url::parse("https://example.com").expect("parse remote url");
+
+        assert!(!should_inject_desktop_bridge(
+            "http://127.0.0.1:6185",
+            &page
+        ));
+    }
 }

@@ -1,17 +1,24 @@
 {
   "name": "astrbot-desktop-tauri",
-  "version": "4.26.5",
+  "version": "4.26.6",
   "description": "AstrBot desktop shell powered by Tauri",
   "private": true,
   "packageManager": "pnpm@10.28.2",
+  "engines": {
+    "node": ">=20.12.0"
+  },
   "scripts": {
+    "check:node": "node scripts/check-node-version.mjs",
     "sync:version": "node scripts/prepare-resources.mjs version",
     "test:prepare-resources": "node --test \"scripts/**/*.test.mjs\"",
+    "install:dashboard": "pnpm --dir dashboard install --frozen-lockfile",
+    "dev:dashboard": "pnpm --dir dashboard dev",
+    "typecheck:dashboard": "pnpm --dir dashboard typecheck",
     "prepare:webui": "node scripts/prepare-resources.mjs webui",
     "prepare:backend": "node scripts/prepare-resources.mjs backend",
     "prepare:resources": "pnpm run prepare:webui && pnpm run prepare:backend",
-    "dev": "cargo tauri dev",
-    "build": "cargo tauri build"
+    "dev": "node scripts/run-tauri.mjs dev",
+    "build": "node scripts/run-tauri.mjs build"
   },
   "devDependencies": {
     "yaml": "^2.8.1"

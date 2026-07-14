@@ -60,6 +60,24 @@ fn load_bundle_resource_alias(tauri_config: &Value, source_relative_path: &str) 
     alias.to_string()
 }
 
+fn ensure_resource_source_exists(source_relative_path: &str) {
+    let resource_path = Path::new(source_relative_path);
+    if resource_path.exists() {
+        return;
+    }
+
+    fs::create_dir_all(resource_path).unwrap_or_else(|error| {
+        panic!(
+            "failed to initialize Tauri resource directory {}: {error}",
+            resource_path.display()
+        )
+    });
+    println!(
+        "cargo:warning=initialized missing Tauri resource directory {} (run `pnpm run prepare:resources` before launching or packaging the app)",
+        resource_path.display()
+    );
+}
+
 fn main() {
     let marker_path = Path::new("windows").join("portable-runtime-marker.txt");
     let tauri_config_path = Path::new(TAURI_CONFIG_PATH);
@@ -85,6 +103,12 @@ fn main() {
     let webui_resource_alias = load_bundle_resource_alias(&tauri_config, WEBUI_RESOURCE_SOURCE);
     println!("cargo:rustc-env=ASTRBOT_BACKEND_RESOURCE_ALIAS={backend_resource_alias}");
     println!("cargo:rustc-env=ASTRBOT_WEBUI_RESOURCE_ALIAS={webui_resource_alias}");
+
+    // Generated resources are intentionally ignored by Git. Keep plain Cargo
+    // checks usable in a clean checkout; dev/build entry points prepare the
+    // actual runtime payload before it is needed.
+    ensure_resource_source_exists(BACKEND_RESOURCE_SOURCE);
+    ensure_resource_source_exists(WEBUI_RESOURCE_SOURCE);
 
     tauri_build::build()
 }

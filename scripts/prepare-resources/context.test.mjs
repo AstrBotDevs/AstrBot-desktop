@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
 
 import { createPrepareResourcesContext } from './context.mjs';
 
@@ -19,7 +20,7 @@ test('createPrepareResourcesContext applies defaults and normalizes empty env va
   assert.equal(context.desktopVersionOverride, '');
   assert.equal(context.pythonBuildStandaloneRelease, '20260211');
   assert.equal(context.pythonBuildStandaloneVersion, '3.12.12');
-  assert.equal(context.sourceDir, '/project/root/vendor/AstrBot');
+  assert.equal(context.sourceDir, path.join('/project/root', 'vendor', 'AstrBot'));
 });
 
 test('createPrepareResourcesContext normalizes source config and strict bridge env', () => {
@@ -48,5 +49,5 @@ test('createPrepareResourcesContext normalizes source config and strict bridge e
   assert.equal(context.isDesktopBridgeExpectationStrict, true);
   assert.equal(context.pythonBuildStandaloneRelease, '20250101');
   assert.equal(context.pythonBuildStandaloneVersion, '3.12.1');
-  assert.equal(context.sourceDir, '/workspace/custom/source');
+  assert.equal(context.sourceDir, path.resolve('/workspace', 'custom/source'));
 });

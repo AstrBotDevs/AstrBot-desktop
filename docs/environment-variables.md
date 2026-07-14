@@ -9,7 +9,7 @@
 | --- | --- | --- |
 | `ASTRBOT_BACKEND_URL` | 后端基础 URL | 默认 `http://127.0.0.1:6185/` |
 | `ASTRBOT_BACKEND_AUTO_START` | 是否自动拉起后端 | 默认 `1`（启用） |
-| `ASTRBOT_BACKEND_TIMEOUT_MS` | 后端就绪等待超时 | 开发模式默认 `20000`；打包模式默认回退 `900000` |
+| `ASTRBOT_BACKEND_TIMEOUT_MS` | 后端就绪等待超时 | `pnpm run dev` 默认 `120000`（为首次 `uv` 准备依赖预留时间）；直接运行桌面程序时开发模式回退 `20000`，打包模式回退 `900000` |
 | `ASTRBOT_BACKEND_STARTUP_IDLE_TIMEOUT_MS` | 后端启动 heartbeat 空闲超时 | 默认 `60000`，范围 `5000~900000` |
 | `ASTRBOT_BACKEND_READY_HTTP_PATH` | 就绪探针 HTTP 路径 | 默认 `/api/stat/start-time` |
 | `ASTRBOT_BACKEND_READY_PROBE_TIMEOUT_MS` | 就绪探针单次超时 | 默认回退到 `ASTRBOT_BACKEND_PING_TIMEOUT_MS` |
@@ -30,13 +30,19 @@
 | `ASTRBOT_DESKTOP_UPDATER_STABLE_ENDPOINT` | stable 通道 manifest URL 覆盖 | 未设置则读 `plugins.updater.channelEndpoints.stable`，再回退 `plugins.updater.endpoints[0]` |
 | `ASTRBOT_DESKTOP_UPDATER_NIGHTLY_ENDPOINT` | nightly 通道 manifest URL 覆盖 | 未设置则读 `plugins.updater.channelEndpoints.nightly` |
 
-## 2. 源码与资源准备（开发态运行时 / `prepare-resources` / backend build）
+## 2. 后端源码与资源准备（开发态运行时 / backend build）
+
+WebUI 源码固定来自本仓库 `dashboard/`，`pnpm run prepare:webui` 不解析或拉取 AstrBot 源仓库。下列源码变量只影响版本同步、开发态后端和 backend build。
+
+本地开发推荐把这些变量写入仓库根目录 `.env`（从 `.env.example` 复制）。Tauri 的 `dev`/`build` 启动脚本及资源准备入口会自动加载该文件，同时保留外部进程环境变量的更高优先级。
+
+默认开发流程不设置 `ASTRBOT_SOURCE_DIR`；`pnpm run dev` 会根据 `ASTRBOT_SOURCE_GIT_URL` / `ASTRBOT_SOURCE_GIT_REF` 将源码准备到 `vendor/AstrBot`。`ASTRBOT_SOURCE_DIR` 仅作为显式本地源码覆盖项。
 
 | 变量 | 用途 | 默认值/行为 |
 | --- | --- | --- |
 | `ASTRBOT_SOURCE_DIR` | 源码目录覆盖 | 运行时未设置则自动探测；脚本未设置则用 `vendor/AstrBot` |
-| `ASTRBOT_SOURCE_GIT_URL` | 资源准备时源仓库 URL | 默认 `https://github.com/AstrBotDevs/AstrBot.git` |
-| `ASTRBOT_SOURCE_GIT_REF` | 资源准备时源仓库 ref | 默认空（不强制切 ref） |
+| `ASTRBOT_SOURCE_GIT_URL` | 后端资源准备时源仓库 URL | 默认 `https://github.com/AstrBotDevs/AstrBot.git` |
+| `ASTRBOT_SOURCE_GIT_REF` | 后端资源准备时源仓库 ref | 默认空（不强制切 ref） |
 | `ASTRBOT_SOURCE_GIT_REF_IS_COMMIT` | 将 ref 明确标记为 commit | 默认关闭 |
 | `ASTRBOT_SOURCE_FORCE_CHECKOUT` | 强制 `git checkout -f` 覆盖本地改动（CI 默认启用） | 默认关闭 |
 | `ASTRBOT_DESKTOP_VERSION` | 桌面版本号覆盖 | 默认读取源码 `pyproject.toml` |

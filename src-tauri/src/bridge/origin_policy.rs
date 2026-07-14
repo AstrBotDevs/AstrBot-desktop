@@ -20,6 +20,10 @@ fn is_loopback_host(host: Option<&str>) -> bool {
     }
 }
 
+pub fn is_loopback_http_url(url: &Url) -> bool {
+    matches!(url.scheme(), "http" | "https") && is_loopback_host(url.host_str())
+}
+
 pub fn tray_origin_decision(backend_url: &Url, window_url: &Url) -> TrayOriginDecision {
     if same_origin(backend_url, window_url) {
         return TrayOriginDecision {
@@ -82,5 +86,14 @@ mod tests {
         let page = Url::parse("http://localhost:3000").expect("parse page url");
         let decision = tray_origin_decision(&backend, &page);
         assert!(!decision.uses_backend_origin);
+    }
+
+    #[test]
+    fn loopback_http_url_accepts_dev_server_and_rejects_remote_hosts() {
+        let dev_server = Url::parse("http://localhost:1420").expect("parse dev server url");
+        let remote = Url::parse("https://example.com").expect("parse remote url");
+
+        assert!(is_loopback_http_url(&dev_server));
+        assert!(!is_loopback_http_url(&remote));
     }
 }

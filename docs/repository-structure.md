@@ -6,12 +6,14 @@
 
 - `src-tauri/`
   - 桌面壳层核心（Rust + Tauri 配置）。
+- `dashboard/`
+  - Desktop 仓库直接维护的 Vue/Vite WebUI 源码、OpenAPI 快照与前端静态资源。
 - `scripts/`
   - 构建、资源准备、CI 辅助脚本。
 - `resources/`
   - 构建产物资源目录（WebUI/Backend 运行时）。
 - `ui/`
-  - 启动壳层静态资源。
+  - 后端就绪前显示的轻量启动壳层静态资源，不是业务 WebUI。
 - `.github/`
   - GitHub Actions workflows 与复用 actions。
 - `docs/`
