@@ -19,15 +19,19 @@ if (subcommand === 'dev') {
 }
 
 const tauriArgs = ['tauri', subcommand];
+const configOverride = {
+  build: {
+    beforeDevCommand: 'pnpm run dev:dashboard:new',
+    beforeBuildCommand: 'pnpm run prepare:resources:new',
+  },
+};
 if (subcommand === 'build' && !process.env.TAURI_SIGNING_PRIVATE_KEY?.trim()) {
   console.warn(
     '[build] TAURI_SIGNING_PRIVATE_KEY is not set; building installers without signed updater artifacts.',
   );
-  tauriArgs.push(
-    '--config',
-    JSON.stringify({ bundle: { createUpdaterArtifacts: false } }),
-  );
+  configOverride.bundle = { createUpdaterArtifacts: false };
 }
+tauriArgs.push('--config', JSON.stringify(configOverride));
 
 const { command: cargoCommand, defaultCargoPath } = resolveCargoCommand();
 const cargoEnv = { ...process.env };

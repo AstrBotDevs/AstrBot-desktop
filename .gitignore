@@ -5,6 +5,8 @@
 
 # dependencies/cache
 node_modules/
+new-dashboard/dist/
+new-dashboard/public/legacy/
 vendor/
 runtime/
 
