@@ -13,6 +13,7 @@ const RELEASE_JOB = 'release';
 const PREPARE_RESOURCES_RUN = /pnpm run prepare:resources/;
 const PRESIGN_BACKEND_RUN = /codesign-macos-nested\.sh\s+"resources\/backend"/;
 const BUILD_APP_BUNDLE_RUN = /cargo tauri build --verbose --target/;
+const IMPORT_APPLE_CERTIFICATE_RUN = /security import "\$CERT_PATH"/;
 
 test('findStep supports predicate and regex matching', () => {
   const steps = [
@@ -68,6 +69,32 @@ test('macOS workflow prepares resources before optional pre-signing', async () =
     buildStep.run,
     /Resources are already prepared/,
   );
+});
+
+test('macOS workflow requires one certificate and derives its team ID', async () => {
+  const workflowObject = await readWorkflowObject(WORKFLOW_FILE);
+  const steps = extractWorkflowJobSteps(workflowObject, BUILD_MACOS_JOB);
+  const importStep = findStep(
+    steps,
+    'Import Apple Developer Certificate',
+    (step) => IMPORT_APPLE_CERTIFICATE_RUN.test(step.run ?? ''),
+  );
+  const buildStep = findStep(
+    steps,
+    'Build desktop app bundle (macOS)',
+    (step) => BUILD_APP_BUNDLE_RUN.test(step.run ?? ''),
+  );
+
+  assert.equal(importStep.env?.APPLE_CERTIFICATE, '${{ secrets.APPLE_CERTIFICATE }}');
+  assert.equal(importStep.env?.APPLE_CERTIFICATE_PASSWORD, '${{ secrets.APPLE_CERTIFICATE_PASSWORD }}');
+  assert.match(importStep.run, /APPLE_CERTIFICATE is required for macOS release builds/);
+  assert.match(importStep.run, /APPLE_CERTIFICATE_PASSWORD is required for macOS release builds/);
+  assert.match(importStep.run, /Expected exactly one Developer ID Application identity/);
+  assert.match(importStep.run, /openssl x509 -noout -subject -nameopt RFC2253/);
+  assert.match(importStep.run, /APPLE_TEAM_ID=%s/);
+  assert.equal(buildStep.env?.APPLE_CERTIFICATE, undefined);
+  assert.equal(buildStep.env?.APPLE_CERTIFICATE_PASSWORD, undefined);
+  assert.equal(buildStep.env?.APPLE_TEAM_ID, undefined);
 });
 
 test('release workflow disables generated release notes for nightly builds', async () => {
