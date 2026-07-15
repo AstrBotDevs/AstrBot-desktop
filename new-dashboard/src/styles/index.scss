@@ -835,10 +835,12 @@ textarea {
 .provider-page {
   display: flex;
   width: 100%;
-  min-height: 100%;
+  height: calc(100dvh - var(--astrbot-header-height) - 16px);
+  min-height: 0;
   flex-direction: column;
   gap: 14px;
-  padding: 12px 20px 36px;
+  overflow: hidden;
+  padding: 12px 20px 14px;
 }
 
 .provider-page button,
@@ -1001,7 +1003,8 @@ textarea {
 
 .provider-workbench {
   display: grid;
-  min-height: max(680px, calc(100dvh - 230px));
+  min-height: 0;
+  flex: 1;
   grid-template-columns: minmax(260px, 310px) minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid var(--astrbot-border);
@@ -1319,7 +1322,9 @@ textarea {
 .provider-switch input:focus-visible + span { outline: 2px solid var(--astrbot-primary); outline-offset: 2px; }
 
 .provider-type-panel {
-  min-height: max(600px, calc(100dvh - 230px));
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
   padding: 20px;
   border: 1px solid var(--astrbot-border);
   border-radius: 20px;
@@ -1348,7 +1353,7 @@ textarea {
 }
 
 @media (max-width: 820px) {
-  .provider-page { padding: 8px 10px 24px; }
+  .provider-page { height: auto; min-height: 100%; overflow: visible; padding: 8px 10px 24px; }
   .provider-workbench { grid-template-columns: 1fr; grid-template-rows: auto minmax(520px, 1fr); min-height: 0; }
   .provider-source-panel { max-height: 270px; border-right: 0; border-bottom: 1px solid var(--astrbot-border); }
   .provider-source-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
