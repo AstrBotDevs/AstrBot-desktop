@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -24,10 +24,6 @@ type ExtensionTab = 'installed' | 'components' | 'mcp' | 'skills' | 'market';
 const validTabs: ExtensionTab[] = ['installed', 'components', 'mcp', 'skills', 'market'];
 const PINNED_KEY = 'astrbot-extension-pinned';
 
-function PageHeader({ actions, description, title }: { actions?: ReactNode; description: string; title: string }) {
-  return <header className="extension-page-header"><div><h1>{title}</h1><p>{description}</p></div>{actions && <div>{actions}</div>}</header>;
-}
-
 export default function ExtensionPage() {
   const { pluginId: routePluginId } = useParams(); const location = useLocation();
   if (routePluginId) return <PluginDetail pluginId={routePluginId} source={location.hash === '#market' ? 'market' : 'installed'} />;
@@ -40,7 +36,7 @@ function ExtensionHome({ marketplaceRoute }: { marketplaceRoute: boolean }) {
   const requested = marketplaceRoute ? 'market' : location.hash.slice(1);
   const activeTab = validTabs.includes(requested as ExtensionTab) ? requested as ExtensionTab : 'installed';
   const selectTab = (tab: ExtensionTab) => navigate(`/extension#${tab}`);
-  return <div className="extension-page"><PageHeader description={e('subtitle')} title={e('title')} /><nav className="extension-tabs">{validTabs.map((tab) => <button aria-pressed={activeTab === tab} key={tab} onClick={() => selectTab(tab)} type="button"><MdiIcon name={tab === 'installed' ? 'mdi-puzzle' : tab === 'components' ? 'mdi-tune-variant' : tab === 'mcp' ? 'mdi-server' : tab === 'skills' ? 'mdi-lightning-bolt' : 'mdi-store'} />{e(tab === 'installed' ? 'tabs.installedPlugins' : tab === 'components' ? 'tabs.handlersOperation' : tab === 'mcp' ? 'tabs.installedMcpServers' : tab === 'skills' ? 'tabs.skills' : 'tabs.market')}</button>)}</nav>{activeTab === 'installed' && <InstalledPlugins />}{activeTab === 'components' && <ComponentsSection />}{activeTab === 'mcp' && <McpSection />}{activeTab === 'skills' && <SkillsSection />}{activeTab === 'market' && <PluginMarket />}</div>;
+  return <div className="extension-page"><nav aria-label={e('title')} className="extension-tabs">{validTabs.map((tab) => <button aria-pressed={activeTab === tab} key={tab} onClick={() => selectTab(tab)} type="button"><MdiIcon name={tab === 'installed' ? 'mdi-puzzle' : tab === 'components' ? 'mdi-tune-variant' : tab === 'mcp' ? 'mdi-server' : tab === 'skills' ? 'mdi-lightning-bolt' : 'mdi-store'} />{e(tab === 'installed' ? 'tabs.installedPlugins' : tab === 'components' ? 'tabs.handlersOperation' : tab === 'mcp' ? 'tabs.installedMcpServers' : tab === 'skills' ? 'tabs.skills' : 'tabs.market')}</button>)}</nav>{activeTab === 'installed' && <InstalledPlugins />}{activeTab === 'components' && <ComponentsSection />}{activeTab === 'mcp' && <McpSection />}{activeTab === 'skills' && <SkillsSection />}{activeTab === 'market' && <PluginMarket />}</div>;
 }
 
 function InstalledPlugins() {
