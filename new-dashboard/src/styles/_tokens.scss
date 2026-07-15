@@ -12,7 +12,7 @@
     "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --astrbot-header-height: 50px;
   --astrbot-sidebar-border: rgb(0 0 0 / 10%);
-  --astrbot-hover: rgb(60 150 202 / 10%);
+  --astrbot-hover: color-mix(in srgb, var(--astrbot-primary) 10%, transparent);
 }
 
 @mixin dark-theme-tokens {
@@ -24,7 +24,7 @@
   --astrbot-border: #3a3a3a;
   --astrbot-error: #ff4d4f;
   --astrbot-sidebar-border: rgb(255 255 255 / 12%);
-  --astrbot-hover: rgb(91 164 212 / 16%);
+  --astrbot-hover: color-mix(in srgb, var(--astrbot-primary) 16%, transparent);
 }
 
 html[data-theme='dark'] {
