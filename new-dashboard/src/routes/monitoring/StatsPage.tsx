@@ -13,7 +13,7 @@ export default function StatsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
-  const prefix = 'features/stats';
+  const prefix = 'features.stats';
   const number = useMemo(() => new Intl.NumberFormat(i18n.language), [i18n.language]);
 
   const refresh = useCallback(async (selectedRange: TokenRange) => {

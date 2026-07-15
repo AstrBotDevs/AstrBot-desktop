@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { matchRoutes } from 'react-router-dom';
 
 import {
   migratedRoutePaths,
@@ -16,6 +17,8 @@ describe('route migration manifest', () => {
   it('tracks every completed route batch', () => {
     expect(routeMigrationManifest.length).toBeGreaterThan(0);
     expect(migratedRoutePaths).toEqual([
+      '/',
+      '/main',
       '/auth/login',
       '/auth/setup',
       '/welcome',
@@ -66,5 +69,21 @@ describe('route migration manifest', () => {
     expect(routeRequiresAuth('/auth/login')).toBe(false);
     expect(routeRequiresAuth('/auth/setup')).toBe(false);
     expect(routeRequiresAuth('/dashboard/default')).toBe(true);
+  });
+
+  it('has no legacy fallback route after the route migration', () => {
+    expect(routeMigrationManifest.filter((route) => route.runtime === 'legacy')).toEqual([]);
+  });
+
+  it.each([
+    ['/extension/demo-plugin', '/extension/:pluginId', { pluginId: 'demo-plugin' }],
+    ['/plugin-page/demo-plugin/settings', '/plugin-page/:pluginName/:pageName', { pluginName: 'demo-plugin', pageName: 'settings' }],
+    ['/knowledge-base/kb-1/document/doc-2', '/knowledge-base/:kbId/document/:docId', { kbId: 'kb-1', docId: 'doc-2' }],
+    ['/chat/session-1', '/chat/:conversationId', { conversationId: 'session-1' }],
+    ['/chatbox/session-2', '/chatbox/:conversationId', { conversationId: 'session-2' }],
+  ])('preserves dynamic parameters for %s', (url, pattern, params) => {
+    const matches = matchRoutes(routeMigrationManifest.map((route) => ({ path: route.path })), url);
+    expect(matches?.at(-1)?.route.path).toBe(pattern);
+    expect(matches?.at(-1)?.params).toEqual(params);
   });
 });

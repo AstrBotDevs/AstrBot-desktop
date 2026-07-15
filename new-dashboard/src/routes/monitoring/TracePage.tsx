@@ -40,7 +40,7 @@ export default function TracePage() {
   });
   return (
     <div className="monitor-page trace-page">
-      <header className="monitor-header"><div><h1>{t('features/trace.title')}</h1><p>{t('features/trace.hint')}</p></div><div className="monitor-actions"><span className={`stream-status stream-status--${status}`}>{status}</span><label><input checked={enabled} disabled={saving} onChange={(event) => void setTraceEnabled(event.target.checked)} type="checkbox" /> {t(`features/trace.${enabled ? 'recording' : 'paused'}`)}</label></div></header>
+      <header className="monitor-header"><div><h1>{t('features.trace.title')}</h1><p>{t('features.trace.hint')}</p></div><div className="monitor-actions"><span className={`stream-status stream-status--${status}`}>{status}</span><label><input checked={enabled} disabled={saving} onChange={(event) => void setTraceEnabled(event.target.checked)} type="checkbox" /> {t(`features.trace.${enabled ? 'recording' : 'paused'}`)}</label></div></header>
       <div className="monitor-table-wrap"><table className="monitor-table trace-table"><thead><tr><th>Time</th><th>Event ID</th><th>UMO</th><th>Sender</th><th>Outline</th><th /></tr></thead><tbody>
         {events.map((event) => <FragmentEvent event={event} expanded={expanded.has(event.spanId)} key={event.spanId} locale={i18n.language} toggle={toggle} />)}
       </tbody></table>{events.length === 0 && <div className="monitor-empty">No trace data yet.</div>}</div>

@@ -36,6 +36,8 @@ function loading(element: React.ReactNode) {
 }
 
 const reactRouteElements: Partial<Record<string, React.ReactNode>> = {
+  '/': <Navigate replace to="/welcome" />,
+  '/main': <Navigate replace to="/welcome" />,
   '/auth/login': <BlankLayout>{loading(<LoginPage />)}</BlankLayout>,
   '/auth/setup': <BlankLayout>{loading(<SetupPage />)}</BlankLayout>,
   '/welcome': <FullLayout>{loading(<WelcomePage />)}</FullLayout>,

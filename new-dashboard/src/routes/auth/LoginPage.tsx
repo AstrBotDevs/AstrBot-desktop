@@ -27,7 +27,7 @@ export default function LoginPage() {
   const [submittingCode, setSubmittingCode] = useState(false);
   const [apiError, setApiError] = useState('');
   const [versions, setVersions] = useState<PublicVersions | null>(null);
-  const schema = createLoginSchema((key) => t(`features/auth.setup.validation.${key}`));
+  const schema = createLoginSchema((key) => t(`features.auth.setup.validation.${key}`));
   const form = useForm<AccountValues>({
     defaultValues: { password: '', username: '' },
     resolver: yupResolver(schema),
@@ -89,25 +89,25 @@ export default function LoginPage() {
     }
   };
 
-  const title = stage === 'account' ? t('features/auth.logo.title') : t('features/auth.logo.totpTitle');
+  const title = stage === 'account' ? t('features.auth.logo.title') : t('features.auth.logo.totpTitle');
   return (
-    <AuthShell subtitle={stage === 'account' ? t('features/auth.logo.subtitle') : ''} title={title}>
+    <AuthShell subtitle={stage === 'account' ? t('features.auth.logo.subtitle') : ''} title={title}>
       {stage === 'account' ? (
         <form className="auth-form" onSubmit={submitAccount}>
-          <label>{t('features/auth.username')}<input autoComplete="username" {...form.register('username')} /></label>
+          <label>{t('features.auth.username')}<input autoComplete="username" {...form.register('username')} /></label>
           {form.formState.errors.username && <p className="field-error">{form.formState.errors.username.message}</p>}
-          <label>{t('features/auth.password')}<input autoComplete="current-password" type="password" {...form.register('password')} /></label>
+          <label>{t('features.auth.password')}<input autoComplete="current-password" type="password" {...form.register('password')} /></label>
           {form.formState.errors.password && <p className="field-error">{form.formState.errors.password.message}</p>}
-          <small>{t('features/auth.defaultHint')}</small>
+          <small>{t('features.auth.defaultHint')}</small>
           <button className="button--primary auth-form__submit" disabled={form.formState.isSubmitting} type="submit">
-            {form.formState.isSubmitting ? '…' : t('features/auth.login')}
+            {form.formState.isSubmitting ? '…' : t('features.auth.login')}
           </button>
         </form>
       ) : (
         <form className="auth-form" onSubmit={(event) => { event.preventDefault(); void submitCode(); }}>
-          <div className="auth-stage-header"><strong>{form.getValues('username')}</strong><button onClick={() => setStage('account')} type="button">{t('features/auth.setup.totp.back')}</button></div>
-          {stage === 'recovery' && <p className="auth-warning">{t('features/auth.recovery.totpDisableWarning')}</p>}
-          <label>{t(stage === 'recovery' ? 'features/auth.recovery.code' : 'features/auth.totp.code')}
+          <div className="auth-stage-header"><strong>{form.getValues('username')}</strong><button onClick={() => setStage('account')} type="button">{t('features.auth.setup.totp.back')}</button></div>
+          {stage === 'recovery' && <p className="auth-warning">{t('features.auth.recovery.totpDisableWarning')}</p>}
+          <label>{t(stage === 'recovery' ? 'features.auth.recovery.code' : 'features.auth.totp.code')}
             <input
               autoComplete="one-time-code"
               inputMode={stage === 'totp' ? 'numeric' : 'text'}
@@ -116,13 +116,13 @@ export default function LoginPage() {
             />
           </label>
           {stage === 'totp' && (
-            <label className="auth-form__checkbox"><input checked={trustDevice} onChange={(event) => setTrustDevice(event.target.checked)} type="checkbox" />{t('features/auth.totp.trustDevice')}</label>
+            <label className="auth-form__checkbox"><input checked={trustDevice} onChange={(event) => setTrustDevice(event.target.checked)} type="checkbox" />{t('features.auth.totp.trustDevice')}</label>
           )}
           <button className="button--primary auth-form__submit" disabled={submittingCode || !code || (stage === 'recovery' && !isRecoveryCodeComplete(code))} type="submit">
-            {t(stage === 'recovery' ? 'features/auth.recovery.submit' : 'features/auth.totp.verify')}
+            {t(stage === 'recovery' ? 'features.auth.recovery.submit' : 'features.auth.totp.verify')}
           </button>
           <button className="button--link" onClick={() => { setStage(stage === 'totp' ? 'recovery' : 'totp'); setCode(''); }} type="button">
-            {stage === 'totp' ? t('features/auth.recovery.useRecoveryCode') : t('features/auth.setup.totp.back')}
+            {stage === 'totp' ? t('features.auth.recovery.useRecoveryCode') : t('features.auth.setup.totp.back')}
           </button>
         </form>
       )}
@@ -144,15 +144,15 @@ function VersionStatus({ versions }: { versions: PublicVersions }) {
   const runtimeMismatch = values.runtime && values.code && normalize(values.runtime) !== normalize(values.code);
   return (
     <div className="auth-versions">
-      {values.webui && <span>{t('features/auth.versions.webui')}: {values.webui}</span>}
-      {values.runtime && <span>{t('features/auth.versions.astrbotRuntime')}: {values.runtime}</span>}
-      {runtimeMismatch && <span>{t('features/auth.versions.astrbotCode')}: {values.code}</span>}
+      {values.webui && <span>{t('features.auth.versions.webui')}: {values.webui}</span>}
+      {values.runtime && <span>{t('features.auth.versions.astrbotRuntime')}: {values.runtime}</span>}
+      {runtimeMismatch && <span>{t('features.auth.versions.astrbotCode')}: {values.code}</span>}
       {(webMismatch || runtimeMismatch) && (
         <details>
-          <summary>{t('features/auth.versions.mismatchTooltip')}</summary>
-          {webMismatch && <p>{t('features/auth.versions.webuiMismatchMessage')}</p>}
-          {runtimeMismatch && <p>{t('features/auth.versions.runtimeMismatchMessage')}</p>}
-          <a href="https://docs.astrbot.app/faq.html" rel="noreferrer" target="_blank">{t('features/auth.versions.faq')}</a>
+          <summary>{t('features.auth.versions.mismatchTooltip')}</summary>
+          {webMismatch && <p>{t('features.auth.versions.webuiMismatchMessage')}</p>}
+          {runtimeMismatch && <p>{t('features.auth.versions.runtimeMismatchMessage')}</p>}
+          <a href="https://docs.astrbot.app/faq.html" rel="noreferrer" target="_blank">{t('features.auth.versions.faq')}</a>
         </details>
       )}
     </div>

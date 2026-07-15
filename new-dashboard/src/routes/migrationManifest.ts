@@ -6,8 +6,8 @@ export type RouteMigrationEntry = {
 };
 
 export const routeMigrationManifest: readonly RouteMigrationEntry[] = [
-  { path: '/', runtime: 'legacy' },
-  { path: '/main', runtime: 'legacy' },
+  { path: '/', runtime: 'react' },
+  { path: '/main', runtime: 'react' },
   { path: '/auth/login', runtime: 'react' },
   { path: '/auth/setup', runtime: 'react' },
   { path: '/welcome', runtime: 'react' },

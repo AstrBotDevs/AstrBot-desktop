@@ -18,7 +18,7 @@ import { formatTimestamp, unwrapData } from './model';
 
 export default function ConversationPage() {
   const { i18n, t } = useTranslation();
-  const prefix = 'features/conversation';
+  const prefix = 'features.conversation';
   const [items, setItems] = useState<Conversation[]>([]);
   const [search, setSearch] = useState('');
   const [messageType, setMessageType] = useState('');

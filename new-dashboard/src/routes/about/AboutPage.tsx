@@ -5,7 +5,7 @@ import { useDesktop } from '@/desktop/DesktopProvider';
 export default function AboutPage() {
   const { t } = useTranslation();
   const { openExternalUrl } = useDesktop();
-  const prefix = 'features/about.hero';
+  const prefix = 'features.about.hero';
   return (
     <div className="about-page route-page">
       <section className="about-hero">

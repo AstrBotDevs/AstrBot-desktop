@@ -21,7 +21,7 @@ type SessionGroup = { id: string; name?: string; umo_count?: number; umos?: stri
 
 export default function SessionManagementPage() {
   const { t } = useTranslation();
-  const prefix = 'features/session-management';
+  const prefix = 'features.session-management';
   const [rules, setRules] = useState<SessionRule[]>([]);
   const [groups, setGroups] = useState<SessionGroup[]>([]);
   const [total, setTotal] = useState(0);

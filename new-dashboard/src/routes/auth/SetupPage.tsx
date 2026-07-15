@@ -18,7 +18,7 @@ export default function SetupPage() {
   const completeSession = useAuthStore((state) => state.completeSession);
   const hasToken = useAuthStore((state) => state.hasToken);
   const [apiError, setApiError] = useState('');
-  const schema = useMemo(() => createSetupSchema((key) => t(`features/auth.setup.validation.${key}`)), [t]);
+  const schema = useMemo(() => createSetupSchema((key) => t(`features.auth.setup.validation.${key}`)), [t]);
   const form = useForm<SetupValues>({
     defaultValues: { confirmPassword: '', password: '', username: 'astrbot' },
     resolver: yupResolver(schema),
@@ -48,17 +48,17 @@ export default function SetupPage() {
   });
 
   return (
-    <AuthShell subtitle={t('features/auth.setup.subtitle')} title={t('features/auth.setup.title')}>
+    <AuthShell subtitle={t('features.auth.setup.subtitle')} title={t('features.auth.setup.title')}>
       <form className="auth-form" onSubmit={submit}>
-        <label>{t('features/auth.setup.username')}<input autoComplete="username" {...form.register('username')} /></label>
+        <label>{t('features.auth.setup.username')}<input autoComplete="username" {...form.register('username')} /></label>
         {form.formState.errors.username && <p className="field-error">{form.formState.errors.username.message}</p>}
-        <label>{t('features/auth.setup.password')}<input autoComplete="new-password" type="password" {...form.register('password')} /></label>
+        <label>{t('features.auth.setup.password')}<input autoComplete="new-password" type="password" {...form.register('password')} /></label>
         {form.formState.errors.password && <p className="field-error">{form.formState.errors.password.message}</p>}
-        <label>{t('features/auth.setup.confirmPassword')}<input autoComplete="new-password" type="password" {...form.register('confirmPassword')} /></label>
+        <label>{t('features.auth.setup.confirmPassword')}<input autoComplete="new-password" type="password" {...form.register('confirmPassword')} /></label>
         {form.formState.errors.confirmPassword && <p className="field-error">{form.formState.errors.confirmPassword.message}</p>}
-        <small>{t('features/auth.setup.passwordHint')}</small>
+        <small>{t('features.auth.setup.passwordHint')}</small>
         <button className="button--primary auth-form__submit" disabled={form.formState.isSubmitting} type="submit">
-          {form.formState.isSubmitting ? '…' : t('features/auth.setup.submit')}
+          {form.formState.isSubmitting ? '…' : t('features.auth.setup.submit')}
         </button>
       </form>
       {apiError && <p className="auth-error" role="alert">{apiError}</p>}

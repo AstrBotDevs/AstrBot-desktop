@@ -24,7 +24,7 @@ export default function WelcomePage() {
   const [savingRuntime, setSavingRuntime] = useState(false);
   const [announcementRaw, setAnnouncementRaw] = useState<unknown>(null);
   const announcement = useMemo(() => resolveWelcomeAnnouncement(announcementRaw, i18n.language), [announcementRaw, i18n.language]);
-  const prefix = 'features/welcome';
+  const prefix = 'features.welcome';
 
   useEffect(() => {
     let active = true;

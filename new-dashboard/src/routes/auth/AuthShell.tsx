@@ -30,15 +30,15 @@ export function AuthShell({ children, subtitle, title }: { children: ReactNode; 
               </select>
             </label>
             <label>
-              <span className="sr-only">{t('features/auth.theme.title')}</span>
+              <span className="sr-only">{t('features.auth.theme.title')}</span>
               <select
-                aria-label={t('features/auth.theme.title')}
+                aria-label={t('features.auth.theme.title')}
                 onChange={(event) => setThemeMode(event.target.value as ThemeMode)}
                 value={themeMode}
               >
-                <option value="light">{t('features/auth.theme.light')}</option>
-                <option value="dark">{t('features/auth.theme.dark')}</option>
-                <option value="system">{t('features/auth.theme.system')}</option>
+                <option value="light">{t('features.auth.theme.light')}</option>
+                <option value="dark">{t('features.auth.theme.dark')}</option>
+                <option value="system">{t('features.auth.theme.system')}</option>
               </select>
             </label>
           </div>
