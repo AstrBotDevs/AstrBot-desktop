@@ -902,8 +902,6 @@ textarea {
 .platform-page-react__heading,
 .platform-card > header,
 .platform-card footer,
-.platform-console > header,
-.platform-console h2,
 .platform-primary-button,
 .platform-badge,
 .platform-tutorial,
@@ -937,12 +935,6 @@ textarea {
 .platform-card footer .button--danger { color: var(--astrbot-error); }
 .platform-empty { display: grid; min-height: 240px; place-content: center; color: color-mix(in srgb, var(--astrbot-text) 38%, transparent); text-align: center; }
 .platform-empty p { margin: 12px 0 0; }
-
-.platform-console { overflow: hidden; border: 1px solid var(--astrbot-border); border-radius: 14px; background: var(--astrbot-surface); }
-.platform-console > header { justify-content: space-between; padding: 13px 16px; }
-.platform-console h2 { gap: 8px; margin: 0; font-size: 18px; }
-.platform-console > header button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: var(--astrbot-primary); cursor: pointer; }
-.platform-console__body { height: 300px; overflow: auto; padding: 13px; background: #1e1e1e; color: #d5d9df; }
 
 .platform-editor { display: grid; gap: 12px; margin-top: 15px; }
 .platform-editor__type { display: grid; width: min(360px, 100%); gap: 7px; font-weight: 650; }

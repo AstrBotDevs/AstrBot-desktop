@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { createBot, deleteBotById, getSystemConfigRuntime, listBotStats, setBotEnabledById, updateBotById } from '@/api/openapi';
@@ -8,7 +8,6 @@ import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { i18n } from '@/i18n';
 import { confirmAction, toast } from '@/stores/feedback';
-import { useLogFeed } from '@/routes/monitoring/useLogFeed';
 import { errorMessage, isObject, JsonObject, objectList, recordId, responseData } from './model';
 import { isValidPlatformId, mergePlatformTemplate, platformFormMetadata, platformQrPayload, platformTemplates, readPlatformRuntime, webhookUrl } from './platformModel';
 
@@ -26,7 +25,6 @@ export default function PlatformPage() {
   const [selectedType, setSelectedType] = useState('');
   const [saving, setSaving] = useState(false);
   const [details, setDetails] = useState<{ kind: 'error' | 'qr' | 'webhook'; item: JsonObject; stat?: JsonObject } | null>(null);
-  const [showConsole, setShowConsole] = useState(() => localStorage.getItem('platformPage_showConsole') === 'true');
 
   const loadConfig = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -63,8 +61,6 @@ export default function PlatformPage() {
     window.addEventListener('astrbot-locale-changed', localeChanged);
     return () => { window.clearInterval(timer); window.removeEventListener('astrbot-locale-changed', localeChanged); };
   }, [loadConfig, loadStats]);
-
-  useEffect(() => localStorage.setItem('platformPage_showConsole', String(showConsole)), [showConsole]);
 
   const items = objectList(config.platform, []);
   const templates = useMemo(() => platformTemplates(metadata), [metadata]);
@@ -137,7 +133,6 @@ export default function PlatformPage() {
         {items.map((item, index) => <PlatformCard config={config} item={item} key={recordId(item, 'id', 'bot_id') || index} onDetails={setDetails} onEdit={openEdit} onRemove={(value) => void remove(value)} onToggle={(value) => void toggle(value)} stat={stats.get(recordId(item, 'id', 'bot_id'))} t={tm} />)}
       </section>
 
-      <EmbeddedConsole open={showConsole} onToggle={() => setShowConsole((current) => !current)} t={tm} />
       <PlatformEditor editor={editor} formMetadata={formMetadata} onChange={(next) => setEditor((current) => current ? { ...current, config: next } : current)} onOpenChange={(open) => !open && setEditor(null)} onSave={() => void save()} onTypeChange={chooseType} saving={saving} selectedType={selectedType} t={tm} templates={templates} />
       <DetailsDialog config={config} details={details} onOpenChange={(open) => !open && setDetails(null)} t={tm} />
     </div>
@@ -202,14 +197,6 @@ function DetailsDialog({ config, details, onOpenChange, t }: { config: JsonObjec
     {kind === 'error' && <div className="platform-detail"><p><strong>{t('errorDialog.platformId')}:</strong> {recordId(details?.item ?? {}, 'id')}</p><p><strong>{t('errorDialog.errorCount')}:</strong> {String(details?.stat?.error_count || 0)}</p>{lastError && <><div className="platform-error-message">{String(lastError.message || '')}<small>{lastError.timestamp ? `${t('errorDialog.occurredAt')}: ${new Date(String(lastError.timestamp)).toLocaleString()}` : ''}</small></div>{lastError.traceback && <pre className="platform-traceback">{String(lastError.traceback)}</pre>}</>}</div>}
     <div className="dialog-actions"><DialogClose asChild><button type="button">{kind === 'qr' ? t('platformQr.close') : kind === 'webhook' ? t('webhookDialog.close') : t('errorDialog.close')}</button></DialogClose></div>
   </Dialog>;
-}
-
-function EmbeddedConsole({ onToggle, open, t }: { onToggle: () => void; open: boolean; t: (key: string) => string }) {
-  const filter = useCallback(() => true, []);
-  const { items } = useLogFeed(filter, 150);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (open && ref.current) ref.current.scrollTop = ref.current.scrollHeight; }, [items, open]);
-  return <section className="platform-console"><header><h2><MdiIcon name="mdi-console-line" />{t('logs.title')}</h2><button onClick={onToggle} type="button">{t(open ? 'logs.collapse' : 'logs.expand')}<MdiIcon name={open ? 'mdi-chevron-up' : 'mdi-chevron-down'} /></button></header>{open && <div className="platform-console__body" ref={ref}>{items.map((item, index) => <pre className={`monitor-log monitor-log--${String(item.level || 'info').toLowerCase()}`} key={`${item.time}-${index}`}>{item.data ?? JSON.stringify(item)}</pre>)}</div>}</section>;
 }
 
 function platformIcon(type: string): `mdi-${string}` {
