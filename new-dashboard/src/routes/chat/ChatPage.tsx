@@ -23,6 +23,7 @@ import { errorMessage, isObject, JsonObject, objectList, recordId, responseData 
 import { confirmAction, toast } from '@/stores/feedback';
 import { useLayoutStore } from '@/stores/layout';
 import { AudioRecorder } from './audioRecorder';
+import { createStreamRenderScheduler } from './streamRenderScheduler';
 import {
   appendStreamPayload,
   type ChatPart,
@@ -88,6 +89,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const modelMenuRef = useRef<HTMLDetailsElement>(null);
   const settingsMenuRef = useRef<HTMLDetailsElement>(null);
   const settingsSubmenuTimer = useRef<number | null>(null);
+  const messageScrollFrame = useRef<number | null>(null);
   const messageEnd = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const current = useMemo(() => sessions.find((item) => item.session_id === conversationId), [conversationId, sessions]);
@@ -205,8 +207,15 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     abortRef.current?.abort();
     audioRecorderRef.current.cancel();
     if (settingsSubmenuTimer.current != null) window.clearTimeout(settingsSubmenuTimer.current);
+    if (messageScrollFrame.current != null) window.cancelAnimationFrame(messageScrollFrame.current);
   }, []);
-  useEffect(() => { messageEnd.current?.scrollIntoView({ behavior: sending ? 'auto' : 'smooth' }); }, [messages, sending]);
+  useEffect(() => {
+    if (messageScrollFrame.current != null) return;
+    messageScrollFrame.current = window.requestAnimationFrame(() => {
+      messageScrollFrame.current = null;
+      messageEnd.current?.scrollIntoView({ behavior: sending ? 'auto' : 'smooth', block: 'end' });
+    });
+  }, [messages, sending]);
   useEffect(() => { localStorage.setItem('selectedProvider', provider); }, [provider]);
   useEffect(() => { localStorage.setItem('selectedProviderModel', model); }, [model]);
   useEffect(() => { localStorage.setItem('chat.transportMode', transportMode); }, [transportMode]);
@@ -366,6 +375,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     let sessionId = conversationId;
     let bot: ChatRecord | null = null;
     let abort: AbortController | null = null;
+    let streamRender: ReturnType<typeof createStreamRenderScheduler> | null = null;
     try {
       if (!sessionId) sessionId = await createSession();
       const outgoing: ChatPart[] = [
@@ -401,8 +411,11 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
         if (!bot) return;
         let changed = false;
         payloads.forEach((payload) => { changed = appendStreamPayload(bot!, payload) || changed; });
-        if (changed) setMessages((items) => [...items]);
+        if (changed) streamRender?.schedule();
       };
+      streamRender = createStreamRenderScheduler(() => {
+        setMessages((items) => bot && items.includes(bot) ? [...items] : items);
+      });
 
       if (transportMode === 'websocket') {
         await readWebSocketChat({
@@ -461,7 +474,12 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     } finally {
       if (bot) {
         bot.content.isLoading = false;
-        setMessages((items) => [...items]);
+        if (streamRender) {
+          streamRender.schedule();
+          streamRender.flush();
+        } else {
+          setMessages((items) => items.includes(bot!) ? [...items] : items);
+        }
       }
       if (!abort || abortRef.current === abort) abortRef.current = null;
       if (!sessionId || activeSessionRef.current === sessionId) activeSessionRef.current = '';
@@ -485,6 +503,9 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     setSending(true);
     setError('');
     const abort = new AbortController();
+    const streamRender = createStreamRenderScheduler(() => {
+      setMessages((items) => items.includes(regenerated) ? [...items] : items);
+    });
     abortRef.current = abort;
     activeSessionRef.current = conversationId;
     try {
@@ -511,7 +532,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       const applyPayloads = (payloads: unknown[]) => {
         let changed = false;
         payloads.forEach((payload) => { changed = appendStreamPayload(regenerated, payload) || changed; });
-        if (changed) setMessages((items) => [...items]);
+        if (changed) streamRender.schedule();
       };
       while (true) {
         const { done, value } = await reader.read();
@@ -532,7 +553,8 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       }
     } finally {
       regenerated.content.isLoading = false;
-      setMessages((items) => [...items]);
+      streamRender.schedule();
+      streamRender.flush();
       if (abortRef.current === abort) abortRef.current = null;
       if (activeSessionRef.current === conversationId) activeSessionRef.current = '';
       setSending(false);

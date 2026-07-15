@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { cjk } from '@streamdown/cjk';
 import { code } from '@streamdown/code';
 import { createMathPlugin } from '@streamdown/math';
@@ -16,24 +17,33 @@ type MarkdownProps = {
 
 const math = createMathPlugin({ singleDollarTextMath: true });
 const plugins = { cjk, code, math, mermaid };
+const streamingPlugins = { cjk };
 
-export function Markdown({ className = '', content, streaming = false }: MarkdownProps) {
+function MarkdownComponent({ className = '', content, streaming = false }: MarkdownProps) {
+  const rootClassName = [
+    'markdown-body',
+    streaming ? 'markdown-body--streaming' : '',
+    className,
+  ].filter(Boolean).join(' ');
+
   return (
     <Streamdown
       animated
       caret="block"
-      className={`markdown-body ${className}`.trim()}
-      controls={false}
+      className={rootClassName}
+      controls={streaming ? false : undefined}
       dir="auto"
       isAnimating={streaming}
-      lineNumbers
+      lineNumbers={!streaming}
       mermaid={{ config: { securityLevel: 'strict', theme: 'neutral' } }}
       mode={streaming ? 'streaming' : 'static'}
       parseIncompleteMarkdown={streaming}
-      plugins={plugins}
+      plugins={streaming ? streamingPlugins : plugins}
       skipHtml
     >
       {content}
     </Streamdown>
   );
 }
+
+export const Markdown = memo(MarkdownComponent);
