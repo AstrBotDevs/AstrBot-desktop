@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
@@ -38,9 +38,16 @@ import {
 type ChatPageProps = { chatbox?: boolean };
 type StagedFile = { attachment_id: string; filename: string; type: StagedAttachmentType };
 type ProviderConfig = JsonObject & { id: string; model: string };
+type TransportMode = 'sse' | 'websocket';
+
+const chatLanguageOptions = [
+  { code: 'zh-CN', flag: 'CN', label: '简体中文' },
+  { code: 'en-US', flag: 'US', label: 'English' },
+  { code: 'ru-RU', flag: 'RU', label: 'Русский' },
+] as const;
 
 export default function ChatPage({ chatbox = false }: ChatPageProps) {
-  const { t } = useTranslation();
+  const { i18n, t } = useTranslation();
   const { conversationId = '' } = useParams();
   const navigate = useNavigate();
   const basePath = chatbox ? '/chatbox' : '/chat';
@@ -67,22 +74,47 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const [provider, setProvider] = useState(() => localStorage.getItem('selectedProvider') || '');
   const [model, setModel] = useState(() => localStorage.getItem('selectedProviderModel') || '');
   const [streaming, setStreaming] = useState(true);
+  const [transportMode, setTransportMode] = useState<TransportMode>(() => localStorage.getItem('chat.transportMode') === 'websocket' ? 'websocket' : 'sse');
+  const [settingsSubmenu, setSettingsSubmenu] = useState<'transport' | 'language' | null>(null);
   const layoutChatSidebarOpen = useLayoutStore((state) => state.chatSidebarOpen);
   const setLayoutChatSidebarOpen = useLayoutStore((state) => state.setChatSidebarOpen);
+  const themeMode = useLayoutStore((state) => state.themeMode);
+  const setThemeMode = useLayoutStore((state) => state.setThemeMode);
   const abortRef = useRef<AbortController | null>(null);
   const audioRecorderRef = useRef(new AudioRecorder());
   const activeSessionRef = useRef('');
   const pendingLocalSessionRef = useRef<string | null>(null);
   const modelMenuRef = useRef<HTMLDetailsElement>(null);
+  const settingsMenuRef = useRef<HTMLDetailsElement>(null);
+  const settingsSubmenuTimer = useRef<number | null>(null);
   const messageEnd = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const current = useMemo(() => sessions.find((item) => item.session_id === conversationId), [conversationId, sessions]);
   const currentConfig = useMemo(() => configs.find((config) => recordId(config, 'id', 'conf_id') === configId), [configId, configs]);
-  const currentProvider = useMemo(() => providers.find((item) => item.id === provider), [provider, providers]);
+  const currentProvider = useMemo(() => providers.find((item) => item.id === provider) || providers[0], [provider, providers]);
+  const currentLanguage = chatLanguageOptions.find((item) => item.code === i18n.language) || chatLanguageOptions[0];
+  const isDark = themeMode === 'dark' || (themeMode === 'system' && document.documentElement.dataset.theme === 'dark');
   const filteredProviders = useMemo(() => {
     const query = providerSearch.trim().toLowerCase();
     return query ? providers.filter((item) => item.id.toLowerCase().includes(query) || item.model.toLowerCase().includes(query)) : providers;
   }, [providerSearch, providers]);
+  const tokenUsage = useMemo(() => {
+    const latestStats = [...messages].reverse().find((message) => message.content.type !== 'user' && message.content.agentStats)?.content.agentStats;
+    const used = latestStats ? inputTokens(latestStats) + cachedInputTokens(latestStats) + outputTokens(latestStats) : 0;
+    const metadata = providerMetadata[currentProvider?.model || model];
+    const limit = contextLimit(currentProvider, metadata);
+    if (used <= 0 || limit <= 0) return null;
+    const rawPercent = (used / limit) * 100;
+    const percent = Math.min(100, Math.max(0, rawPercent));
+    return {
+      percent,
+      tooltip: t('features.chat.tokenUsage.tooltip', {
+        used: formatTokenCount(used),
+        limit: formatTokenCount(limit),
+        percent: formatUsagePercent(rawPercent),
+      }),
+    };
+  }, [currentProvider, messages, model, providerMetadata, t]);
   const sidebarOpen = chatbox ? chatboxSidebarOpen : layoutChatSidebarOpen;
   const setSidebarOpen = useCallback((open: boolean) => {
     if (chatbox) setChatboxSidebarOpen(open);
@@ -171,13 +203,25 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   useEffect(() => () => {
     abortRef.current?.abort();
     audioRecorderRef.current.cancel();
+    if (settingsSubmenuTimer.current != null) window.clearTimeout(settingsSubmenuTimer.current);
   }, []);
   useEffect(() => { messageEnd.current?.scrollIntoView({ behavior: sending ? 'auto' : 'smooth' }); }, [messages, sending]);
   useEffect(() => { localStorage.setItem('selectedProvider', provider); }, [provider]);
   useEffect(() => { localStorage.setItem('selectedProviderModel', model); }, [model]);
+  useEffect(() => { localStorage.setItem('chat.transportMode', transportMode); }, [transportMode]);
   useEffect(() => {
     if (!draft && inputRef.current) inputRef.current.style.height = 'auto';
   }, [draft]);
+  useEffect(() => {
+    const closeSettings = (event: PointerEvent) => {
+      if (!settingsMenuRef.current?.contains(event.target as Node)) {
+        settingsMenuRef.current?.removeAttribute('open');
+        setSettingsSubmenu(null);
+      }
+    };
+    document.addEventListener('pointerdown', closeSettings);
+    return () => document.removeEventListener('pointerdown', closeSettings);
+  }, []);
 
   const createSession = async () => {
     const data = unwrap<JsonObject>(await createChatSession());
@@ -202,6 +246,22 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     setSidebarOpen(false);
     requestAnimationFrame(() => inputRef.current?.focus());
   };
+
+  const openSettingsSubmenu = (submenu: 'transport' | 'language') => {
+    if (settingsSubmenuTimer.current != null) window.clearTimeout(settingsSubmenuTimer.current);
+    settingsSubmenuTimer.current = null;
+    setSettingsSubmenu(submenu);
+  };
+
+  const scheduleSettingsSubmenuClose = () => {
+    if (settingsSubmenuTimer.current != null) window.clearTimeout(settingsSubmenuTimer.current);
+    settingsSubmenuTimer.current = window.setTimeout(() => {
+      setSettingsSubmenu(null);
+      settingsSubmenuTimer.current = null;
+    }, 120);
+  };
+
+  const toggleTheme = () => setThemeMode(isDark ? 'light' : 'dark');
 
   const removeSession = async (session: ChatSession) => {
     if (!await confirmAction({ danger: true, title: 'Delete conversation', message: `Delete ${session.display_name || session.session_id}?` })) return;
@@ -330,33 +390,12 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       activeSessionRef.current = sessionId;
       const token = readAuthToken(localStorage);
       const locale = localStorage.getItem('astrbot-locale');
-      const response = await fetch('/api/v1/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          ...(locale ? { 'Accept-Language': locale } : {}),
-        },
-        body: JSON.stringify({
-          session_id: sessionId,
-          message: outgoing.map((part) => ({
-            type: part.type,
-            text: part.text,
-            attachment_id: part.attachment_id,
-            filename: part.filename,
-          })),
-          config_id: configId || undefined,
-          selected_provider: provider || undefined,
-          selected_model: model || undefined,
-          enable_streaming: streaming,
-        }),
-        signal: abort.signal,
-      });
-      if (!response.ok || !response.body) throw new Error(`Chat request failed: ${response.status}`);
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
+      const messagePayload = outgoing.map((part) => ({
+        type: part.type,
+        text: part.text,
+        attachment_id: part.attachment_id,
+        filename: part.filename,
+      }));
       const applyPayloads = (payloads: unknown[]) => {
         if (!bot) return;
         let changed = false;
@@ -364,16 +403,53 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
         if (changed) setMessages((items) => [...items]);
       };
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const parsed = parseSseEvents(buffer);
-        buffer = parsed.remainder;
-        applyPayloads(parsed.payloads);
+      if (transportMode === 'websocket') {
+        await readWebSocketChat({
+          abort: abort.signal,
+          configId,
+          enableStreaming: streaming,
+          message: messagePayload,
+          messageId,
+          onPayload: (payload) => applyPayloads([payload]),
+          selectedModel: model,
+          selectedProvider: provider,
+          sessionId,
+          token,
+        });
+      } else {
+        const response = await fetch('/api/v1/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(locale ? { 'Accept-Language': locale } : {}),
+          },
+          body: JSON.stringify({
+            session_id: sessionId,
+            message: messagePayload,
+            config_id: configId || undefined,
+            selected_provider: provider || undefined,
+            selected_model: model || undefined,
+            enable_streaming: streaming,
+          }),
+          signal: abort.signal,
+        });
+        if (!response.ok || !response.body) throw new Error(`Chat request failed: ${response.status}`);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parsed = parseSseEvents(buffer);
+          buffer = parsed.remainder;
+          applyPayloads(parsed.payloads);
+        }
+        buffer += decoder.decode();
+        applyPayloads(parseSseEvents(buffer, true).payloads);
       }
-      buffer += decoder.decode();
-      applyPayloads(parseSseEvents(buffer, true).payloads);
       await loadSessions();
     } catch (cause) {
       if ((cause as Error)?.name !== 'AbortError') {
@@ -480,12 +556,13 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const modelTitle = provider || 'Default model';
   const modelMeta = currentProvider?.model || model;
   const configTitle = String(currentConfig?.name || configId || 'default');
+  const emptyChat = !loading && !messages.length;
 
   return <div className={`chat-shell ${chatbox ? 'chat-shell--box' : ''} ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
     <aside className={`chat-sessions ${sidebarOpen ? 'is-open' : ''}`}>
       <div className="chat-sessions__brand">
         <div className="chat-sessions__brand-title"><ChatLogo /><span><strong>AstrBot</strong><small>ChatUI</small></span></div>
-        <button aria-label="Toggle sidebar" className="chat-sessions__collapse" onClick={() => setSidebarCollapsed((value) => !value)} title="Toggle sidebar" type="button"><PanelLeftIcon /></button>
+        <button aria-label="Toggle sidebar" className="chat-sessions__collapse" onClick={() => setSidebarCollapsed((value) => !value)} title="Toggle sidebar" type="button"><span className="chat-sessions__collapse-normal"><PanelLeftIcon /></span><span className="chat-sessions__rail-stack"><ChatLogo /><PanelLeftIcon /></span></button>
         <button aria-label="Close conversations" className="chat-sessions__close" onClick={() => setSidebarOpen(false)} type="button"><MdiIcon name="mdi-close" /></button>
       </div>
       <nav className="chat-sessions__actions">
@@ -505,10 +582,29 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
           </div>)}
         </div>
       </div>
-      {!chatbox && <Link className="chat-sessions__settings" to="/settings"><MdiIcon name="mdi-cog-outline" /><span>{t('core.common.settings')}</span></Link>}
+      <div className="chat-sessions__footer">
+        <details className="chat-settings-menu" onToggle={(event) => { if (!event.currentTarget.open) setSettingsSubmenu(null); }} ref={settingsMenuRef}>
+          <summary className="chat-sessions__settings"><MdiIcon name="mdi-cog-outline" /><span className="chat-sessions__settings-label">{t('core.common.settings')}</span></summary>
+          <div className="chat-settings-menu__panel">
+            <div className="chat-settings-menu__item-wrap" onMouseEnter={() => openSettingsSubmenu('transport')} onMouseLeave={scheduleSettingsSubmenuClose}>
+              <button className={settingsSubmenu === 'transport' ? 'is-active' : ''} onClick={() => setSettingsSubmenu((value) => value === 'transport' ? null : 'transport')} type="button"><MdiIcon name="mdi-connection" /><span>{t('features.chat.transport.title')}</span><small>{t(`features.chat.transport.${transportMode}`)}</small><MdiIcon name="mdi-chevron-right" /></button>
+              {settingsSubmenu === 'transport' && <div className="chat-settings-submenu" onMouseEnter={() => openSettingsSubmenu('transport')} onMouseLeave={scheduleSettingsSubmenuClose}>
+                {(['sse', 'websocket'] as const).map((mode) => <button className={transportMode === mode ? 'is-active' : ''} key={mode} onClick={() => { setTransportMode(mode); setSettingsSubmenu(null); }} type="button"><span>{t(`features.chat.transport.${mode}`)}</span>{transportMode === mode && <MdiIcon name="mdi-check" />}</button>)}
+              </div>}
+            </div>
+            <div className="chat-settings-menu__item-wrap" onMouseEnter={() => openSettingsSubmenu('language')} onMouseLeave={scheduleSettingsSubmenuClose}>
+              <button className={settingsSubmenu === 'language' ? 'is-active' : ''} onClick={() => setSettingsSubmenu((value) => value === 'language' ? null : 'language')} type="button"><MdiIcon name="mdi-translate" /><span>{t('core.common.language')}</span><small>{currentLanguage.label}</small><MdiIcon name="mdi-chevron-right" /></button>
+              {settingsSubmenu === 'language' && <div className="chat-settings-submenu chat-settings-submenu--language" onMouseEnter={() => openSettingsSubmenu('language')} onMouseLeave={scheduleSettingsSubmenuClose}>
+                {chatLanguageOptions.map((language) => <button className={i18n.language === language.code ? 'is-active' : ''} key={language.code} onClick={() => { void i18n.changeLanguage(language.code); setSettingsSubmenu(null); }} type="button"><small>{language.flag}</small><span>{language.label}</span>{i18n.language === language.code && <MdiIcon name="mdi-check" />}</button>)}
+              </div>}
+            </div>
+            <button onClick={toggleTheme} type="button"><MdiIcon name={isDark ? 'mdi-white-balance-sunny' : 'mdi-weather-night'} /><span>{t(`features.chat.modes.${isDark ? 'lightMode' : 'darkMode'}`)}</span></button>
+          </div>
+        </details>
+      </div>
     </aside>
     {sidebarOpen && <button aria-label="Close conversations" className="chat-sidebar-backdrop" onClick={() => setSidebarOpen(false)} type="button" />}
-    <main className="chat-main">
+    <main className={`chat-main ${emptyChat ? 'is-empty-chat' : ''}`}>
       <header className="chat-toolbar">
         <button aria-label="Open conversations" className="chat-toolbar__sidebar-open" onClick={() => setSidebarOpen(true)} type="button"><MdiIcon name="mdi-menu" /></button>
         <details className="chat-model-menu" onToggle={(event) => { if (event.currentTarget.open) void loadProviders(); }} ref={modelMenuRef}>
@@ -532,7 +628,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       </header>
       <section aria-live="polite" className="chat-messages">
         {loading && <div className="monitor-loading">Loading…</div>}
-        {!loading && !messages.length && <div className="chat-empty"><h1>{t('features.chat.welcome.title')}</h1><p>{t('features.chat.welcome.subtitle')}</p></div>}
+        {emptyChat && <div className="chat-empty"><h1>{t('features.chat.welcome.title')}</h1></div>}
         {messages.map((message, index) => <Message canRegenerate={!sending && message.content.type !== 'user' && index === messages.length - 1 && message.id != null && !String(message.id).startsWith('local-') && Boolean(message.llm_checkpoint_id)} isStreaming={sending && message.content.type !== 'user' && index === messages.length - 1} key={String(message.id || index)} message={message} onRegenerate={(selectedProvider, selectedModel) => void regenerate(message, selectedProvider, selectedModel)} providerMetadata={providerMetadata} providers={providers} selectedModel={model} selectedProvider={provider} />)}
         {error && <div className="monitor-error">{error}</div>}
         <div ref={messageEnd} />
@@ -549,12 +645,77 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
             </div>
           </details>
           <textarea aria-label={t('features.chat.input.placeholder')} disabled={sending} onChange={(event) => setDraft(event.target.value)} onInput={(event) => { const target = event.currentTarget; target.style.height = 'auto'; target.style.height = `${Math.min(target.scrollHeight, 160)}px`; }} onKeyDown={keyDown} placeholder={t('features.chat.input.placeholder')} ref={inputRef} rows={1} value={draft} />
+          {tokenUsage && <span aria-label={tokenUsage.tooltip} className="chat-token-usage" data-tooltip={tokenUsage.tooltip} role="img" style={{ '--chat-token-percent': `${tokenUsage.percent * 3.6}deg` } as CSSProperties} tabIndex={0} />}
           <button aria-label={recording ? t('features.chat.voice.stop') : t('features.chat.voice.startRecording')} aria-pressed={recording} className={`chat-record ${recording ? 'is-recording' : ''}`} disabled={recordingBusy || uploading || sending} onClick={() => void toggleRecording()} title={recording ? t('features.chat.voice.stop') : t('features.chat.voice.startRecording')} type="button"><MdiIcon name={recording ? 'mdi-stop-circle' : 'mdi-microphone'} /></button>
           {sending ? <button aria-label={t('features.chat.input.stopGenerating')} className="chat-send" onClick={() => void stop()} type="button"><MdiIcon name="mdi-stop" /></button> : <button aria-label={t('features.chat.input.send')} className="chat-send" disabled={recording || (!draft.trim() && !files.length)} onClick={() => void send()} type="button"><MdiIcon name="mdi-arrow-up" /></button>}
         </div>
       </footer>
     </main>
   </div>;
+}
+
+type WebSocketChatOptions = {
+  abort: AbortSignal;
+  configId: string;
+  enableStreaming: boolean;
+  message: Array<{ attachment_id?: string; filename?: string; text?: string; type: string }>;
+  messageId: string;
+  onPayload: (payload: unknown) => void;
+  selectedModel: string;
+  selectedProvider: string;
+  sessionId: string;
+  token: string | null;
+};
+
+function readWebSocketChat(options: WebSocketChatOptions) {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = `${protocol}//${window.location.host}/api/v1/unified-chat/ws?token=${encodeURIComponent(options.token || '')}`;
+  const socket = new WebSocket(url);
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const abortError = () => new DOMException('The chat request was aborted.', 'AbortError');
+    const finish = (error?: Error | DOMException) => {
+      if (settled) return;
+      settled = true;
+      options.abort.removeEventListener('abort', handleAbort);
+      socket.onopen = null;
+      socket.onmessage = null;
+      socket.onerror = null;
+      socket.onclose = null;
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.close();
+      if (error) reject(error);
+      else resolve();
+    };
+    const handleAbort = () => finish(abortError());
+
+    if (options.abort.aborted) {
+      finish(abortError());
+      return;
+    }
+    options.abort.addEventListener('abort', handleAbort, { once: true });
+    socket.onopen = () => socket.send(JSON.stringify({
+      ct: 'chat',
+      t: 'send',
+      session_id: options.sessionId,
+      message_id: options.messageId,
+      message: options.message,
+      config_id: options.configId || undefined,
+      enable_streaming: options.enableStreaming,
+      selected_provider: options.selectedProvider || undefined,
+      selected_model: options.selectedModel || undefined,
+    }));
+    socket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(String(event.data)) as JsonObject;
+        options.onPayload(payload);
+        if (payload.type === 'end' || payload.t === 'end') finish();
+      } catch {
+        // Ignore non-JSON keepalive frames.
+      }
+    };
+    socket.onerror = () => finish(new Error('WebSocket connection failed.'));
+    socket.onclose = () => finish(options.abort.aborted ? abortError() : new Error('WebSocket connection closed.'));
+  });
 }
 
 type MessageProps = {
@@ -624,15 +785,42 @@ function messageTime(value: unknown) {
 }
 
 function inputTokens(stats: JsonObject) {
-  return isObject(stats.token_usage) ? Number(stats.token_usage.input_other || 0) : 0;
+  return isObject(stats.token_usage) ? readTokenCount(stats.token_usage.input_other) : 0;
 }
 
 function outputTokens(stats: JsonObject) {
-  return isObject(stats.token_usage) ? Number(stats.token_usage.output || 0) : 0;
+  return isObject(stats.token_usage) ? readTokenCount(stats.token_usage.output) : 0;
 }
 
 function cachedInputTokens(stats: JsonObject) {
-  return isObject(stats.token_usage) ? Number(stats.token_usage.input_cached || 0) : 0;
+  return isObject(stats.token_usage) ? readTokenCount(stats.token_usage.input_cached) : 0;
+}
+
+function readTokenCount(value: unknown) {
+  const count = Number(value || 0);
+  return Number.isFinite(count) && count > 0 ? count : 0;
+}
+
+function contextLimit(provider?: ProviderConfig, metadata?: JsonObject) {
+  const metadataLimit = metadata?.limit;
+  const limit = isObject(metadataLimit) ? Number(metadataLimit.context) : 0;
+  const value = limit || Number(provider?.max_context_tokens || 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function formatTokenCount(value: number) {
+  if (!Number.isFinite(value)) return '';
+  const absolute = Math.abs(value);
+  if (absolute >= 1_000_000) return `${compactNumber(value / 1_000_000)}M`;
+  if (absolute >= 1_000) return `${compactNumber(value / 1_000)}K`;
+  return String(Math.round(value));
+}
+
+function formatUsagePercent(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0';
+  if (value >= 10) return String(Math.round(value));
+  if (value >= 1) return String(Math.round(value * 10) / 10);
+  return String(Math.round(value * 100) / 100);
 }
 
 function agentDuration(stats: JsonObject) {
