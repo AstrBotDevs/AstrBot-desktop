@@ -356,9 +356,6 @@ export default function ProviderPage() {
             <p>{t('features.provider.subtitle')}</p>
           </div>
         </div>
-        <button className="provider-icon-button" disabled={loading} onClick={() => void load(selectedSourceId)} title={t('features.provider.availability.refresh')} type="button">
-          <MdiIcon className={loading ? 'is-spinning' : ''} name="mdi-refresh" />
-        </button>
       </header>
 
       <nav aria-label={t('features.provider.providerTypes.title')} className="provider-capability-tabs">
@@ -374,7 +371,6 @@ export default function ProviderPage() {
           >
             <MdiIcon name={tab.icon} />
             <span>{t(`features.provider.providers.tabs.${tab.translation}`)}</span>
-            <small>{recordsForType(providers, tab.type).length}</small>
           </button>
         ))}
       </nav>
