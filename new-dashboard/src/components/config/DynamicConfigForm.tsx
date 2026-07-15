@@ -73,24 +73,51 @@ function ConfigControl({ metadata, onChange, value }: { metadata: ConfigItemMeta
   return <input disabled={disabled} onChange={(event) => onChange(event.target.value)} type={metadata.secret ? 'password' : 'text'} value={typeof value === 'string' || typeof value === 'number' ? value : ''} />;
 }
 
-export function ConfigGroup({ metadata, onChange, resolveText, title, translationPath, value }: { metadata: ConfigGroupMetadata; onChange: (value: ConfigRecord) => void; resolveText: TextResolver; title?: string; translationPath: string; value: ConfigRecord }) {
+type ConfigGroupProps = {
+  metadata: ConfigGroupMetadata;
+  onChange: (value: ConfigRecord) => void;
+  resolveText: TextResolver;
+  search?: string;
+  title?: string;
+  translationPath: string;
+  value: ConfigRecord;
+  variant?: 'default' | 'settings';
+};
+
+export function ConfigGroup({ metadata, onChange, resolveText, search = '', title, translationPath, value, variant = 'default' }: ConfigGroupProps) {
   const { t } = useTranslation();
   const [showCollapsed, setShowCollapsed] = useState(false);
-  const entries = Object.entries(metadata.items ?? {}).filter(([, item]) => !item.invisible && matchesConfigCondition(value, item));
-  const visible = entries.filter(([, item]) => !item.collapsed);
-  const collapsed = entries.filter(([, item]) => item.collapsed);
+  const needle = search.trim().toLocaleLowerCase();
   const groupTitle = title ?? resolveText(translationPath, 'description', metadata.description);
   const groupHint = resolveText(translationPath, 'hint', metadata.hint);
+  const groupMatchesSearch = needle && [metadata.description, metadata.hint, groupTitle, groupHint]
+    .some((candidate) => String(candidate ?? '').toLocaleLowerCase().includes(needle));
+  const entries = Object.entries(metadata.items ?? {}).filter(([key, item]) => {
+    if (item.invisible || !matchesConfigCondition(value, item)) return false;
+    if (!needle || groupMatchesSearch) return true;
+    const path = `${translationPath}.${key}`;
+    return [
+      key,
+      item.description,
+      item.hint,
+      resolveText(path, 'description', item.description),
+      resolveText(path, 'hint', item.hint),
+    ].some((candidate) => String(candidate ?? '').toLocaleLowerCase().includes(needle));
+  });
+  const visible = entries.filter(([, item]) => !item.collapsed);
+  const collapsed = entries.filter(([, item]) => item.collapsed);
 
   const renderEntry = ([key, item]: [string, ConfigItemMetadata]) => {
     const path = `${translationPath}.${key}`;
     const label = resolveText(path, 'description', item.description) || key;
     const hint = resolveText(path, 'hint', item.hint);
-    return <div className="dynamic-config__row" key={key}><div className="dynamic-config__label"><label htmlFor={`config-${translationPath}-${key}`}>{label}<small>{key}</small></label>{hint && <p>{hint}</p>}</div><div className="dynamic-config__control" id={`config-${translationPath}-${key}`}><ConfigControl metadata={item} onChange={(next) => onChange(setConfigValue(value, key, next))} value={getConfigValue(value, key)} /></div></div>;
+    return <div className="dynamic-config__row" key={key}><div className="dynamic-config__label"><label htmlFor={`config-${translationPath}-${key}`}><span>{label}</span><small>{key}</small></label>{hint && <p>{hint}</p>}</div><div className="dynamic-config__control" id={`config-${translationPath}-${key}`}><ConfigControl metadata={item} onChange={(next) => onChange(setConfigValue(value, key, next))} value={getConfigValue(value, key)} /></div></div>;
   };
 
   if (!entries.length) return null;
-  return <section className="dynamic-config route-card"><header><h2>{groupTitle}</h2>{groupHint && <p>{groupHint}</p>}</header>{visible.map(renderEntry)}{collapsed.length > 0 && <><button className="dynamic-config__more" onClick={() => setShowCollapsed((current) => !current)} type="button">{showCollapsed ? t('core.actions.collapse', 'Collapse') : t('features.config.sections.moreConfig', 'More settings')}</button>{showCollapsed && collapsed.map(renderEntry)}</>}</section>;
+  const form = <section className={`dynamic-config route-card dynamic-config--${variant}`}>{variant === 'default' && <header><h2>{groupTitle}</h2>{groupHint && <p>{groupHint}</p>}</header>}{visible.map(renderEntry)}{collapsed.length > 0 && <><button className="dynamic-config__more" onClick={() => setShowCollapsed((current) => !current)} type="button">{showCollapsed ? t('core.actions.collapse', 'Collapse') : t('features.config.sections.moreConfig', 'More settings')}</button>{showCollapsed && collapsed.map(renderEntry)}</>}</section>;
+  if (variant === 'settings') return <div className="system-config-group"><h2 className="system-config-group__title">{groupTitle}</h2>{form}</div>;
+  return form;
 }
 
 function defaultTextResolver(t: ReturnType<typeof useTranslation>['t']): TextResolver {
@@ -106,19 +133,36 @@ function defaultTextResolver(t: ReturnType<typeof useTranslation>['t']): TextRes
   };
 }
 
-export function MetadataConfigEditor({ metadata, onChange, value }: { metadata: ConfigRecord; onChange: (value: ConfigRecord) => void; value: ConfigRecord }) {
+export function MetadataConfigEditor({ metadata, onChange, search = '', value }: { metadata: ConfigRecord; onChange: (value: ConfigRecord) => void; search?: string; value: ConfigRecord }) {
   const { t } = useTranslation();
-  const sections = Object.entries(metadata).flatMap(([key, section]) => isConfigRecord(section) && isConfigRecord(section.metadata) ? [{ key, section }] : []);
+  const resolveText = defaultTextResolver(t);
+  const allSections = Object.entries(metadata).flatMap(([key, section]) => isConfigRecord(section) && isConfigRecord(section.metadata) ? [{ key, section }] : []);
+  const needle = search.trim().toLocaleLowerCase();
+  const sections = needle ? allSections.filter(({ key, section }) => {
+    return Object.entries(section.metadata as ConfigRecord).some(([groupKey, group]) => {
+      if (!isConfigRecord(group)) return false;
+      const groupMetadata = group as ConfigGroupMetadata;
+      const groupPath = `${key}.${groupKey}`;
+      const groupText = [groupKey, groupMetadata.description, groupMetadata.hint, resolveText(groupPath, 'description', groupMetadata.description), resolveText(groupPath, 'hint', groupMetadata.hint)];
+      if (groupText.some((candidate) => String(candidate ?? '').toLocaleLowerCase().includes(needle))) return true;
+      return Object.entries(groupMetadata.items ?? {}).some(([itemKey, item]) => {
+        if (item.invisible || !matchesConfigCondition(value, item)) return false;
+        const itemPath = `${groupPath}.${itemKey}`;
+        return [itemKey, item.description, item.hint, resolveText(itemPath, 'description', item.description), resolveText(itemPath, 'hint', item.hint)]
+          .some((candidate) => String(candidate ?? '').toLocaleLowerCase().includes(needle));
+      });
+    });
+  }) : allSections;
   const [active, setActive] = useState(sections[0]?.key ?? '');
   const current = sections.find((section) => section.key === active) ?? sections[0];
-  const resolveText = defaultTextResolver(t);
 
   useEffect(() => {
     if (sections.length && !sections.some((section) => section.key === active)) setActive(sections[0].key);
   }, [active, sections]);
 
-  if (!current) return <ConfigGroup metadata={inferConfigMetadata(value)} onChange={onChange} resolveText={resolveText} title="Configuration" translationPath="configuration" value={value} />;
-  return <div className="metadata-config"><nav className="metadata-config__tabs">{sections.map(({ key, section }) => <button aria-pressed={current.key === key} key={key} onClick={() => setActive(key)} type="button">{resolveText(key, 'description', String(section.name ?? key))}</button>)}</nav><div className="metadata-config__content">{Object.entries(current.section.metadata as ConfigRecord).map(([key, group]) => isConfigRecord(group) ? <ConfigGroup key={key} metadata={group as ConfigGroupMetadata} onChange={onChange} resolveText={resolveText} translationPath={`${current.key}.${key}`} value={value} /> : null)}</div></div>;
+  if (!allSections.length) return <ConfigGroup metadata={inferConfigMetadata(value)} onChange={onChange} resolveText={resolveText} search={search} title="Configuration" translationPath="configuration" value={value} />;
+  if (!current) return <div className="dynamic-config-empty">{t('features.config.search.noResult')}</div>;
+  return <div className="metadata-config"><nav className="metadata-config__tabs">{sections.map(({ key, section }) => <button aria-pressed={current.key === key} key={key} onClick={() => setActive(key)} type="button">{resolveText(key, 'description', String(section.name ?? key))}</button>)}</nav><div className="metadata-config__content">{Object.entries(current.section.metadata as ConfigRecord).map(([key, group]) => isConfigRecord(group) ? <ConfigGroup key={key} metadata={group as ConfigGroupMetadata} onChange={onChange} resolveText={resolveText} search={search} translationPath={`${current.key}.${key}`} value={value} /> : null)}</div></div>;
 }
 
 export function RecordConfigForm({ onChange, value }: { onChange: (value: ConfigRecord) => void; value: ConfigRecord }) {

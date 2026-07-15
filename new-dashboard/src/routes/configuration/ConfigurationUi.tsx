@@ -8,8 +8,8 @@ export function ConfigPageShell({ actions, children, description, title }: { act
   return <div className="monitor-page config-page"><header className="monitor-header"><div><h1>{title}</h1><p>{description}</p></div><div className="monitor-actions">{actions}</div></header>{children}</div>;
 }
 
-export function JsonConfigDialog({ busy, onChange, onOpenChange, onSave, open, title, value }: { busy?: boolean; onChange: (value: string) => void; onOpenChange: (open: boolean) => void; onSave: () => void; open: boolean; title: string; value: string }) {
-  const [mode, setMode] = useState<'form' | 'json'>('form');
+export function JsonConfigDialog({ busy, initialMode = 'form', onChange, onOpenChange, onSave, open, title, value }: { busy?: boolean; initialMode?: 'form' | 'json'; onChange: (value: string) => void; onOpenChange: (open: boolean) => void; onSave: () => void; open: boolean; title: string; value: string }) {
+  const [mode, setMode] = useState<'form' | 'json'>(initialMode);
   const config = useMemo(() => {
     try {
       const parsed: unknown = JSON.parse(value);

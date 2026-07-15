@@ -682,22 +682,52 @@ textarea {
 .config-tool-list small { color: color-mix(in srgb, var(--astrbot-text) 65%, transparent); }
 .json-editor--dialog { height: min(62vh, 620px); min-height: 340px; }
 
-.config-workspace--visual { align-items: start; }
-.config-visual-panel { min-width: 0; }
-.metadata-config { display: grid; grid-template-columns: 190px minmax(0, 1fr); align-items: start; gap: 16px; }
-.metadata-config__tabs { position: sticky; top: 12px; display: grid; gap: 4px; padding: 8px; border: 1px solid var(--astrbot-border); border-radius: 10px; background: var(--astrbot-surface); }
-.metadata-config__tabs button { min-height: 42px; padding: 8px 12px; border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; font-weight: 600; text-align: left; }
+.visual-config-page { display: flex; min-height: 100%; justify-content: center; padding: 16px 18px 112px; }
+.visual-config-panel { width: min(750px, 100%); min-width: 0; }
+.visual-config-toolbar { display: flex; width: 100%; align-items: center; gap: 12px; margin-bottom: 16px; }
+.visual-config-toolbar > select,
+.visual-config-search { min-height: 40px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: inherit; }
+.visual-config-toolbar > select { width: 170px; flex: 0 0 auto; padding: 7px 32px 7px 11px; }
+.visual-config-search { display: flex; width: min(360px, 100%); align-items: center; gap: 8px; padding: 0 11px; }
+.visual-config-search .mdi { flex: 0 0 auto; color: color-mix(in srgb, var(--astrbot-text) 62%, transparent); font-size: 19px; }
+.visual-config-search input { width: 100%; min-width: 0; padding: 8px 0; border: 0; outline: 0; background: transparent; color: inherit; }
+.visual-config-unsaved { position: sticky; z-index: 20; top: 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; padding: 10px 12px; border-radius: 8px; background: color-mix(in srgb, var(--astrbot-text) 7%, var(--astrbot-surface)); font-size: 13px; }
+.visual-config-unsaved span { display: inline-flex; align-items: center; gap: 8px; }
+.visual-config-unsaved button { flex: 0 0 auto; padding: 5px 9px; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--astrbot-text) 8%, transparent); color: inherit; cursor: pointer; }
+.visual-config-actions { position: fixed; z-index: 30; right: 52px; bottom: 52px; display: grid; gap: 16px; }
+.visual-config-fab { display: grid; width: 56px; height: 56px; border: 0; border-radius: 50%; color: #fff; cursor: pointer; font-size: 24px; place-items: center; box-shadow: 0 4px 12px rgb(0 0 0 / 22%); }
+.visual-config-fab--code { background: var(--astrbot-primary); }
+.visual-config-fab--save { background: color-mix(in srgb, var(--astrbot-primary) 72%, #17202a); }
+.visual-config-fab:disabled { cursor: not-allowed; filter: grayscale(.35); opacity: .52; }
+.config-manager-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; margin: 22px 0 16px; }
+.config-manager-create input { min-width: 0; padding: 9px 11px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: inherit; }
+.config-manager-create button { display: inline-flex; align-items: center; gap: 7px; padding: 8px 13px; border: 1px solid var(--astrbot-border); border-radius: 8px; cursor: pointer; }
+.config-manager-list { display: grid; max-height: min(46vh, 430px); overflow: auto; }
+.config-manager-list > div { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--astrbot-border); }
+.config-manager-list > div > button:first-child { flex: 1; padding: 12px 8px; border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; }
+.config-manager-list > div > button:first-child.is-active { color: var(--astrbot-primary); font-weight: 700; }
+.config-manager-list .button--danger { display: grid; width: 34px; height: 34px; border: 0; border-radius: 50%; background: transparent; color: var(--astrbot-error); cursor: pointer; place-items: center; }
+
+.metadata-config { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: start; }
+.metadata-config__tabs { position: sticky; top: 16px; display: grid; gap: 2px; margin: 16px 16px 0 0; }
+.metadata-config__tabs button { min-height: 48px; padding: 8px 12px; border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; font-size: 15px; font-weight: 800; text-align: left; }
 .metadata-config__tabs button:hover,
 .metadata-config__tabs button[aria-pressed='true'] { background: var(--astrbot-hover); color: var(--astrbot-primary); }
-.metadata-config__content { display: grid; min-width: 0; gap: 16px; }
+.metadata-config__content { display: grid; min-width: 0; gap: 16px; padding: 12px 0; }
+.dynamic-config-empty { padding: 14px 16px; border-radius: 8px; background: var(--astrbot-hover); color: var(--astrbot-primary); }
 
 .dynamic-config { padding: 0; overflow: hidden; }
-.dynamic-config > header { padding: 18px 20px 14px; border-bottom: 1px solid var(--astrbot-border); }
-.dynamic-config > header h2 { margin: 0; font-size: 18px; }
-.dynamic-config > header p { margin: 4px 0 0; font-size: 13px; }
-.dynamic-config__row { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(260px, 1fr); align-items: center; gap: 24px; padding: 14px 20px; border-bottom: 1px solid color-mix(in srgb, var(--astrbot-border) 75%, transparent); }
-.dynamic-config__label label { display: flex; align-items: baseline; gap: 7px; font-weight: 600; }
-.dynamic-config__label label small { color: color-mix(in srgb, var(--astrbot-text) 42%, transparent); font-family: Consolas, monospace; font-size: 10px; font-weight: 400; }
+.dynamic-config--default { border-radius: 8px; }
+.dynamic-config > header { padding: 16px 16px 12px; border-bottom: 1px solid var(--astrbot-border); }
+.dynamic-config > header h2 { margin: 0; font-size: 1.3rem; }
+.dynamic-config > header p { margin: 4px 0 0; font-size: .75rem; }
+.dynamic-config__row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: 16px; min-height: 56px; padding: 8px 12px; border-bottom: 1px solid color-mix(in srgb, var(--astrbot-border) 75%, transparent); }
+.dynamic-config__row:last-child { border-bottom: 0; }
+.dynamic-config__row:hover { background: color-mix(in srgb, var(--astrbot-text) 3.5%, transparent); }
+.dynamic-config__label { min-width: 0; }
+.dynamic-config__label label { display: block; font-size: .875rem; font-weight: 650; line-height: 1.4; white-space: normal; }
+.dynamic-config__label label span { overflow-wrap: anywhere; }
+.dynamic-config__label label small { display: none; }
 .dynamic-config__label p { margin: 4px 0 0; color: color-mix(in srgb, var(--astrbot-text) 58%, transparent); font-size: 12px; line-height: 1.5; }
 .dynamic-config__control { min-width: 0; }
 .dynamic-config__control > input,
@@ -724,9 +754,9 @@ textarea {
 .dynamic-config-dialog .dynamic-config { border: 0; }
 .headless-dialog__content:has(.dynamic-config-dialog) { width: min(900px, calc(100vw - 32px)); }
 
-.settings-page { width: min(1400px, 100%); min-height: 100%; margin: 0 auto; padding: 22px 24px 32px; }
-.settings-page__header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
-.settings-page__header h1 { margin: 0; font-size: 30px; }
+.settings-page { --settings-border: color-mix(in srgb, var(--astrbot-text) 13%, transparent); --settings-divider: color-mix(in srgb, var(--astrbot-text) 9%, transparent); width: min(100%, 940px); min-height: 100%; margin: 0 auto; padding: 36px 18px 48px; }
+.settings-page__header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
+.settings-page__header h1 { margin: 0; font-size: 1.72rem; font-weight: 780; line-height: 1.25; }
 .settings-page__actions,
 .settings-color-controls,
 .api-key-create { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
@@ -738,22 +768,42 @@ textarea {
 .settings-restart button { display: inline-flex; min-height: 36px; align-items: center; justify-content: center; gap: 7px; padding: 7px 13px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: inherit; cursor: pointer; }
 .settings-page__actions button:disabled,
 .api-key-create button:disabled { cursor: not-allowed; opacity: .5; }
-.settings-layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); align-items: start; gap: 24px; }
-.settings-nav { position: sticky; top: 12px; display: grid; gap: 4px; padding: 8px; border: 1px solid var(--astrbot-border); border-radius: 12px; background: var(--astrbot-surface); }
-.settings-nav button { display: flex; min-height: 42px; align-items: center; gap: 11px; padding: 8px 12px; border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; font-weight: 600; text-align: left; }
-.settings-nav button .mdi { font-size: 20px; }
-.settings-nav button:hover,
-.settings-nav button[aria-pressed='true'] { background: var(--astrbot-hover); color: var(--astrbot-primary); }
-.settings-main { display: grid; min-width: 0; gap: 16px; }
+.settings-layout { display: grid; grid-template-columns: 126px minmax(0, 1fr); align-items: start; gap: 34px; }
+.settings-nav { position: sticky; top: 76px; display: flex; flex-direction: column; gap: 5px; padding-top: 2px; }
+.settings-nav button { position: relative; display: flex; width: 100%; min-height: 34px; align-items: center; gap: 8px; padding: 6px 9px 6px 12px; border: 0; border-radius: 8px; background: transparent; color: color-mix(in srgb, var(--astrbot-text) 64%, transparent); cursor: pointer; font-size: .84rem; font-weight: 680; text-align: left; }
+.settings-nav button .mdi { width: 15px; font-size: 15px; line-height: 1; text-align: center; }
+.settings-nav button:hover { background: color-mix(in srgb, var(--astrbot-text) 4.5%, transparent); color: var(--astrbot-text); }
+.settings-nav button[aria-pressed='true'] { background: color-mix(in srgb, var(--astrbot-text) 7%, transparent); color: var(--astrbot-text); font-weight: 760; }
+.settings-nav button[aria-pressed='true']::before { position: absolute; top: 8px; bottom: 8px; left: 0; width: 2px; border-radius: 999px; background: color-mix(in srgb, var(--astrbot-text) 52%, transparent); content: ''; }
+.settings-main { min-width: 0; }
+.settings-section { margin-bottom: 0; scroll-margin-top: 84px; }
+.settings-section__heading { margin-bottom: 22px; }
+.settings-section__title { margin: 0; font-size: 1.34rem; font-weight: 780; line-height: 1.25; }
+.settings-section__content { min-width: 0; }
 .settings-restart { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid color-mix(in srgb, #ffc107 55%, var(--astrbot-border)); border-radius: 9px; background: color-mix(in srgb, #ffc107 12%, var(--astrbot-surface)); }
 .settings-restart > span { display: inline-flex; align-items: center; gap: 8px; }
-.settings-list-card { padding: 0; overflow: hidden; }
+.settings-list-card { padding: 0; overflow: hidden; border: 1px solid var(--settings-border); border-radius: 10px; background: var(--astrbot-surface); box-shadow: none; }
+.settings-list-card:not(:last-child) { margin-bottom: 28px; }
 .settings-list-card > header { padding: 18px 20px; border-bottom: 1px solid var(--astrbot-border); }
 .settings-list-card > header h2,
 .settings-item h2 { margin: 0; font-size: 18px; }
 .settings-list-card > header p,
 .settings-item p { margin: 4px 0 0; color: color-mix(in srgb, var(--astrbot-text) 58%, transparent); font-size: 13px; }
-.settings-item { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 20px; }
+.settings-item { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 34%); align-items: center; gap: 18px; min-height: 60px; padding: 12px 16px; border-bottom: 1px solid var(--settings-divider); }
+.settings-item:last-child { border-bottom: 0; }
+.system-config-group { margin-bottom: 30px; }
+.system-config-group:last-child { margin-bottom: 0; }
+.system-config-group__title { margin: 0 0 12px; font-size: 1.04rem; font-weight: 760; line-height: 1.32; }
+.dynamic-config--settings { border: 1px solid var(--settings-border); border-radius: 10px; box-shadow: none; }
+.dynamic-config--settings .dynamic-config__row { grid-template-columns: minmax(0, 1fr) minmax(180px, 34%); gap: 18px; min-height: 60px; padding: 12px 16px; border-bottom-color: var(--settings-divider); }
+.dynamic-config--settings .dynamic-config__row:hover { background: transparent; }
+.dynamic-config--settings .dynamic-config__label { padding-right: 16px; }
+.dynamic-config--settings .dynamic-config__label label { font-size: .88rem; font-weight: 700; }
+.dynamic-config--settings .dynamic-config__label p { color: color-mix(in srgb, var(--astrbot-text) 76%, transparent); font-size: .78rem; line-height: 1.45; }
+.dynamic-config--settings .dynamic-config__control { display: flex; justify-content: flex-end; }
+.dynamic-config--settings .dynamic-config__control > * { width: 100%; max-width: 270px; }
+.dynamic-config--settings .dynamic-config__control > .dynamic-switch { width: 44px; margin-left: auto; }
+.dynamic-config--settings .dynamic-config__more { margin-left: 18px; }
 .settings-color-controls label { display: grid; gap: 4px; color: color-mix(in srgb, var(--astrbot-text) 65%, transparent); font-size: 11px; }
 .settings-color-controls input[type='color'] { width: 72px; height: 36px; padding: 2px; border: 1px solid var(--astrbot-border); border-radius: 7px; background: transparent; }
 .api-key-create { padding: 16px 20px; }
@@ -867,12 +917,33 @@ textarea {
   .group-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .monitor-header, .monitor-toolbar { align-items: flex-start; flex-direction: column; }
   .trace-record { grid-template-columns: 1fr; }
-  .settings-layout { grid-template-columns: 1fr; }
-  .settings-nav { position: static; display: flex; overflow-x: auto; }
-  .settings-nav button { flex: 0 0 auto; }
+}
+
+@media (max-width: 767px) {
+  .visual-config-page { padding: 4px 8px 96px; }
+  .visual-config-toolbar { align-items: stretch; flex-direction: column; }
+  .visual-config-toolbar > select,
+  .visual-config-search { width: 100%; }
+  .visual-config-actions { right: 20px; bottom: 24px; }
   .metadata-config { grid-template-columns: 1fr; }
-  .metadata-config__tabs { position: static; display: flex; overflow-x: auto; }
+  .metadata-config__tabs { position: static; display: flex; margin: 0 0 16px; overflow-x: auto; }
   .metadata-config__tabs button { flex: 0 0 auto; }
+  .metadata-config__content { padding-top: 0; }
+}
+
+@media (max-width: 720px) {
+  .settings-page { padding: 32px 14px 44px; }
+  .settings-page__header { align-items: flex-start; flex-direction: column; margin-bottom: 22px; }
+  .settings-page__header h1 { font-size: 1.36rem; }
+  .settings-layout { grid-template-columns: 1fr; gap: 22px; }
+  .settings-nav { position: static; flex-flow: row wrap; gap: 6px; }
+  .settings-nav button { width: auto; flex: 0 0 auto; border: 1px solid var(--settings-border); background: var(--astrbot-surface); }
+  .settings-item,
+  .dynamic-config--settings .dynamic-config__row { grid-template-columns: 1fr; align-items: stretch; gap: 12px; padding: 14px 16px; }
+  .dynamic-config--settings .dynamic-config__label { padding-right: 0; }
+  .dynamic-config--settings .dynamic-config__control { justify-content: stretch; }
+  .dynamic-config--settings .dynamic-config__control > * { max-width: none; }
+  .settings-color-controls { justify-content: flex-start; }
 }
 
 @media (max-width: 600px) {
@@ -892,13 +963,8 @@ textarea {
   .chat-composer { margin-bottom: 7px; }
   .chat-toolbar strong { max-width: 35vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chat-toolbar select { max-width: 110px; }
-  .settings-page { padding: 14px 10px 24px; }
-  .settings-page__header { align-items: flex-start; flex-direction: column; }
   .settings-page__actions { width: 100%; }
   .settings-page__actions button { flex: 1; }
-  .settings-nav button span:not(.mdi) { display: none; }
-  .settings-nav button { justify-content: center; }
-  .settings-item,
   .settings-restart { align-items: flex-start; flex-direction: column; }
   .dynamic-config__row { grid-template-columns: 1fr; gap: 10px; }
   .api-key-create { align-items: stretch; flex-direction: column; }
