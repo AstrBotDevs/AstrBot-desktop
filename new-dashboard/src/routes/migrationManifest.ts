@@ -34,10 +34,10 @@ export const routeMigrationManifest: readonly RouteMigrationEntry[] = [
   { path: '/knowledge-base/:kbId', runtime: 'react' },
   { path: '/knowledge-base/:kbId/document/:docId', runtime: 'react' },
   { path: '/alkaid/knowledge-base', runtime: 'react' },
-  { path: '/chat', runtime: 'legacy' },
-  { path: '/chat/:conversationId', runtime: 'legacy' },
-  { path: '/chatbox', runtime: 'legacy' },
-  { path: '/chatbox/:conversationId', runtime: 'legacy' },
+  { path: '/chat', runtime: 'react' },
+  { path: '/chat/:conversationId', runtime: 'react' },
+  { path: '/chatbox', runtime: 'react' },
+  { path: '/chatbox/:conversationId', runtime: 'react' },
 ] as const;
 
 export const migratedRoutePaths = routeMigrationManifest

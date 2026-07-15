@@ -42,6 +42,10 @@ describe('route migration manifest', () => {
       '/knowledge-base/:kbId',
       '/knowledge-base/:kbId/document/:docId',
       '/alkaid/knowledge-base',
+      '/chat',
+      '/chat/:conversationId',
+      '/chatbox',
+      '/chatbox/:conversationId',
     ]);
   });
 

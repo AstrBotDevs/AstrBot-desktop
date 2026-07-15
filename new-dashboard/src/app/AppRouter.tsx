@@ -29,6 +29,7 @@ const PluginPage = lazy(() => import('@/routes/extensions/PluginPage'));
 const KnowledgeBaseListPage = lazy(() => import('@/routes/knowledge/KnowledgeBaseListPage'));
 const KnowledgeBaseDetailPage = lazy(() => import('@/routes/knowledge/KnowledgeBaseDetailPage'));
 const DocumentDetailPage = lazy(() => import('@/routes/knowledge/DocumentDetailPage'));
+const ChatPage = lazy(() => import('@/routes/chat/ChatPage'));
 
 function loading(element: React.ReactNode) {
   return <Suspense fallback={<div className="route-loading" role="status">Loading…</div>}>{element}</Suspense>;
@@ -61,6 +62,10 @@ const reactRouteElements: Partial<Record<string, React.ReactNode>> = {
   '/knowledge-base/:kbId': <FullLayout>{loading(<KnowledgeBaseDetailPage />)}</FullLayout>,
   '/knowledge-base/:kbId/document/:docId': <FullLayout>{loading(<DocumentDetailPage />)}</FullLayout>,
   '/alkaid/knowledge-base': <FullLayout>{loading(<KnowledgeBaseListPage legacy />)}</FullLayout>,
+  '/chat': <FullLayout>{loading(<ChatPage />)}</FullLayout>,
+  '/chat/:conversationId': <FullLayout>{loading(<ChatPage />)}</FullLayout>,
+  '/chatbox': <BlankLayout>{loading(<ChatPage chatbox />)}</BlankLayout>,
+  '/chatbox/:conversationId': <BlankLayout>{loading(<ChatPage chatbox />)}</BlankLayout>,
 };
 
 function resolveReactRoute(path: string) {
