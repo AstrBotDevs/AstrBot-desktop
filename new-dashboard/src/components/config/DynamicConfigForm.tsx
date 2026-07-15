@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { Dialog } from '@/components/headless/Dialog';
+import { MdiIcon } from '@/components/icons/MdiIcon';
+
 import {
   getConfigValue,
   inferConfigMetadata,
@@ -31,6 +34,48 @@ function JsonControl({ disabled, onChange, value }: { disabled?: boolean; onChan
   };
 
   return <textarea aria-invalid={invalid} className="dynamic-config__json" disabled={disabled} onBlur={apply} onChange={(event) => setSource(event.target.value)} rows={5} value={source} />;
+}
+
+function StringListControl({ disabled, onChange, value }: { disabled?: boolean; onChange: (value: unknown) => void; value: string[] }) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [newItem, setNewItem] = useState('');
+
+  useEffect(() => { if (!open) setDraft(value); }, [open, value]);
+
+  const setSingleValue = (next: string) => onChange(next === '' ? [] : [next]);
+  const addItem = () => {
+    if (!newItem.trim()) return;
+    setDraft((current) => [...current, newItem.trim()]);
+    setNewItem('');
+  };
+  const showDialog = () => {
+    setDraft(value);
+    setNewItem('');
+    setOpen(true);
+  };
+  const save = () => {
+    onChange(draft.filter((item) => item.trim() !== ''));
+    setOpen(false);
+  };
+
+  return <div className="dynamic-list">
+    {value.length <= 1
+      ? <input disabled={disabled} onChange={(event) => setSingleValue(event.target.value)} value={value[0] ?? ''} />
+      : <div className="dynamic-list__preview">{value.slice(0, 2).map((item, index) => <span key={`${item}-${index}`}>{item}</span>)}{value.length > 2 && <span>+{value.length - 2}</span>}</div>}
+    {!disabled && <button className="dynamic-list__manage" onClick={showDialog} type="button">{value.length <= 1 ? t('core.common.list.addMore') : t('core.common.list.modifyButton')}</button>}
+    <Dialog description={t('core.common.list.inputPlaceholder')} onOpenChange={setOpen} open={open} title={t('core.common.list.editTitle')}>
+      <div className="dynamic-list-dialog">
+        <div className="dynamic-list-dialog__add"><input onChange={(event) => setNewItem(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addItem(); } }} placeholder={t('core.common.list.addItemPlaceholder')} value={newItem} /><button disabled={!newItem.trim()} onClick={addItem} type="button"><MdiIcon name="mdi-plus" />{t('core.common.list.addButton')}</button></div>
+        <div className="dynamic-list-dialog__items">
+          {draft.map((item, index) => <div key={index}><input aria-label={`${t('core.common.list.editTitle')} ${index + 1}`} onChange={(event) => setDraft((current) => current.map((entry, itemIndex) => itemIndex === index ? event.target.value : entry))} value={item} /><button aria-label={t('features.config.actions.delete')} onClick={() => setDraft((current) => current.filter((_, itemIndex) => itemIndex !== index))} type="button"><MdiIcon name="mdi-delete-outline" /></button></div>)}
+          {!draft.length && <p>{t('core.common.list.noItemsHint')}</p>}
+        </div>
+        <div className="dialog-actions"><button onClick={() => setOpen(false)} type="button">{t('core.common.cancel')}</button><button className="button--primary" onClick={save} type="button">{t('core.common.confirm')}</button></div>
+      </div>
+    </Dialog>
+  </div>;
 }
 
 function ConfigControl({ metadata, onChange, value }: { metadata: ConfigItemMetadata; onChange: (value: unknown) => void; value: unknown }) {
@@ -64,6 +109,10 @@ function ConfigControl({ metadata, onChange, value }: { metadata: ConfigItemMeta
 
   if (type === 'text' || metadata.editor_mode) {
     return <textarea disabled={disabled} onChange={(event) => onChange(event.target.value)} rows={4} value={typeof value === 'string' ? value : ''} />;
+  }
+
+  if (type === 'list' && (!Array.isArray(value) || value.every((item) => typeof item === 'string'))) {
+    return <StringListControl disabled={disabled} onChange={onChange} value={Array.isArray(value) ? value as string[] : []} />;
   }
 
   if (type === 'list' || type === 'dict' || type === 'object' || type === 'template_list' || Array.isArray(value) || isConfigRecord(value)) {

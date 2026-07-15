@@ -1439,6 +1439,21 @@ textarea {
 .dynamic-config__json[aria-invalid='true'] { border-color: var(--astrbot-error); }
 .dynamic-config__checks { display: flex; flex-wrap: wrap; gap: 8px 14px; }
 .dynamic-config__checks label { display: inline-flex; align-items: center; gap: 6px; }
+.dynamic-list { display: flex; width: 100%; min-width: 0; align-items: center; gap: 7px; }
+.dynamic-list > input { width: 100%; min-width: 0; min-height: 40px; padding: 8px 10px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: inherit; }
+.dynamic-list__preview { display: flex; min-width: 0; flex: 1; flex-wrap: wrap; gap: 5px; }
+.dynamic-list__preview span { max-width: 130px; overflow: hidden; padding: 3px 7px; border-radius: 6px; background: color-mix(in srgb, var(--astrbot-primary) 11%, transparent); color: var(--astrbot-primary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.dynamic-list__manage { min-height: 34px; flex: 0 0 auto; padding: 5px 9px; border: 1px solid color-mix(in srgb, var(--astrbot-primary) 30%, var(--astrbot-border)); border-radius: 7px; background: color-mix(in srgb, var(--astrbot-primary) 8%, var(--astrbot-surface)); color: var(--astrbot-primary); cursor: pointer; }
+.dynamic-list-dialog { display: grid; gap: 13px; margin-top: 15px; }
+.dynamic-list-dialog__add { display: flex; gap: 8px; }
+.dynamic-list-dialog__add input,
+.dynamic-list-dialog__items input { min-width: 0; flex: 1; padding: 8px 10px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: inherit; }
+.dynamic-list-dialog button { display: inline-flex; min-height: 36px; align-items: center; gap: 5px; padding: 6px 10px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: inherit; cursor: pointer; }
+.dynamic-list-dialog button:disabled { cursor: not-allowed; opacity: .5; }
+.dynamic-list-dialog__items { display: grid; max-height: 340px; gap: 7px; overflow: auto; }
+.dynamic-list-dialog__items > div { display: flex; gap: 6px; }
+.dynamic-list-dialog__items > div > button { width: 38px; flex: 0 0 auto; justify-content: center; padding: 0; color: var(--astrbot-error); }
+.dynamic-list-dialog__items > p { margin: 18px 0; color: color-mix(in srgb, var(--astrbot-text) 50%, transparent); text-align: center; }
 .dynamic-config__more { margin: 10px 20px; padding: 7px 0; border: 0; background: transparent; color: var(--astrbot-primary); cursor: pointer; }
 
 .dynamic-switch { position: relative; display: inline-flex; width: 44px; height: 24px; cursor: pointer; }
