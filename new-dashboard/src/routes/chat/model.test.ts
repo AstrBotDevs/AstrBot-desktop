@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { appendStreamPayload, normalizeRecord, parseSseEvents, sessionList, stagedAttachmentType } from './model';
+import { appendStreamPayload, contextTokenCount, normalizeRecord, parseSseEvents, sessionList, stagedAttachmentType } from './model';
 
 describe('chat model', () => {
+  it('uses current context tokens before accumulated provider usage', () => {
+    expect(contextTokenCount({
+      current_context_tokens: 1_100,
+      token_usage: { input_other: 1_050, input_cached: 1_000, output: 50 },
+    })).toBe(1_100);
+  });
+
+  it('falls back to provider usage when current context tokens are absent', () => {
+    expect(contextTokenCount({
+      token_usage: { input_other: 1_050, input_cached: 1_000, output: 50 },
+    })).toBe(2_100);
+  });
+
   it('classifies recorded audio as a record attachment', () => {
     expect(stagedAttachmentType('record', 'application/octet-stream')).toBe('record');
     expect(stagedAttachmentType(undefined, 'audio/webm;codecs=opus')).toBe('record');

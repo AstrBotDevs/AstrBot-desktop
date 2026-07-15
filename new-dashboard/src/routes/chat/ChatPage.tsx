@@ -28,6 +28,7 @@ import {
   type ChatPart,
   type ChatRecord,
   type ChatSession,
+  contextTokenCount,
   normalizeRecord,
   parseSseEvents,
   sessionList,
@@ -100,7 +101,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   }, [providerSearch, providers]);
   const tokenUsage = useMemo(() => {
     const latestStats = [...messages].reverse().find((message) => message.content.type !== 'user' && message.content.agentStats)?.content.agentStats;
-    const used = latestStats ? inputTokens(latestStats) + cachedInputTokens(latestStats) + outputTokens(latestStats) : 0;
+    const used = contextTokenCount(latestStats);
     const metadata = providerMetadata[currentProvider?.model || model];
     const limit = contextLimit(currentProvider, metadata);
     if (used <= 0 || limit <= 0) return null;

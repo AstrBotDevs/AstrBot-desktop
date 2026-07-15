@@ -5,6 +5,15 @@ export type ChatRecord = JsonObject & { id?: string | number; content: { type: s
 export type ChatSession = JsonObject & { session_id: string; display_name?: string; updated_at?: string };
 export type StagedAttachmentType = 'image' | 'record' | 'file';
 
+export function contextTokenCount(stats?: JsonObject) {
+  if (!stats) return 0;
+  if (stats.current_context_tokens != null) return readTokenCount(stats.current_context_tokens);
+  const usage = stats.token_usage;
+  if (!usage || typeof usage !== 'object' || Array.isArray(usage)) return 0;
+  const tokenUsage = usage as JsonObject;
+  return readTokenCount(tokenUsage.input_other) + readTokenCount(tokenUsage.input_cached) + readTokenCount(tokenUsage.output);
+}
+
 export function stagedAttachmentType(serverType: unknown, mimeType: string): StagedAttachmentType {
   if (serverType === 'image' || serverType === 'record') return serverType;
   if (mimeType.startsWith('image/')) return 'image';
@@ -73,4 +82,9 @@ export function sessionList(value: unknown): ChatSession[] {
   const data = value && typeof value === 'object' ? value as JsonObject : {};
   const list = Array.isArray(value) ? value : Array.isArray(data.items) ? data.items : Array.isArray(data.sessions) ? data.sessions : [];
   return list.filter((item): item is ChatSession => Boolean(item && typeof item === 'object' && typeof (item as JsonObject).session_id === 'string'));
+}
+
+function readTokenCount(value: unknown) {
+  const count = Number(value || 0);
+  return Number.isFinite(count) && count > 0 ? count : 0;
 }
