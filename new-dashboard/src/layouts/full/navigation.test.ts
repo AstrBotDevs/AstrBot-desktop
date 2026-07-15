@@ -18,6 +18,12 @@ describe('sidebar navigation compatibility', () => {
     expect(defaultNavigationItems.find((item) => item.to === '/platforms')?.icon).toBe('mdi-robot');
   });
 
+  it('keeps plugin management as a single sidebar entry', () => {
+    const extension = defaultNavigationItems.find((item) => item.title === 'core.navigation.extension');
+    expect(extension?.to).toBe('/extension#installed');
+    expect(extension?.children).toBeUndefined();
+  });
+
   it('applies existing sidebar customization and keeps new defaults', () => {
     const result = resolveNavigationItems(defaultNavigationItems, {
       mainItems: ['core.navigation.console', 'missing', 'core.navigation.console'],
