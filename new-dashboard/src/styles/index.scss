@@ -156,6 +156,16 @@ textarea {
   position: relative;
 }
 
+.full-layout--console .full-layout__main,
+.full-layout__page--console {
+  overflow: hidden;
+}
+
+.full-layout__page--console {
+  height: 100%;
+  min-height: 0;
+}
+
 .full-layout--chat .full-layout__main,
 .full-layout--chat .full-layout__page {
   overflow: hidden;
@@ -669,6 +679,16 @@ textarea {
   border-radius: 9px;
   background: #17191c;
   color: #d5d9df;
+}
+
+.console-page {
+  height: 100%;
+  min-height: 0;
+}
+
+.console-page .monitor-terminal {
+  min-height: 0;
+  max-height: none;
 }
 
 .monitor-log {

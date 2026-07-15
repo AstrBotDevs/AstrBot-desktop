@@ -18,11 +18,13 @@ describe('getFullLayoutMode', () => {
   it('identifies chat and plugin pages as full-screen routes', () => {
     expect(getFullLayoutMode('/chat/conversation-1')).toEqual({
       isChatRoute: true,
+      isConsoleRoute: false,
       isPluginPageRoute: false,
       isFullScreenRoute: true,
     });
     expect(getFullLayoutMode('/plugin-page/example/settings')).toEqual({
       isChatRoute: false,
+      isConsoleRoute: false,
       isPluginPageRoute: true,
       isFullScreenRoute: true,
     });
@@ -56,5 +58,14 @@ describe('FullLayout', () => {
     expect(markup).toContain('data-layout-mode="plugin"');
     expect(markup).toContain('full-layout__sidebar');
     expect(markup).toContain('full-layout__page--plugin');
+  });
+
+  it('constrains the console page to the available content height', () => {
+    const markup = renderLayout('/console');
+
+    expect(markup).toContain('data-layout-mode="console"');
+    expect(markup).toContain('full-layout--console');
+    expect(markup).toContain('full-layout__page--console');
+    expect(markup).toContain('full-layout__sidebar');
   });
 });
