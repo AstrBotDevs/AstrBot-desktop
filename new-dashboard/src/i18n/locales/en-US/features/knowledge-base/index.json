@@ -10,6 +10,7 @@
     "loading": "Loading...",
     "documents": "Documents",
     "chunks": "Chunks",
+    "noDescription": "No description",
     "sessionConfig": "Session Config",
     "initError": "Initialization Failed"
   },
@@ -33,7 +34,12 @@
     "rerankProviderInfo": "Provider: {id}",
     "cancel": "Cancel",
     "submit": "Create",
-    "nameRequired": "Please enter knowledge base name"
+    "nameRequired": "Please enter knowledge base name",
+    "nameHint": "If you rename the knowledge base later, update its references in the configuration file.",
+    "embeddingModelPlaceholder": "Select an embedding model",
+    "embeddingModelHint": "The embedding model cannot be changed after creation. Create a new knowledge base to use another model.",
+    "noRerankModel": "Do not use a rerank model",
+    "saving": "Saving..."
   },
   "edit": {
     "title": "Edit Knowledge Base",

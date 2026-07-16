@@ -23,6 +23,7 @@
     "chunkCount": "分块数量",
     "embeddingModel": "嵌入模型",
     "rerankModel": "重排序模型",
+    "noDescription": "暂无描述",
     "notSet": "未设置"
   },
   "documents": {
@@ -31,6 +32,7 @@
     "empty": "暂无文档",
     "name": "文档名称",
     "type": "类型",
+    "unknownType": "未知类型",
     "size": "大小",
     "chunks": "分块数",
     "createdAt": "上传时间",

@@ -7,7 +7,9 @@
     "type": "文件类型",
     "size": "文件大小",
     "chunkCount": "分块数量",
-    "createdAt": "上传时间"
+    "createdAt": "上传时间",
+    "unknownType": "未知类型",
+    "notSet": "未设置"
   },
   "chunks": {
     "title": "分块列表",

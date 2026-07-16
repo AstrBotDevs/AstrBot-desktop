@@ -20,9 +20,9 @@ export function chunkCount(item: JsonObject) {
   return numberField(item, 'chunk_count', 'chunks_count');
 }
 
-export function formatFileSize(value: unknown) {
+export function formatFileSize(value: unknown, fallback = '') {
   const bytes = Number(value);
-  if (!Number.isFinite(bytes) || bytes <= 0) return '—';
+  if (!Number.isFinite(bytes) || bytes <= 0) return fallback;
   const units = ['B', 'KB', 'MB', 'GB'];
   let size = bytes;
   let unit = 0;
@@ -30,10 +30,10 @@ export function formatFileSize(value: unknown) {
   return `${size >= 10 || unit === 0 ? Math.round(size) : size.toFixed(2)} ${units[unit]}`;
 }
 
-export function formatKnowledgeDate(value: unknown, locale?: string) {
-  if (typeof value !== 'string' || !value) return '—';
+export function formatKnowledgeDate(value: unknown, locale?: string, fallback = '') {
+  if (typeof value !== 'string' || !value) return fallback;
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString(locale);
+  return Number.isNaN(date.getTime()) ? fallback : date.toLocaleString(locale);
 }
 
 export function retrievalPayload(value: unknown) {

@@ -12,7 +12,8 @@ describe('knowledge model', () => {
 
   it('formats file sizes', () => {
     expect(formatFileSize(1536)).toBe('1.50 KB');
-    expect(formatFileSize(0)).toBe('—');
+    expect(formatFileSize(0)).toBe('');
+    expect(formatFileSize(0, 'Not set')).toBe('Not set');
   });
 
   it('normalizes retrieval and upload task responses', () => {

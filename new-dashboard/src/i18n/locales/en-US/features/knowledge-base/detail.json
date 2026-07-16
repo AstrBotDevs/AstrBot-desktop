@@ -23,6 +23,7 @@
     "chunkCount": "Chunks",
     "embeddingModel": "Embedding Model",
     "rerankModel": "Rerank Model",
+    "noDescription": "No description",
     "notSet": "Not Set"
   },
   "documents": {
@@ -31,6 +32,7 @@
     "empty": "No documents",
     "name": "Name",
     "type": "Type",
+    "unknownType": "Unknown type",
     "size": "Size",
     "chunks": "Chunks",
     "createdAt": "Uploaded At",

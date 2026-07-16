@@ -23,6 +23,7 @@
         "chunkCount": "Количество фрагментов",
         "embeddingModel": "Embedding модель",
         "rerankModel": "Rerank модель",
+        "noDescription": "Нет описания",
         "notSet": "не выбрано"
     },
     "documents": {
@@ -31,6 +32,7 @@
         "empty": "Документов нет",
         "name": "Имя файла",
         "type": "Тип",
+        "unknownType": "Неизвестный тип",
         "size": "Размер",
         "chunks": "Фрагменты",
         "createdAt": "Дата загрузки",

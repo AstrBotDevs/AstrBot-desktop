@@ -7,7 +7,9 @@
     "type": "File Type",
     "size": "File Size",
     "chunkCount": "Chunk Count",
-    "createdAt": "Uploaded At"
+    "createdAt": "Uploaded At",
+    "unknownType": "Unknown type",
+    "notSet": "Not set"
   },
   "chunks": {
     "title": "Chunks",
