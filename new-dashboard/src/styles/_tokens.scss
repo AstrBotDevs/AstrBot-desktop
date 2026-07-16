@@ -4,7 +4,7 @@
   --astrbot-background: #ffffff;
   --astrbot-surface: #ffffff;
   --astrbot-text: #1b1c1d;
-  --astrbot-border: #d0d0d0;
+  --astrbot-border: color-mix(in srgb, var(--astrbot-text) 10%, transparent);
   --astrbot-error: #f44336;
   --astrbot-radius-card: 16px;
   --astrbot-breakpoint-mobile: 768px;
@@ -21,7 +21,7 @@
   --astrbot-background: #1a1a1a;
   --astrbot-surface: #242424;
   --astrbot-text: #e8eaed;
-  --astrbot-border: #3a3a3a;
+  --astrbot-border: color-mix(in srgb, var(--astrbot-text) 14%, transparent);
   --astrbot-error: #ff4d4f;
   --astrbot-sidebar-border: rgb(255 255 255 / 12%);
   --astrbot-hover: color-mix(in srgb, var(--astrbot-primary) 16%, transparent);
