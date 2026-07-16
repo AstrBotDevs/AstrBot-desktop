@@ -631,7 +631,7 @@ export default function ProviderPage() {
 
       {!loading && activeType !== 'chat_completion' && (
         <section className="provider-type-panel">
-          <header><div><h2>{t(`features.provider.providers.tabs.${activeTab.translation}`)}</h2><p>{visibleProviders.length} {t('features.provider.providers.title')}</p></div><button className="button--primary" onClick={openProviderPicker} type="button"><MdiIcon name="mdi-plus" />{t('features.provider.providers.addProvider')}</button></header>
+          <header><div><h2>{t(`features.provider.providers.tabs.${activeTab.translation}`)}</h2></div><button className="button--primary" onClick={openProviderPicker} type="button"><MdiIcon name="mdi-plus" />{t('features.provider.providers.addProvider')}</button></header>
           <div className="provider-card-grid">
             {visibleProviders.map((provider) => (
               <ProviderCard key={recordId(provider, 'id')} onCopy={() => void copyProvider(provider)} onDelete={() => void removeProvider(provider)} onEdit={() => openProvider(provider)} onTest={() => void testProvider(provider)} onToggle={() => void toggleProvider(provider)} provider={provider} testing={testing === recordId(provider, 'id')} t={t} />
