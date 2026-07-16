@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
 import { createConfigProfile, deleteConfigProfile, getConfigProfile, listConfigProfiles, updateConfigProfileContent } from '@/api/openapi';
@@ -127,6 +128,10 @@ export default function ConfigPage() {
       toast.error(errorMessage(cause, t('features.config.messages.configApplyError')));
     }
   };
+  const floatingActions = !loading && !error && <div className="visual-config-actions">
+    <button aria-label={t('features.config.codeEditor.title')} className="visual-config-fab visual-config-fab--code" onClick={openEditor} title={t('features.config.codeEditor.title')} type="button"><MdiIcon name="mdi-code-json" /></button>
+    <button aria-label={t('features.config.actions.save')} className="visual-config-fab visual-config-fab--save" disabled={saving} onClick={() => void save()} title={t('features.config.actions.save')} type="button"><MdiIcon name="mdi-content-save" /></button>
+  </div>;
 
   return <div className="visual-config-page">
     <div className="visual-config-panel">
@@ -149,10 +154,7 @@ export default function ConfigPage() {
       {!loading && !error && <MetadataConfigEditor metadata={metadata} onChange={setConfig} search={search} value={config} />}
     </div>
 
-    {!loading && !error && <div className="visual-config-actions">
-      <button aria-label={t('features.config.codeEditor.title')} className="visual-config-fab visual-config-fab--code" onClick={openEditor} title={t('features.config.codeEditor.title')} type="button"><MdiIcon name="mdi-code-json" /></button>
-      <button aria-label={t('features.config.actions.save')} className="visual-config-fab visual-config-fab--save" disabled={saving} onClick={() => void save()} title={t('features.config.actions.save')} type="button"><MdiIcon name="mdi-content-save" /></button>
-    </div>}
+    {typeof document !== 'undefined' && floatingActions && createPortal(floatingActions, document.body)}
 
     <Dialog description={t('features.config.configManagement.description')} onOpenChange={setManageOpen} open={manageOpen} title={t('features.config.configManagement.title')}>
       <div className="config-manager-create"><input onChange={(event) => setNewName(event.target.value)} placeholder={t('features.config.configManagement.fillConfigName')} value={newName} /><button className="button--primary" disabled={!newName.trim()} onClick={() => void create()} type="button"><MdiIcon name="mdi-plus" />{t('features.config.configManagement.newConfig')}</button></div>
