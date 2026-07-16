@@ -138,10 +138,8 @@ export default function ProviderPage() {
 
   const selectSource = (source: JsonObject) => setSelectedSourceId(recordId(source, 'id'));
 
-  const startSource = (template?: JsonObject) => {
-    const next = template
-      ? sourceFromTemplate(template, providerSources)
-      : sourceFromTemplate({ id: 'provider', provider: 'openai', provider_type: activeType, type: activeType }, providerSources);
+  const startSource = (template: JsonObject) => {
+    const next = sourceFromTemplate(template, providerSources);
     setSourceDialogOriginalId('');
     setEditingSourceDialog(next);
     setSourceJson(prettyJson(next));
@@ -392,10 +390,6 @@ export default function ProviderPage() {
                       startSource(template);
                     }} type="button"><ProviderMark provider={String(template.provider || '')} variant="menu" /><span>{key}</span></button>
                   ))}
-                  <button onClick={(event) => {
-                    (event.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
-                    startSource();
-                  }} type="button"><MdiIcon name="mdi-tune-variant" /><span>{t('features.provider.models.manualAddButton')}</span></button>
                 </div>
               </details>
             </div>
