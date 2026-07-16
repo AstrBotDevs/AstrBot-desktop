@@ -135,6 +135,17 @@ textarea {
   overflow: auto;
 }
 
+.full-layout__main:has(.visual-config-page) {
+  overflow: hidden;
+  scrollbar-gutter: stable;
+}
+
+.full-layout__page:has(.visual-config-page) {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .full-layout--without-sidebar .full-layout__main {
   grid-column: 1 / -1;
 }
@@ -1813,9 +1824,18 @@ textarea {
   .provider-template-editor-dialog .dynamic-config__control > * { max-width: none; }
 }
 
-.visual-config-page { display: flex; min-height: 100%; justify-content: center; padding: 16px 18px 112px; }
-.visual-config-panel { width: min(750px, 100%); min-width: 0; }
-.visual-config-toolbar { display: flex; width: 100%; align-items: center; gap: 12px; margin-bottom: 16px; }
+.visual-config-page { display: flex; height: 100%; min-height: 0; justify-content: center; padding: 16px 18px; overflow: hidden; }
+.visual-config-panel { display: flex; width: min(750px, 100%); min-width: 0; min-height: 0; flex-direction: column; }
+.visual-config-toolbar {
+  z-index: 25;
+  display: flex;
+  width: 100%;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  background: var(--astrbot-background);
+}
 .visual-config-profile,
 .visual-config-search { min-height: 40px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: inherit; }
 .visual-config-profile { position: relative; width: 170px; flex: 0 0 auto; }
@@ -1824,7 +1844,7 @@ textarea {
 .visual-config-search { display: flex; width: min(360px, 100%); align-items: center; gap: 8px; padding: 0 11px; }
 .visual-config-search .mdi { flex: 0 0 auto; color: color-mix(in srgb, var(--astrbot-text) 62%, transparent); font-size: 19px; }
 .visual-config-search input { width: 100%; min-width: 0; padding: 8px 0; border: 0; outline: 0; background: transparent; color: inherit; }
-.visual-config-unsaved { position: sticky; z-index: 20; top: 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; padding: 10px 12px; border-radius: 8px; background: color-mix(in srgb, var(--astrbot-text) 7%, var(--astrbot-surface)); font-size: 13px; }
+.visual-config-unsaved { z-index: 20; display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; padding: 10px 12px; border-radius: 8px; background: color-mix(in srgb, var(--astrbot-text) 7%, var(--astrbot-surface)); font-size: 13px; }
 .visual-config-unsaved span { display: inline-flex; align-items: center; gap: 8px; }
 .visual-config-unsaved button { flex: 0 0 auto; padding: 5px 9px; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--astrbot-text) 8%, transparent); color: inherit; cursor: pointer; }
 .visual-config-actions { position: fixed; z-index: 30; right: 52px; bottom: 52px; display: grid; gap: 16px; }
@@ -1841,13 +1861,33 @@ textarea {
 .config-manager-list > div > button:first-child.is-active { color: var(--astrbot-primary); font-weight: 700; }
 .config-manager-list .button--danger { display: grid; width: 34px; height: 34px; border: 0; border-radius: 50%; background: transparent; color: var(--astrbot-error); cursor: pointer; place-items: center; }
 
-.metadata-config { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: start; }
-.metadata-config__tabs { position: sticky; top: 16px; display: grid; gap: 2px; margin: 16px 16px 0 0; }
+.metadata-config { display: grid; min-height: 0; flex: 1; grid-template-columns: 150px minmax(0, 1fr); align-items: stretch; overflow: hidden; }
+.metadata-config__tabs {
+  z-index: 24;
+  display: grid;
+  min-height: 0;
+  align-content: start;
+  gap: 2px;
+  margin: 0 16px 0 0;
+  padding: 4px 0;
+  overflow: hidden;
+  background: var(--astrbot-background);
+}
 .metadata-config__tabs button { min-height: 48px; padding: 8px 12px; border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; font-size: 15px; font-weight: 800; text-align: left; }
 .metadata-config__tabs button:hover { background: color-mix(in srgb, var(--astrbot-text) 4.5%, transparent); }
 .metadata-config__tabs button[aria-pressed='true'] { position: relative; background: transparent; color: var(--astrbot-text); }
 .metadata-config__tabs button[aria-pressed='true']::before { position: absolute; top: 8px; bottom: 8px; left: 0; width: 2px; border-radius: 99px; background: var(--astrbot-text); content: ''; }
-.metadata-config__content { display: grid; min-width: 0; gap: 16px; padding: 12px 0; }
+.metadata-config__content {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding: 0 0 112px;
+  scrollbar-gutter: stable;
+}
+.metadata-config__content > * { flex: 0 0 auto; }
 .dynamic-config-empty { padding: 14px 16px; border-radius: 8px; background: var(--astrbot-hover); color: var(--astrbot-primary); }
 
 .dynamic-config { padding: 0; overflow: hidden; }
@@ -3238,15 +3278,15 @@ html[data-theme='dark'] .chat-composer { border-color: rgb(255 255 255 / 12%); b
 }
 
 @media (max-width: 767px) {
-  .visual-config-page { padding: 4px 8px 96px; }
+  .visual-config-page { padding: 4px 8px; }
   .visual-config-toolbar { align-items: stretch; flex-direction: column; }
   .visual-config-profile,
   .visual-config-search { width: 100%; }
   .visual-config-actions { right: 20px; bottom: 24px; }
-  .metadata-config { grid-template-columns: 1fr; }
-  .metadata-config__tabs { position: static; display: flex; margin: 0 0 16px; overflow-x: auto; }
+  .metadata-config { grid-template-rows: auto minmax(0, 1fr); grid-template-columns: 1fr; }
+  .metadata-config__tabs { display: flex; margin: 0 0 12px; overflow-x: auto; overflow-y: hidden; }
   .metadata-config__tabs button { flex: 0 0 auto; }
-  .metadata-config__content { padding-top: 0; }
+  .metadata-config__content { padding: 0 0 96px; }
 }
 
 @media (max-width: 720px) {
