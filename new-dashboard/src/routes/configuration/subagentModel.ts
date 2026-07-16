@@ -56,7 +56,7 @@ export function subagentPayload(config: SubagentConfig): JsonObject {
       persona_id: agent.personaId,
       public_description: agent.publicDescription,
       enabled: agent.enabled,
-      provider_id: agent.providerId || null,
+      ...(agent.providerId ? { provider_id: agent.providerId } : {}),
     })),
   };
 }
