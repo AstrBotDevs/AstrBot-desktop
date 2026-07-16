@@ -8,7 +8,7 @@ export function ConfigPageShell({ actions, children, description, title }: { act
   return <div className="monitor-page config-page"><header className="monitor-header"><div><h1>{title}</h1><p>{description}</p></div><div className="monitor-actions">{actions}</div></header>{children}</div>;
 }
 
-export function JsonConfigDialog({ busy, initialMode = 'form', onChange, onOpenChange, onSave, open, title, value }: { busy?: boolean; initialMode?: 'form' | 'json'; onChange: (value: string) => void; onOpenChange: (open: boolean) => void; onSave: () => void; open: boolean; title: string; value: string }) {
+export function JsonConfigDialog({ busy, initialMode = 'form', jsonOnly = false, onChange, onOpenChange, onSave, open, title, value }: { busy?: boolean; initialMode?: 'form' | 'json'; jsonOnly?: boolean; onChange: (value: string) => void; onOpenChange: (open: boolean) => void; onSave: () => void; open: boolean; title: string; value: string }) {
   const [mode, setMode] = useState<'form' | 'json'>(initialMode);
   const config = useMemo(() => {
     try {
@@ -19,10 +19,10 @@ export function JsonConfigDialog({ busy, initialMode = 'form', onChange, onOpenC
     }
   }, [value]);
   return <Dialog onOpenChange={onOpenChange} open={open} title={title}>
-    <nav className="config-tabs config-tabs--dialog"><button aria-pressed={mode === 'form'} onClick={() => setMode('form')} type="button">Form</button><button aria-pressed={mode === 'json'} onClick={() => setMode('json')} type="button">JSON</button></nav>
-    {mode === 'form' && config && <div className="dynamic-config-dialog"><RecordConfigForm onChange={(next) => onChange(prettyJson(next))} value={config} /></div>}
-    {mode === 'form' && !config && <div className="monitor-error">JSON is invalid. Switch to the JSON editor to correct it.</div>}
-    {mode === 'json' && <div className="json-editor json-editor--dialog"><MonacoEditor ariaLabel={`${title} JSON`} language="json" onChange={onChange} value={value} /></div>}
+    {!jsonOnly && <nav className="config-tabs config-tabs--dialog"><button aria-pressed={mode === 'form'} onClick={() => setMode('form')} type="button">Form</button><button aria-pressed={mode === 'json'} onClick={() => setMode('json')} type="button">JSON</button></nav>}
+    {!jsonOnly && mode === 'form' && config && <div className="dynamic-config-dialog"><RecordConfigForm onChange={(next) => onChange(prettyJson(next))} value={config} /></div>}
+    {!jsonOnly && mode === 'form' && !config && <div className="monitor-error">JSON is invalid. Switch to the JSON editor to correct it.</div>}
+    {(jsonOnly || mode === 'json') && <div className="json-editor json-editor--dialog"><MonacoEditor ariaLabel={`${title} JSON`} language="json" onChange={onChange} value={value} /></div>}
     <div className="dialog-actions"><DialogClose asChild><button type="button">Cancel</button></DialogClose><button className="button--primary" disabled={busy} onClick={onSave} type="button">{busy ? 'Saving…' : 'Save'}</button></div>
   </Dialog>;
 }

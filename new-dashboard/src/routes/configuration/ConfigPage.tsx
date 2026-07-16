@@ -162,6 +162,6 @@ export default function ConfigPage() {
       <div className="dialog-actions"><DialogClose asChild><button type="button">{t('features.config.buttons.cancel')}</button></DialogClose></div>
     </Dialog>
 
-    <JsonConfigDialog initialMode="json" onChange={setEditorSource} onOpenChange={setEditorOpen} onSave={applyEditor} open={editorOpen} title={t('features.config.codeEditor.title')} value={editorSource} />
+    <JsonConfigDialog jsonOnly onChange={setEditorSource} onOpenChange={setEditorOpen} onSave={applyEditor} open={editorOpen} title={t('features.config.codeEditor.title')} value={editorSource} />
   </div>;
 }
