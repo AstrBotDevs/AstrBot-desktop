@@ -142,7 +142,8 @@
     "loadingSessions": "加载对话中...",
     "noSessions": "该项目暂无对话",
     "noProjects": "暂无项目",
-    "confirmDelete": "确定要删除项目 \"{title}\" 吗？项目中的对话不会被删除。"
+    "confirmDelete": "确定要删除项目 \"{title}\" 吗？项目中的对话不会被删除。",
+    "deleteFailed": "删除项目失败，请重试。"
   },
   "time": {
     "today": "今天",

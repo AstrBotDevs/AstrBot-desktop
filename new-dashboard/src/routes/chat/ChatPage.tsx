@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   createChatProject,
   createChatSession,
+  deleteChatProject,
   deleteChatSession,
   getChatSession,
   listChatConfigs,
@@ -59,6 +60,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const [configs, setConfigs] = useState<JsonObject[]>([]);
   const [projects, setProjects] = useState<JsonObject[]>([]);
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
+  const [deletingProjectId, setDeletingProjectId] = useState('');
   const [projectError, setProjectError] = useState('');
   const [projectSaving, setProjectSaving] = useState(false);
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
@@ -326,6 +328,27 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       toast.error(message);
     } finally {
       setProjectSaving(false);
+    }
+  };
+
+  const removeProject = async (project: JsonObject) => {
+    const projectId = recordId(project, 'project_id', 'id');
+    if (!projectId || deletingProjectId) return;
+    const title = String(project.title || t('features.chat.project.title'));
+    if (!await confirmAction({
+      confirmLabel: t('core.common.delete'),
+      danger: true,
+      message: t('features.chat.project.confirmDelete', { title }),
+      title: t('core.common.delete'),
+    })) return;
+    setDeletingProjectId(projectId);
+    try {
+      await deleteChatProject({ path: { project_id: projectId } });
+      setProjects((items) => items.filter((item) => recordId(item, 'project_id', 'id') !== projectId));
+    } catch (cause) {
+      toast.error(errorMessage(cause, t('features.chat.project.deleteFailed')));
+    } finally {
+      setDeletingProjectId('');
     }
   };
 
@@ -618,7 +641,23 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       <div className="chat-sessions__content">
         <section className="chat-project-list">
           <div className="chat-section-header"><span>{t('features.chat.project.title')}</span><button aria-label={t('features.chat.project.create')} onClick={() => { setProjectError(''); setProjectDialogOpen(true); }} title={t('features.chat.project.create')} type="button"><PlusIcon /></button></div>
-          {projects.map((project, index) => <div className="chat-project-row" key={recordId(project, 'project_id', 'id') || `project-${index}`}><span>{String(project.emoji || '📁')}</span><strong>{String(project.title || t('features.chat.project.title'))}</strong></div>)}
+          {projects.map((project, index) => {
+            const projectId = recordId(project, 'project_id', 'id');
+            return <div className="chat-project-row" key={projectId || `project-${index}`}>
+              <span>{String(project.emoji || '📁')}</span>
+              <strong>{String(project.title || t('features.chat.project.title'))}</strong>
+              <button
+                aria-label={t('core.common.delete')}
+                className="chat-project-row__delete"
+                disabled={!projectId || deletingProjectId === projectId}
+                onClick={() => void removeProject(project)}
+                title={t('core.common.delete')}
+                type="button"
+              >
+                <TrashIcon />
+              </button>
+            </div>;
+          })}
         </section>
         <div className="chat-session-list">
           <div className="chat-session-list__label">{t('features.chat.conversation.title')}</div>

@@ -142,7 +142,8 @@
     "loadingSessions": "Loading conversations...",
     "noSessions": "No conversations in this project",
     "noProjects": "No projects",
-    "confirmDelete": "Are you sure you want to delete project \"{title}\"? Conversations in this project will not be deleted."
+    "confirmDelete": "Are you sure you want to delete project \"{title}\"? Conversations in this project will not be deleted.",
+    "deleteFailed": "Failed to delete project. Please try again."
   },
   "time": {
     "today": "Today",

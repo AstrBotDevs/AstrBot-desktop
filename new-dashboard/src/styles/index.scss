@@ -2610,9 +2610,15 @@ html[data-theme='dark'] .chat-shell {
 .chat-section-header { display: flex; min-height: 24px; align-items: center; justify-content: space-between; padding: 0 10px 4px; color: color-mix(in srgb, var(--astrbot-text) 48%, transparent); font-size: 12px; font-weight: 500; }
 .chat-section-header button { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 8px; color: var(--chat-muted); }
 .chat-section-header button:hover { background: var(--chat-session-active); color: var(--astrbot-text); }
-.chat-project-row { display: flex; min-height: 30px; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 8px; }
+.chat-project-row { display: flex; min-height: 38px; align-items: center; gap: 8px; padding: 4px 6px 4px 10px; border-radius: 8px; }
+.chat-project-row:hover { background: var(--chat-session-active); }
 .chat-project-row > span { display: grid; width: 18px; flex: 0 0 18px; place-items: center; }
-.chat-project-row > strong { min-width: 0; overflow: hidden; font-size: 14px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.chat-project-row > strong { min-width: 0; flex: 1; overflow: hidden; font-size: 14px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.chat-project-row__delete { display: grid; width: 30px; height: 30px; flex: 0 0 30px; place-items: center; border-radius: 7px; color: var(--chat-muted); opacity: 0; transition: background-color .16s ease, color .16s ease, opacity .16s ease; }
+.chat-project-row:hover .chat-project-row__delete,
+.chat-project-row__delete:focus-visible { opacity: 1; }
+.chat-project-row__delete:hover { background: color-mix(in srgb, var(--astrbot-error) 10%, transparent); color: var(--astrbot-error); }
+.chat-project-row__delete:disabled { cursor: wait; opacity: .4; }
 .headless-dialog__content:has(.chat-project-dialog) { width: min(640px, calc(100vw - 32px)); padding: 24px 24px 18px; }
 .headless-dialog__content:has(.chat-project-dialog) > .headless-dialog__title { font-size: 24px; font-weight: 760; }
 .chat-project-dialog { display: grid; gap: 12px; margin-top: 20px; }
