@@ -405,6 +405,25 @@ export default function ProviderPage() {
     }
   };
 
+  const copyProvider = async (provider: JsonObject) => {
+    const sourceId = recordId(provider, 'id', 'provider_id');
+    if (!sourceId) return;
+    const existingIds = new Set(providers.map((item) => recordId(item, 'id', 'provider_id')));
+    let copyId = `${sourceId}_copy`;
+    let suffix = 1;
+    while (existingIds.has(copyId)) copyId = `${sourceId}_copy_${suffix++}`;
+    const copy = cloneObject(provider);
+    copy.id = copyId;
+    copy.enable = false;
+    try {
+      await createProvider({ body: { config: copy } });
+      toast.success(t('features.provider.messages.success.add'));
+      await load(selectedSourceId);
+    } catch (cause) {
+      toast.error(errorMessage(cause, t('features.provider.providerSources.saveError')));
+    }
+  };
+
   const testProvider = async (provider: JsonObject) => {
     const id = recordId(provider, 'id', 'provider_id');
     if (!id) return;
@@ -585,7 +604,7 @@ export default function ProviderPage() {
           <header><div><h2>{t(`features.provider.providers.tabs.${activeTab.translation}`)}</h2><p>{visibleProviders.length} {t('features.provider.providers.title')}</p></div><button className="button--primary" onClick={openProviderPicker} type="button"><MdiIcon name="mdi-plus" />{t('features.provider.providers.addProvider')}</button></header>
           <div className="provider-card-grid">
             {visibleProviders.map((provider) => (
-              <ProviderCard key={recordId(provider, 'id')} onDelete={() => void removeProvider(provider)} onEdit={() => openProvider(provider)} onTest={() => void testProvider(provider)} onToggle={() => void toggleProvider(provider)} provider={provider} testing={testing === recordId(provider, 'id')} t={t} />
+              <ProviderCard key={recordId(provider, 'id')} onCopy={() => void copyProvider(provider)} onDelete={() => void removeProvider(provider)} onEdit={() => openProvider(provider)} onTest={() => void testProvider(provider)} onToggle={() => void toggleProvider(provider)} provider={provider} testing={testing === recordId(provider, 'id')} t={t} />
             ))}
           </div>
           {!visibleProviders.length && <div className="provider-type-panel__empty"><MdiIcon name={activeTab.icon} /><p>{t('features.provider.providers.empty.typed', { type: t(`features.provider.providers.tabs.${activeTab.translation}`) })}</p><button onClick={openProviderPicker} type="button"><MdiIcon name="mdi-plus" />{t('features.provider.providers.addProvider')}</button></div>}
@@ -745,7 +764,8 @@ function ProviderModelCopy({ metadata, model, provider, t }: { metadata?: JsonOb
   );
 }
 
-function ProviderCard({ onDelete, onEdit, onTest, onToggle, provider, t, testing }: {
+function ProviderCard({ onCopy, onDelete, onEdit, onTest, onToggle, provider, t, testing }: {
+  onCopy: () => void;
   onDelete: () => void;
   onEdit: () => void;
   onTest: () => void;
@@ -755,11 +775,12 @@ function ProviderCard({ onDelete, onEdit, onTest, onToggle, provider, t, testing
   testing: boolean;
 }) {
   const enabled = providerEnabled(provider);
+  const providerName = String(provider.provider || provider.type || '');
   return (
     <article className="provider-card">
-      <header><ProviderMark provider={String(provider.provider || provider.type || '')} /><div><h3>{recordId(provider, 'id')}</h3><p>{String(provider.model || provider.provider || provider.type || '')}</p></div><span className={enabled ? 'is-enabled' : ''}>{enabled ? t('features.provider.providerSources.enabled') : t('features.provider.providerSources.disabled')}</span></header>
-      <div className="provider-card__meta"><span><MdiIcon name="mdi-shape-outline" />{String(provider.provider_type || provider.capability || provider.type || 'provider')}</span></div>
-      <footer><label className="provider-switch"><input checked={enabled} onChange={onToggle} type="checkbox" /><span /></label><button disabled={testing} onClick={onTest} type="button"><MdiIcon name="mdi-connection" />{t('features.provider.models.testButton')}</button><button onClick={onEdit} type="button"><MdiIcon name="mdi-pencil-outline" />{t('features.provider.dialogs.config.editTitle')}</button><button className="button--danger" onClick={onDelete} type="button"><MdiIcon name="mdi-delete-outline" /></button></footer>
+      <header><h3 title={recordId(provider, 'id')}>{recordId(provider, 'id')}</h3><label className="provider-switch" title={enabled ? t('core.common.itemCard.enabled') : t('core.common.itemCard.disabled')}><input checked={enabled} onChange={onToggle} type="checkbox" /><span /></label></header>
+      <footer><button className="button--danger" onClick={onDelete} type="button">{t('core.common.itemCard.delete')}</button><button className="button--primary-soft" onClick={onEdit} type="button">{t('core.common.itemCard.edit')}</button><button className="button--secondary-soft" onClick={onCopy} type="button">{t('core.common.itemCard.copy')}</button><button className="button--info-soft" disabled={testing} onClick={onTest} type="button">{t('features.provider.models.testButton')}</button></footer>
+      <div aria-hidden="true" className="provider-card__background"><ProviderMark provider={providerName} /></div>
     </article>
   );
 }
