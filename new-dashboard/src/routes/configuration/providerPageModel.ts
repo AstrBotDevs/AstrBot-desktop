@@ -124,12 +124,12 @@ export function sourceFromTemplate(template: JsonObject, existingSources: JsonOb
 }
 
 export function buildModelProvider(sourceId: string, modelName: string, metadata?: JsonObject): JsonObject {
-  const modalities = ['text'];
+  const modalities = metadata ? ['text'] : ['text', 'image', 'audio', 'tool_use'];
   const metadataModalities = objectValue(metadata?.modalities);
   const inputs = Array.isArray(metadataModalities.input) ? metadataModalities.input.map(String) : [];
-  if (inputs.includes('image')) modalities.push('image');
-  if (inputs.includes('audio')) modalities.push('audio');
-  if (metadata?.tool_call) modalities.push('tool_use');
+  if (inputs.includes('image') && !modalities.includes('image')) modalities.push('image');
+  if (inputs.includes('audio') && !modalities.includes('audio')) modalities.push('audio');
+  if (metadata?.tool_call && !modalities.includes('tool_use')) modalities.push('tool_use');
 
   const context = Number(objectValue(metadata?.limit).context || 0);
   return {

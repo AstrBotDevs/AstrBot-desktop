@@ -16,6 +16,7 @@ import {
 } from '@/api/openapi';
 import { ConfigGroup } from '@/components/config/DynamicConfigForm';
 import type { ConfigGroupMetadata } from '@/components/config/configFormModel';
+import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { confirmAction, toast } from '@/stores/feedback';
 import { JsonConfigDialog, LoadingState } from './ConfigurationUi';
@@ -60,6 +61,10 @@ export default function ProviderPage() {
   const [savingProvider, setSavingProvider] = useState(false);
   const [editingProvider, setEditingProvider] = useState<JsonObject | null>(null);
   const [providerJson, setProviderJson] = useState('{}');
+  const [manualModelOpen, setManualModelOpen] = useState(false);
+  const [manualModelId, setManualModelId] = useState('');
+  const [modelEditor, setModelEditor] = useState<JsonObject | null>(null);
+  const [modelEditorOriginalId, setModelEditorOriginalId] = useState('');
 
   const load = useCallback(async (preferredSourceId = '') => {
     setLoading(true);
@@ -146,6 +151,22 @@ export default function ProviderPage() {
       },
     } as ConfigGroupMetadata;
   }, [providerSourceSchema, t]);
+  const modelFieldMetadata = useMemo(() => {
+    const metadata = cloneObject(providerSourceSchema);
+    const items = isObject(metadata.items) ? metadata.items : {};
+    const hiddenKeys = ['id', 'model'];
+    if (String(selectedSource?.type || '') === 'googlegenai_chat_completion') hiddenKeys.push('custom_extra_body');
+    const nextItems = Object.fromEntries(Object.entries(items).map(([key, value]) => [
+      key,
+      hiddenKeys.includes(key) && isObject(value) ? { ...value, invisible: true } : value,
+    ]));
+    for (const key of hiddenKeys) {
+      const item = isObject(nextItems[key]) ? nextItems[key] as JsonObject : {};
+      nextItems[key] = { ...item, invisible: true };
+    }
+    metadata.items = nextItems;
+    return metadata as ConfigGroupMetadata;
+  }, [providerSourceSchema, selectedSource]);
 
   const mergedModels = useMemo(() => {
     const configured = new Set(sourceProviders.map((provider) => String(provider.model || '')));
@@ -253,15 +274,54 @@ export default function ProviderPage() {
     }
   };
 
-  const addAvailableModel = async (model: string, metadata?: JsonObject) => {
+  const openModelEditor = (config: JsonObject, originalId = '') => {
+    setModelEditor(cloneObject(config));
+    setModelEditorOriginalId(originalId);
+  };
+
+  const openManualModel = () => {
     if (!selectedSourceId) return;
-    const config = buildModelProvider(selectedSourceId, model, metadata);
+    setManualModelId('');
+    setManualModelOpen(true);
+  };
+
+  const confirmManualModel = () => {
+    const model = manualModelId.trim();
+    if (!model) {
+      toast.warning(t('features.provider.models.manualModelRequired'));
+      return;
+    }
+    if (sourceProviders.some((provider) => String(provider.model || '') === model)) {
+      toast.warning(t('features.provider.models.manualModelExists'));
+      return;
+    }
+    setManualModelOpen(false);
+    openModelEditor(buildModelProvider(selectedSourceId, model));
+  };
+
+  const openAvailableModel = (model: string, metadata?: JsonObject) => {
+    if (!selectedSourceId) return;
+    openModelEditor(buildModelProvider(selectedSourceId, model, metadata));
+  };
+
+  const saveModelEditor = async () => {
+    if (!modelEditor) return;
+    const sourceId = String(modelEditor.provider_source_id || selectedSourceId);
+    setSavingProvider(true);
     try {
-      await createProviderInSourceById({ body: { source_id: selectedSourceId, config } });
-      toast.success(t('features.provider.models.addSuccess', { model }));
-      await load(selectedSourceId);
+      if (modelEditorOriginalId) {
+        await updateProviderById({ body: { provider_id: modelEditorOriginalId, config: modelEditor } });
+      } else {
+        await createProviderInSourceById({ body: { source_id: sourceId, config: modelEditor } });
+      }
+      toast.success(t('features.provider.messages.success.add'));
+      setModelEditor(null);
+      setModelEditorOriginalId('');
+      await load(sourceId);
     } catch (cause) {
       toast.error(errorMessage(cause, t('features.provider.providerSources.saveError')));
+    } finally {
+      setSavingProvider(false);
     }
   };
 
@@ -468,7 +528,7 @@ export default function ProviderPage() {
                     <div className="provider-models__actions">
                       <label className="provider-model-search"><MdiIcon name="mdi-magnify" /><input onChange={(event) => setModelSearch(event.target.value)} placeholder={t('features.provider.models.searchPlaceholder')} value={modelSearch} /></label>
                       <button className="provider-button provider-button--pill provider-button--tonal" disabled={loadingModels} onClick={() => void fetchModels()} type="button"><MdiIcon className={loadingModels ? 'is-spinning' : ''} name="mdi-download" />{t(sourceIsDirty ? 'features.provider.providerSources.saveAndFetchModels' : 'features.provider.providerSources.fetchModels')}</button>
-                      <button className="provider-button provider-button--pill provider-button--text" onClick={() => openProvider(null, selectedSourceId)} type="button"><MdiIcon name="mdi-pencil-plus" />{t('features.provider.models.manualAddButton')}</button>
+                      <button className="provider-button provider-button--pill provider-button--text" onClick={openManualModel} type="button"><MdiIcon name="mdi-pencil-plus" />{t('features.provider.models.manualAddButton')}</button>
                     </div>
                   </header>
                   <div className="provider-models__sections">
@@ -479,7 +539,7 @@ export default function ProviderPage() {
                           key={recordId(entry.provider, 'id') || entry.model}
                           metadata={entry.metadata}
                           onDelete={() => void removeProvider(entry.provider!)}
-                          onEdit={() => openProvider(entry.provider!)}
+                          onEdit={() => openModelEditor(entry.provider!, recordId(entry.provider!, 'id', 'provider_id'))}
                           onTest={() => void testProvider(entry.provider!)}
                           onToggle={() => void toggleProvider(entry.provider!)}
                           provider={entry.provider}
@@ -494,7 +554,7 @@ export default function ProviderPage() {
                       <div className="provider-model-list">
                         {unconfiguredModels.map((entry) => <article className="provider-model-row provider-model-row--available" key={`available-${entry.model}`}>
                           <ProviderModelCopy metadata={entry.metadata} model={entry.model} provider={{ model: entry.model }} t={t} />
-                          <button aria-label={t('features.provider.models.configure')} onClick={() => void addAvailableModel(entry.model, entry.metadata ?? (isObject(availableMetadata[entry.model]) ? availableMetadata[entry.model] as JsonObject : undefined))} title={t('features.provider.models.configure')} type="button"><MdiIcon name="mdi-plus" /></button>
+                          <button aria-label={t('features.provider.models.configure')} onClick={() => openAvailableModel(entry.model, entry.metadata ?? (isObject(availableMetadata[entry.model]) ? availableMetadata[entry.model] as JsonObject : undefined))} title={t('features.provider.models.configure')} type="button"><MdiIcon name="mdi-plus" /></button>
                         </article>)}
                         {!unconfiguredModels.length && <div className="provider-model-list__empty provider-model-list__empty--available"><MdiIcon name="mdi-database-search-outline" /><span>{t('features.provider.models.noModelsFound')}</span></div>}
                       </div>
@@ -518,6 +578,59 @@ export default function ProviderPage() {
           {!visibleProviders.length && <div className="provider-type-panel__empty"><MdiIcon name={activeTab.icon} /><p>{t('features.provider.providers.empty.typed', { type: t(`features.provider.providers.tabs.${activeTab.translation}`) })}</p><button onClick={() => openProvider(null)} type="button"><MdiIcon name="mdi-plus" />{t('features.provider.providers.addProvider')}</button></div>}
         </section>
       )}
+
+      <Dialog
+        onOpenChange={setManualModelOpen}
+        open={manualModelOpen}
+        title={t('features.provider.models.manualDialogTitle')}
+      >
+        <form className="provider-manual-model-dialog" onSubmit={(event) => { event.preventDefault(); confirmManualModel(); }}>
+          <label>
+            <span>{t('features.provider.models.manualDialogModelLabel')}</span>
+            <input autoFocus onChange={(event) => setManualModelId(event.target.value)} value={manualModelId} />
+          </label>
+          <label>
+            <span>{t('features.provider.models.manualDialogPreviewLabel')}</span>
+            <input readOnly value={manualModelId.trim() ? `${selectedSourceId}/${manualModelId.trim()}` : ''} />
+            <small>{t('features.provider.models.manualDialogPreviewHint')}</small>
+          </label>
+          <footer>
+            <button onClick={() => setManualModelOpen(false)} type="button">{t('core.common.cancel')}</button>
+            <button className="provider-dialog-button--primary" disabled={!manualModelId.trim()} type="submit">{t('core.common.add')}</button>
+          </footer>
+        </form>
+      </Dialog>
+
+      <Dialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setModelEditor(null);
+            setModelEditorOriginalId('');
+          }
+        }}
+        open={modelEditor !== null}
+        title={`${t(modelEditorOriginalId ? 'features.provider.dialogs.config.editTitle' : 'features.provider.dialogs.config.addTitle')}${modelEditor ? ` · ${recordId(modelEditor, 'id')}` : ''}`}
+      >
+        {modelEditor && (
+          <div className="provider-model-editor-dialog">
+            <div className="provider-model-editor-dialog__body">
+              <ConfigGroup
+                conditionValue={modelEditor}
+                fieldsFromValue
+                metadata={modelFieldMetadata}
+                onChange={(next) => setModelEditor(next)}
+                translationPath="provider"
+                value={modelEditor}
+                variant="inline"
+              />
+            </div>
+            <footer>
+              <button onClick={() => setModelEditor(null)} type="button">{t('core.common.cancel')}</button>
+              <button className="provider-dialog-button--primary" disabled={savingProvider} onClick={() => void saveModelEditor()} type="button">{savingProvider ? '…' : t('features.provider.dialogs.config.save')}</button>
+            </footer>
+          </div>
+        )}
+      </Dialog>
 
       <JsonConfigDialog busy={savingProvider} onChange={setProviderJson} onOpenChange={(open) => !open && setEditingProvider(null)} onSave={() => void saveProvider()} open={editingProvider !== null} title={recordId(editingProvider ?? {}, 'id') ? t('features.provider.dialogs.config.editTitle') : t('features.provider.dialogs.config.addTitle')} value={providerJson} />
     </div>

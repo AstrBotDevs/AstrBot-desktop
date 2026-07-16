@@ -54,4 +54,13 @@ describe('provider page model', () => {
     expect(provider.modalities).toEqual(['text', 'image', 'tool_use']);
     expect(formatContextLimit(provider)).toBe('128K');
   });
+
+  it('keeps every manually configurable capability for a custom model', () => {
+    expect(buildModelProvider('openai', 'custom-model')).toMatchObject({
+      id: 'openai/custom-model',
+      model: 'custom-model',
+      modalities: ['text', 'image', 'audio', 'tool_use'],
+      provider_source_id: 'openai',
+    });
+  });
 });
