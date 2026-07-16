@@ -53,14 +53,19 @@
     "defaultPersona": "Default Persona",
     "buttonText": "Select Persona...",
     "dialogTitle": "Select Persona",
+    "loading": "Loading...",
     "noDescription": "No description",
     "noPersonas": "No personas available",
     "createPersona": "Create New Persona",
+    "editPersona": "Edit Persona",
     "cancelSelection": "Cancel",
     "confirmSelection": "Confirm Selection",
     "selectPersonaPool": "Select Persona Pool...",
     "rootFolder": "All Personas",
-    "emptyFolder": "This folder is empty"
+    "emptyFolder": "This folder is empty",
+    "folders": "Folders",
+    "subfolders": "Subfolders",
+    "availableItems": "Available items"
   },
   "personaQuickPreview": {
     "title": "Quick Persona Preview",

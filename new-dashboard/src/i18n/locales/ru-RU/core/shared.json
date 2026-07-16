@@ -54,6 +54,7 @@
         "buttonText": "Выбрать персонажа...",
         "editPersona": "Изменить текущего персонажа",
         "dialogTitle": "Выбор персонажа",
+        "loading": "Загрузка...",
         "noDescription": "Нет описания",
         "noPersonas": "Доступных персонажей нет",
         "createPersona": "Создать персонажа",
@@ -61,7 +62,10 @@
         "confirmSelection": "ОК",
         "selectPersonaPool": "Выбрать пул персонажей...",
         "rootFolder": "Все персонажи",
-        "emptyFolder": "Папка пуста"
+        "emptyFolder": "Папка пуста",
+        "folders": "Папки",
+        "subfolders": "Вложенные папки",
+        "availableItems": "Доступные варианты"
     },
     "personaQuickPreview": {
         "title": "Быстрый просмотр",

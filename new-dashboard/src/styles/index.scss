@@ -1903,6 +1903,195 @@ textarea {
 .config-selector-dialog__list small { color: color-mix(in srgb, var(--astrbot-text) 58%, transparent); font-weight: 400; }
 .config-selector-dialog__list .mdi-check-circle { color: var(--astrbot-primary); }
 .headless-dialog__content:has(.config-selector-dialog) { width: min(600px, calc(100vw - 32px)); }
+.headless-dialog__content:has(.config-persona-selector) {
+  width: min(1000px, calc(100vw - 32px));
+  height: min(720px, calc(100vh - 32px));
+  overflow: hidden;
+  padding: 0;
+}
+.headless-dialog__content:has(.config-persona-selector) > .headless-dialog__title {
+  display: flex;
+  height: 68px;
+  align-items: center;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--astrbot-border);
+  font-size: 25px;
+}
+.headless-dialog__content:has(.config-persona-selector) > .headless-dialog__title::before {
+  width: 34px;
+  height: 34px;
+  margin-right: 13px;
+  border-radius: 50%;
+  background: var(--astrbot-primary);
+  color: #fff;
+  content: '●';
+  font-size: 13px;
+  line-height: 34px;
+  text-align: center;
+}
+.config-persona-selector {
+  display: grid;
+  height: calc(100% - 68px);
+  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) 68px;
+}
+.config-persona-selector__sidebar {
+  min-width: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--astrbot-border);
+}
+.config-persona-selector__sidebar > header {
+  display: flex;
+  height: 52px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--astrbot-border);
+  color: color-mix(in srgb, var(--astrbot-text) 58%, transparent);
+  font-size: 14px;
+}
+.config-persona-selector__sidebar nav { height: calc(100% - 52px); overflow: auto; padding: 10px; }
+.config-persona-selector__sidebar nav > button,
+.config-persona-selector__tree button {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.config-persona-selector__sidebar button:hover,
+.config-persona-selector__sidebar button.is-active {
+  background: color-mix(in srgb, var(--astrbot-primary) 13%, transparent);
+  color: var(--astrbot-primary);
+}
+.config-persona-selector__sidebar button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.config-persona-selector__tree,
+.config-persona-selector__tree ul { margin: 0; padding: 0; list-style: none; }
+.config-persona-selector__content { display: flex; min-width: 0; flex-direction: column; overflow: hidden; }
+.config-persona-selector__breadcrumbs {
+  display: flex;
+  min-height: 52px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  overflow-x: auto;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--astrbot-border);
+  white-space: nowrap;
+}
+.config-persona-selector__breadcrumbs span { display: inline-flex; align-items: center; gap: 3px; }
+.config-persona-selector__breadcrumbs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--astrbot-text) 60%, transparent);
+  cursor: pointer;
+}
+.config-persona-selector__breadcrumbs button:hover { color: var(--astrbot-primary); }
+.config-persona-selector__list { min-height: 0; flex: 1; overflow: auto; padding: 16px; }
+.config-persona-selector__list section + section { margin-top: 20px; }
+.config-persona-selector__list h3 {
+  margin: 0 0 8px;
+  color: color-mix(in srgb, var(--astrbot-text) 58%, transparent);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.config-persona-selector__folder,
+.config-persona-selector__persona {
+  display: flex;
+  width: 100%;
+  min-height: 58px;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 13px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.config-persona-selector__folder:hover,
+.config-persona-selector__persona:hover { background: color-mix(in srgb, var(--astrbot-primary) 6%, transparent); }
+.config-persona-selector__persona.is-active {
+  border-color: color-mix(in srgb, var(--astrbot-primary) 28%, transparent);
+  background: color-mix(in srgb, var(--astrbot-primary) 12%, transparent);
+}
+.config-persona-selector__folder > .mdi:first-child { color: #e2a52b; font-size: 25px; }
+.config-persona-selector__persona > .mdi:first-child { color: color-mix(in srgb, var(--astrbot-text) 55%, transparent); font-size: 22px; }
+.config-persona-selector__persona.is-active > .mdi:first-child { color: var(--astrbot-primary); }
+.config-persona-selector__folder > span,
+.config-persona-selector__persona > span:not(.config-persona-selector__item-actions) { display: grid; min-width: 0; flex: 1; gap: 3px; }
+.config-persona-selector__folder small,
+.config-persona-selector__persona small {
+  overflow: hidden;
+  color: color-mix(in srgb, var(--astrbot-text) 55%, transparent);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.config-persona-selector__persona .mdi-check-circle { color: var(--astrbot-primary); font-size: 22px; }
+.config-persona-selector__item-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; }
+.config-persona-selector__item-actions [role='button'] {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  opacity: 0;
+  place-items: center;
+}
+.config-persona-selector__persona:hover .config-persona-selector__item-actions [role='button'],
+.config-persona-selector__persona:focus-within .config-persona-selector__item-actions [role='button'] { opacity: 1; }
+.config-persona-selector__item-actions [role='button']:hover { background: color-mix(in srgb, var(--astrbot-text) 9%, transparent); }
+.config-persona-selector__state { display: flex; min-height: 120px; align-items: center; justify-content: center; gap: 8px; color: color-mix(in srgb, var(--astrbot-text) 55%, transparent); }
+.config-persona-selector > footer {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--astrbot-border);
+}
+.config-persona-selector > footer > span { flex: 1; }
+.config-persona-selector > footer button {
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid var(--astrbot-border);
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.config-persona-selector > footer button:disabled { cursor: default; opacity: .45; }
+.config-persona-selector > footer .config-persona-selector__create { display: inline-flex; align-items: center; gap: 7px; border-color: transparent; color: var(--astrbot-primary); }
+.config-persona-selector > footer .button--primary { border-color: var(--astrbot-primary); background: var(--astrbot-primary); color: #fff; }
+@media (max-width: 760px) {
+  .headless-dialog__content:has(.config-persona-selector) { height: min(760px, calc(100vh - 20px)); }
+  .config-persona-selector { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; }
+  .config-persona-selector__sidebar { border-right: 0; border-bottom: 1px solid var(--astrbot-border); }
+  .config-persona-selector__sidebar > header { display: none; }
+  .config-persona-selector__sidebar nav { display: flex; height: auto; max-height: 120px; gap: 5px; overflow: auto; padding: 8px 12px; }
+  .config-persona-selector__sidebar nav > button,
+  .config-persona-selector__tree button { width: auto; white-space: nowrap; }
+  .config-persona-selector__tree,
+  .config-persona-selector__tree ul { display: flex; }
+  .config-persona-selector > footer { grid-column: 1; padding: 10px 12px; }
+  .config-persona-selector__create { font-size: 0; }
+  .config-persona-selector__create .mdi { font-size: 20px; }
+}
 .persona-quick-preview { display: grid; gap: 7px; margin: 0 12px 12px; padding: 12px; border: 1px solid color-mix(in srgb, var(--astrbot-primary) 10%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--astrbot-primary) 5%, var(--astrbot-surface)); }
 .persona-quick-preview > small:first-child { font-weight: 650; }
 .persona-quick-preview > p { margin: 0; color: color-mix(in srgb, var(--astrbot-text) 55%, transparent); font-size: 12px; }
