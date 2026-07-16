@@ -164,6 +164,8 @@ export default function ProviderPage() {
     return entries.filter((entry) => entry.model.toLowerCase().includes(query)
       || String(entry.provider?.id || '').toLowerCase().includes(query));
   }, [availableModels, modelMetadata, modelSearch, sourceProviders]);
+  const configuredModels = useMemo(() => mergedModels.filter((entry) => entry.configured), [mergedModels]);
+  const unconfiguredModels = useMemo(() => mergedModels.filter((entry) => !entry.configured), [mergedModels]);
 
   const selectSource = (source: JsonObject) => setSelectedSourceId(recordId(source, 'id'));
 
@@ -425,7 +427,7 @@ export default function ProviderPage() {
                 <header className="provider-source-config__header">
                   <div><h2>{recordId(editableSource, 'id')}</h2><p>{String(editableSource.api_base || editableSource.provider || '')}</p></div>
                   <div className="provider-source-config__actions">
-                    <button className="button--primary" disabled={!sourceIsDirty || savingSource} onClick={() => void saveEditableSource()} type="button"><MdiIcon name="mdi-content-save-outline" />{savingSource ? '…' : t('features.provider.providerSources.save')}</button>
+                    <button className="provider-button provider-button--pill provider-button--tonal" disabled={!sourceIsDirty || savingSource} onClick={() => void saveEditableSource()} type="button"><MdiIcon name="mdi-content-save-outline" />{savingSource ? '…' : t('features.provider.providerSources.save')}</button>
                   </div>
                 </header>
 
@@ -462,33 +464,41 @@ export default function ProviderPage() {
 
                 <section className="provider-models">
                   <header className="provider-models__header">
-                    <div><h3>{t('features.provider.models.title')}</h3><p>{t('features.provider.models.configured')} · {sourceProviders.length}</p></div>
+                    <div><h3>{t('features.provider.models.title')}</h3><p>{t('features.provider.models.available')} {availableModels.length}</p></div>
                     <div className="provider-models__actions">
-                      <button disabled={loadingModels} onClick={() => void fetchModels()} type="button"><MdiIcon className={loadingModels ? 'is-spinning' : ''} name="mdi-download-outline" />{t('features.provider.providerSources.fetchModels')}</button>
-                      <button onClick={() => openProvider(null, selectedSourceId)} type="button"><MdiIcon name="mdi-plus" />{t('features.provider.models.manualAddButton')}</button>
+                      <label className="provider-model-search"><MdiIcon name="mdi-magnify" /><input onChange={(event) => setModelSearch(event.target.value)} placeholder={t('features.provider.models.searchPlaceholder')} value={modelSearch} /></label>
+                      <button className="provider-button provider-button--pill provider-button--tonal" disabled={loadingModels} onClick={() => void fetchModels()} type="button"><MdiIcon className={loadingModels ? 'is-spinning' : ''} name="mdi-download" />{t(sourceIsDirty ? 'features.provider.providerSources.saveAndFetchModels' : 'features.provider.providerSources.fetchModels')}</button>
+                      <button className="provider-button provider-button--pill provider-button--text" onClick={() => openProvider(null, selectedSourceId)} type="button"><MdiIcon name="mdi-pencil-plus" />{t('features.provider.models.manualAddButton')}</button>
                     </div>
                   </header>
-                  <label className="provider-model-search"><MdiIcon name="mdi-magnify" /><input onChange={(event) => setModelSearch(event.target.value)} placeholder={t('features.provider.models.searchPlaceholder')} value={modelSearch} /></label>
-                  <div className="provider-model-list">
-                    {mergedModels.map((entry) => entry.configured && entry.provider ? (
-                      <ProviderRow
-                        key={recordId(entry.provider, 'id') || entry.model}
-                        metadata={entry.metadata}
-                        onDelete={() => void removeProvider(entry.provider!)}
-                        onEdit={() => openProvider(entry.provider!)}
-                        onTest={() => void testProvider(entry.provider!)}
-                        onToggle={() => void toggleProvider(entry.provider!)}
-                        provider={entry.provider}
-                        testing={testing === recordId(entry.provider, 'id')}
-                        t={t}
-                      />
-                    ) : (
-                      <article className="provider-model-row provider-model-row--available" key={`available-${entry.model}`}>
-                        <ProviderModelCopy metadata={entry.metadata} model={entry.model} provider={{ model: entry.model }} t={t} />
-                        <button onClick={() => void addAvailableModel(entry.model, entry.metadata ?? (isObject(availableMetadata[entry.model]) ? availableMetadata[entry.model] as JsonObject : undefined))} type="button"><MdiIcon name="mdi-plus" />{t('features.provider.models.configure')}</button>
-                      </article>
-                    ))}
-                    {!mergedModels.length && <div className="provider-model-list__empty"><MdiIcon name="mdi-package-variant-closed" /><span>{t('features.provider.models.empty')}</span></div>}
+                  <div className="provider-models__sections">
+                    <section className="provider-model-section">
+                      <div className="provider-model-section__heading"><h4>{t('features.provider.models.configured')}</h4><span>{configuredModels.length}</span></div>
+                      <div className="provider-model-list">
+                        {configuredModels.map((entry) => entry.provider && <ProviderRow
+                          key={recordId(entry.provider, 'id') || entry.model}
+                          metadata={entry.metadata}
+                          onDelete={() => void removeProvider(entry.provider!)}
+                          onEdit={() => openProvider(entry.provider!)}
+                          onTest={() => void testProvider(entry.provider!)}
+                          onToggle={() => void toggleProvider(entry.provider!)}
+                          provider={entry.provider}
+                          testing={testing === recordId(entry.provider, 'id')}
+                          t={t}
+                        />)}
+                        {!configuredModels.length && <div className="provider-model-list__empty"><MdiIcon name="mdi-package-variant-closed" /><span>{t('features.provider.models.empty')}</span></div>}
+                      </div>
+                    </section>
+                    <section className="provider-model-section">
+                      <div className="provider-model-section__heading"><h4>{t('features.provider.models.available')}</h4><span>{unconfiguredModels.length}</span></div>
+                      <div className="provider-model-list">
+                        {unconfiguredModels.map((entry) => <article className="provider-model-row provider-model-row--available" key={`available-${entry.model}`}>
+                          <ProviderModelCopy metadata={entry.metadata} model={entry.model} provider={{ model: entry.model }} t={t} />
+                          <button aria-label={t('features.provider.models.configure')} onClick={() => void addAvailableModel(entry.model, entry.metadata ?? (isObject(availableMetadata[entry.model]) ? availableMetadata[entry.model] as JsonObject : undefined))} title={t('features.provider.models.configure')} type="button"><MdiIcon name="mdi-plus" /></button>
+                        </article>)}
+                        {!unconfiguredModels.length && <div className="provider-model-list__empty provider-model-list__empty--available"><MdiIcon name="mdi-database-search-outline" /><span>{t('features.provider.models.noModelsFound')}</span></div>}
+                      </div>
+                    </section>
                   </div>
                 </section>
               </div>

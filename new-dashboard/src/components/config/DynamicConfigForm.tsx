@@ -38,6 +38,55 @@ function JsonControl({ disabled, onChange, value }: { disabled?: boolean; onChan
   return <textarea aria-invalid={invalid} className="dynamic-config__json" disabled={disabled} onBlur={apply} onChange={(event) => setSource(event.target.value)} rows={5} value={source} />;
 }
 
+function ObjectControl({ disabled, onChange, value }: { disabled?: boolean; onChange: (value: unknown) => void; value: ConfigRecord }) {
+  const { t } = useTranslation();
+  const serialized = useMemo(() => JSON.stringify(value, null, 2), [value]);
+  const [open, setOpen] = useState(false);
+  const [source, setSource] = useState(serialized);
+  const [invalid, setInvalid] = useState(false);
+  const keys = Object.keys(value);
+
+  useEffect(() => {
+    if (!open) {
+      setSource(serialized);
+      setInvalid(false);
+    }
+  }, [open, serialized]);
+
+  const showDialog = () => {
+    setSource(serialized);
+    setInvalid(false);
+    setOpen(true);
+  };
+  const save = () => {
+    try {
+      const parsed: unknown = JSON.parse(source);
+      if (!isConfigRecord(parsed)) throw new Error('Expected an object.');
+      onChange(parsed);
+      setInvalid(false);
+      setOpen(false);
+    } catch {
+      setInvalid(true);
+    }
+  };
+
+  return <div className="dynamic-object">
+    <div className="dynamic-object__preview">
+      {keys.length
+        ? <><span>{keys[0]}</span>{keys.length > 1 && <span>+{keys.length - 1}</span>}</>
+        : <em>{t('core.common.objectEditor.noItems')}</em>}
+    </div>
+    {!disabled && <button className="dynamic-object__manage" onClick={showDialog} type="button">{t('core.common.list.modifyButton')}</button>}
+    <Dialog description={t('core.common.objectEditor.placeholders.jsonValue')} onOpenChange={setOpen} open={open} title={t('core.common.objectEditor.dialogTitle')}>
+      <div className="dynamic-object-dialog">
+        <textarea aria-invalid={invalid} onChange={(event) => setSource(event.target.value)} rows={12} value={source} />
+        {invalid && <p role="alert">{t('core.common.objectEditor.invalidJson')}</p>}
+        <div className="dialog-actions"><button onClick={() => setOpen(false)} type="button">{t('core.common.cancel')}</button><button className="button--primary" onClick={save} type="button">{t('core.common.confirm')}</button></div>
+      </div>
+    </Dialog>
+  </div>;
+}
+
 function StringListControl({ disabled, onChange, value }: { disabled?: boolean; onChange: (value: unknown) => void; value: string[] }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -117,7 +166,11 @@ function ConfigControl({ metadata, onChange, value }: { metadata: ConfigItemMeta
     return <StringListControl disabled={disabled} onChange={onChange} value={Array.isArray(value) ? value as string[] : []} />;
   }
 
-  if (type === 'list' || type === 'dict' || type === 'object' || type === 'template_list' || Array.isArray(value) || isConfigRecord(value)) {
+  if (type === 'dict' || type === 'object' || isConfigRecord(value)) {
+    return <ObjectControl disabled={disabled} onChange={onChange} value={isConfigRecord(value) ? value : {}} />;
+  }
+
+  if (type === 'list' || type === 'template_list' || Array.isArray(value)) {
     return <JsonControl disabled={disabled} onChange={onChange} value={value ?? (type === 'list' ? [] : {})} />;
   }
 
