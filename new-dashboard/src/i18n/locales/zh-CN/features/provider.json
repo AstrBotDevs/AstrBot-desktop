@@ -124,6 +124,23 @@
       "proxy": "代理地址"
     }
   },
+  "agentRunnerTest": {
+    "title": "请前往「配置文件」页测试 Agent 执行器",
+    "description": "Agent 执行器的测试请在「配置文件」页进行。",
+    "steps": {
+      "openConfig": "找到对应的配置文件并打开。",
+      "selectRunner": "找到 Agent 执行方式部分，修改执行器后点击保存。",
+      "openChat": "点击右下角的聊天按钮进行测试。"
+    },
+    "hint": "要让机器人应用这个 Agent 执行器，也需要在配置文件中修改 Agent 执行器。",
+    "goToConfig": "点击前往"
+  },
+  "embeddingDimension": {
+    "missingId": "缺少提供商 ID",
+    "invalidResponse": "未获取到有效的嵌入维度",
+    "success": "获取成功：{dimension}",
+    "error": "获取嵌入维度失败"
+  },
   "models": {
     "title": "模型",
     "available": "可用模型",

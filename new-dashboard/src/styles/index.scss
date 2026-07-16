@@ -1731,6 +1731,17 @@ textarea {
 .provider-card__background .provider-mark,
 .provider-card__background .provider-mark img { width: 120px; height: 120px; border-radius: 0; }
 .provider-card__background .provider-mark .mdi { font-size: 112px; }
+.dynamic-config__embedding-dimension { display: flex; width: 100%; align-items: center; gap: 10px; }
+.dynamic-config__embedding-dimension > input { min-width: 0; flex: 1; }
+.dynamic-config__embedding-dimension > button { display: inline-flex; min-height: 38px; flex: 0 0 auto; align-items: center; gap: 6px; padding: 0 14px; border: 0; border-radius: 8px; cursor: pointer; }
+.dynamic-config__embedding-dimension > button:disabled { cursor: not-allowed; opacity: .55; }
+.dynamic-config__embedding-dimension > button .mdi-loading { animation: provider-spin .8s linear infinite; }
+.provider-agent-runner-help { display: grid; gap: 16px; min-width: min(440px, calc(100vw - 64px)); }
+.provider-agent-runner-help ol { display: grid; gap: 8px; margin: 0; padding-left: 22px; color: color-mix(in srgb, var(--astrbot-text) 72%, transparent); }
+.provider-agent-runner-help p { margin: 0; color: color-mix(in srgb, var(--astrbot-text) 62%, transparent); }
+.provider-agent-runner-help footer { display: flex; justify-content: flex-end; gap: 8px; }
+.provider-agent-runner-help footer button,
+.provider-agent-runner-help footer a { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; color: inherit; text-decoration: none; cursor: pointer; }
 .provider-type-panel__empty { min-height: 440px; flex-direction: column; gap: 12px; }
 .provider-type-panel__empty > .mdi { font-size: 44px; }
 .provider-type-panel__empty p { max-width: 430px; margin: 0; }

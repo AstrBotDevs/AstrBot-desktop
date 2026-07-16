@@ -123,6 +123,23 @@
       "proxy": "Proxy"
     }
   },
+  "agentRunnerTest": {
+    "title": "Test the Agent runner from Config Files",
+    "description": "Agent runners are tested through a configuration profile.",
+    "steps": {
+      "openConfig": "Open the corresponding configuration profile.",
+      "selectRunner": "Select the Agent runner and save the profile.",
+      "openChat": "Open Chat from the bottom-right button to test it."
+    },
+    "hint": "The Agent runner must also be selected in the configuration profile before the bot can use it.",
+    "goToConfig": "Go to Config Files"
+  },
+  "embeddingDimension": {
+    "missingId": "Provider ID is required",
+    "invalidResponse": "No valid embedding dimension was returned",
+    "success": "Embedding dimension detected: {dimension}",
+    "error": "Failed to detect the embedding dimension"
+  },
   "models": {
     "title": "Models",
     "available": "Available Models",

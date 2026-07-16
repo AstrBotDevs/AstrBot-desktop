@@ -44,4 +44,33 @@ describe('DynamicConfigForm', () => {
     expect(markup).toContain('BLOCK_MEDIUM_AND_ABOVE');
     expect(markup).not.toContain('dynamic-object__manage');
   });
+
+  it('renders the embedding dimension detector for special metadata', () => {
+    const markup = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <ConfigGroup
+          fieldsFromValue
+          metadata={{
+            type: 'object',
+            items: {
+              embedding_dimensions: {
+                _special: 'get_embedding_dim',
+                description: 'Embedding dimensions',
+                type: 'int',
+              },
+            },
+          }}
+          onChange={() => undefined}
+          onGetEmbeddingDimension={() => undefined}
+          translationPath="provider"
+          value={{ embedding_dimensions: 768 }}
+          variant="inline"
+        />
+      </I18nextProvider>,
+    );
+
+    expect(markup).toContain('dynamic-config__embedding-dimension');
+    expect(markup).toContain('type="number"');
+    expect(markup).toContain('768');
+  });
 });

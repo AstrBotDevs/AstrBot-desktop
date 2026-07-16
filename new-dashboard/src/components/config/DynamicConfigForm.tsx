@@ -259,10 +259,29 @@ function StringListControl({ disabled, onChange, value }: { disabled?: boolean; 
   </div>;
 }
 
-function ConfigControl({ metadata, onChange, value }: { metadata: ConfigItemMetadata; onChange: (value: unknown) => void; value: unknown }) {
+function ConfigControl({ embeddingDimensionLoading, metadata, onChange, onGetEmbeddingDimension, value }: {
+  embeddingDimensionLoading?: boolean;
+  metadata: ConfigItemMetadata;
+  onChange: (value: unknown) => void;
+  onGetEmbeddingDimension?: () => void;
+  value: unknown;
+}) {
+  const { t } = useTranslation();
   const type = metadata.type ?? (typeof value === 'boolean' ? 'bool' : typeof value === 'number' ? 'float' : 'string');
   const disabled = metadata.readonly;
   const labels = Array.isArray(metadata.labels) ? metadata.labels : [];
+
+  if (metadata._special === 'get_embedding_dim') {
+    return (
+      <div className="dynamic-config__embedding-dimension">
+        <input disabled={disabled} onChange={(event) => onChange(event.target.value === '' ? 0 : Number(event.target.value))} step={1} type="number" value={typeof value === 'number' ? value : 0} />
+        <button className="button--primary-soft" disabled={disabled || embeddingDimensionLoading} onClick={onGetEmbeddingDimension} type="button">
+          {embeddingDimensionLoading && <MdiIcon name="mdi-loading" />}
+          {t('core.common.autoDetect')}
+        </button>
+      </div>
+    );
+  }
 
   if (type === 'bool') {
     return <label className="dynamic-switch"><input checked={Boolean(value)} disabled={disabled} onChange={(event) => onChange(event.target.checked)} type="checkbox" /><span className="dynamic-switch__track" /></label>;
@@ -309,9 +328,11 @@ function ConfigControl({ metadata, onChange, value }: { metadata: ConfigItemMeta
 
 type ConfigGroupProps = {
   conditionValue?: ConfigRecord;
+  embeddingDimensionLoading?: boolean;
   fieldsFromValue?: boolean;
   metadata: ConfigGroupMetadata;
   onChange: (value: ConfigRecord) => void;
+  onGetEmbeddingDimension?: () => void;
   resolveText?: TextResolver;
   search?: string;
   title?: string;
@@ -320,7 +341,7 @@ type ConfigGroupProps = {
   variant?: 'default' | 'inline' | 'settings';
 };
 
-export function ConfigGroup({ conditionValue, fieldsFromValue = false, metadata, onChange, resolveText, search = '', title, translationPath, value, variant = 'default' }: ConfigGroupProps) {
+export function ConfigGroup({ conditionValue, embeddingDimensionLoading, fieldsFromValue = false, metadata, onChange, onGetEmbeddingDimension, resolveText, search = '', title, translationPath, value, variant = 'default' }: ConfigGroupProps) {
   const { t } = useTranslation();
   const textResolver = resolveText ?? defaultTextResolver(t);
   const [showCollapsed, setShowCollapsed] = useState(false);
@@ -362,6 +383,8 @@ export function ConfigGroup({ conditionValue, fieldsFromValue = false, metadata,
             fieldsFromValue
             metadata={item as ConfigGroupMetadata}
             onChange={(next) => onChange(setConfigValue(value, key, next))}
+            onGetEmbeddingDimension={onGetEmbeddingDimension}
+            embeddingDimensionLoading={embeddingDimensionLoading}
             resolveText={textResolver}
             translationPath={path}
             value={nestedValue}
@@ -370,7 +393,7 @@ export function ConfigGroup({ conditionValue, fieldsFromValue = false, metadata,
         </section>
       );
     }
-    return <div className="dynamic-config__row" key={key}><div className="dynamic-config__label"><label htmlFor={`config-${translationPath}-${key}`}><span>{label}</span><small>{key}</small></label>{hint && <p>{hint}</p>}</div><div className="dynamic-config__control" id={`config-${translationPath}-${key}`}><ConfigControl metadata={item} onChange={(next) => onChange(setConfigValue(value, key, next))} value={getConfigValue(value, key)} /></div></div>;
+    return <div className="dynamic-config__row" key={key}><div className="dynamic-config__label"><label htmlFor={`config-${translationPath}-${key}`}><span>{label}</span><small>{key}</small></label>{hint && <p>{hint}</p>}</div><div className="dynamic-config__control" id={`config-${translationPath}-${key}`}><ConfigControl embeddingDimensionLoading={embeddingDimensionLoading} metadata={item} onChange={(next) => onChange(setConfigValue(value, key, next))} onGetEmbeddingDimension={onGetEmbeddingDimension} value={getConfigValue(value, key)} /></div></div>;
   };
 
   if (!entries.length) return null;

@@ -6,6 +6,7 @@ import {
   createProviderSource,
   deleteProviderById,
   deleteProviderSourceById,
+  getProviderEmbeddingDimensionById,
   getProviderSchema,
   listProviderSourceModelsById,
   listProviders,
@@ -66,6 +67,8 @@ export default function ProviderPage() {
   const [editingProviderName, setEditingProviderName] = useState('');
   const [providerPickerOpen, setProviderPickerOpen] = useState(false);
   const [providerPickerType, setProviderPickerType] = useState<ProviderType>('agent_runner');
+  const [agentRunnerHelpOpen, setAgentRunnerHelpOpen] = useState(false);
+  const [detectingEmbeddingDimension, setDetectingEmbeddingDimension] = useState(false);
   const [manualModelOpen, setManualModelOpen] = useState(false);
   const [manualModelId, setManualModelId] = useState('');
   const [modelEditor, setModelEditor] = useState<JsonObject | null>(null);
@@ -427,6 +430,10 @@ export default function ProviderPage() {
   const testProvider = async (provider: JsonObject) => {
     const id = recordId(provider, 'id', 'provider_id');
     if (!id) return;
+    if (provider.provider_type === 'agent_runner' || provider.type === 'agent_runner') {
+      setAgentRunnerHelpOpen(true);
+      return;
+    }
     const startedAt = performance.now();
     setTesting(id);
     try {
@@ -439,6 +446,29 @@ export default function ProviderPage() {
       toast.error(errorMessage(cause, t('features.provider.models.testError')));
     } finally {
       setTesting('');
+    }
+  };
+
+  const detectEmbeddingDimension = async () => {
+    if (!editingProvider || detectingEmbeddingDimension) return;
+    const id = recordId(editingProvider, 'id', 'provider_id');
+    if (!id) {
+      toast.error(t('features.provider.embeddingDimension.missingId'));
+      return;
+    }
+    setDetectingEmbeddingDimension(true);
+    try {
+      const data = responseData<JsonObject>(await getProviderEmbeddingDimensionById({
+        body: { provider_id: id, provider_config: editingProvider },
+      }));
+      const dimension = Number(data?.embedding_dimensions);
+      if (!Number.isFinite(dimension) || dimension <= 0) throw new Error(t('features.provider.embeddingDimension.invalidResponse'));
+      setEditingProvider((current) => current ? { ...current, embedding_dimensions: dimension } : current);
+      toast.success(t('features.provider.embeddingDimension.success', { dimension }));
+    } catch (cause) {
+      toast.error(errorMessage(cause, t('features.provider.embeddingDimension.error')));
+    } finally {
+      setDetectingEmbeddingDimension(false);
     }
   };
 
@@ -651,9 +681,11 @@ export default function ProviderPage() {
             <div className="provider-template-editor-dialog__body">
               <ConfigGroup
                 conditionValue={editingProvider}
+                embeddingDimensionLoading={detectingEmbeddingDimension}
                 fieldsFromValue
                 metadata={providerSourceSchema as ConfigGroupMetadata}
                 onChange={setEditingProvider}
+                onGetEmbeddingDimension={() => void detectEmbeddingDimension()}
                 translationPath="provider"
                 value={editingProvider}
                 variant="inline"
@@ -720,6 +752,18 @@ export default function ProviderPage() {
         )}
       </Dialog>
 
+      <Dialog description={t('features.provider.agentRunnerTest.description')} onOpenChange={setAgentRunnerHelpOpen} open={agentRunnerHelpOpen} title={t('features.provider.agentRunnerTest.title')}>
+        <div className="provider-agent-runner-help">
+          <ol>
+            <li>{t('features.provider.agentRunnerTest.steps.openConfig')}</li>
+            <li>{t('features.provider.agentRunnerTest.steps.selectRunner')}</li>
+            <li>{t('features.provider.agentRunnerTest.steps.openChat')}</li>
+          </ol>
+          <p>{t('features.provider.agentRunnerTest.hint')}</p>
+          <footer><button onClick={() => setAgentRunnerHelpOpen(false)} type="button">{t('core.common.confirm')}</button><a className="button--primary" href="/config">{t('features.provider.agentRunnerTest.goToConfig')}</a></footer>
+        </div>
+      </Dialog>
+
     </div>
   );
 }
@@ -779,7 +823,7 @@ function ProviderCard({ onCopy, onDelete, onEdit, onTest, onToggle, provider, t,
   return (
     <article className="provider-card">
       <header><h3 title={recordId(provider, 'id')}>{recordId(provider, 'id')}</h3><label className="provider-switch" title={enabled ? t('core.common.itemCard.enabled') : t('core.common.itemCard.disabled')}><input checked={enabled} onChange={onToggle} type="checkbox" /><span /></label></header>
-      <footer><button className="button--danger" onClick={onDelete} type="button">{t('core.common.itemCard.delete')}</button><button className="button--primary-soft" onClick={onEdit} type="button">{t('core.common.itemCard.edit')}</button><button className="button--secondary-soft" onClick={onCopy} type="button">{t('core.common.itemCard.copy')}</button><button className="button--info-soft" disabled={testing} onClick={onTest} type="button">{t('features.provider.models.testButton')}</button></footer>
+      <footer><button className="button--danger" onClick={onDelete} type="button">{t('core.common.itemCard.delete')}</button><button className="button--primary-soft" onClick={onEdit} type="button">{t('core.common.itemCard.edit')}</button><button className="button--secondary-soft" onClick={onCopy} type="button">{t('core.common.itemCard.copy')}</button><button className="button--info-soft" disabled={testing} onClick={onTest} type="button">{t('features.provider.availability.test')}</button></footer>
       <div aria-hidden="true" className="provider-card__background"><ProviderMark provider={providerName} /></div>
     </article>
   );
