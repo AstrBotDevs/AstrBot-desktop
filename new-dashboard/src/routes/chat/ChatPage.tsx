@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import {
+  addChatProjectSession,
   createChatProject,
   createChatSession,
   deleteChatProject,
@@ -71,6 +72,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   });
   const [projectSessions, setProjectSessions] = useState<Record<string, ChatSession[]>>({});
   const [loadingProjectIds, setLoadingProjectIds] = useState<Set<string>>(new Set());
+  const [selectedProjectId, setSelectedProjectId] = useState('');
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<JsonObject | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState('');
@@ -109,9 +111,18 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const settingsMenuRef = useRef<HTMLDetailsElement>(null);
   const settingsSubmenuTimer = useRef<number | null>(null);
   const messageScrollFrame = useRef<number | null>(null);
+  const messageLoadRequestRef = useRef(0);
   const messageEnd = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const current = useMemo(() => sessions.find((item) => item.session_id === conversationId), [conversationId, sessions]);
+  const current = useMemo(
+    () => sessions.find((item) => item.session_id === conversationId)
+      || Object.values(projectSessions).flat().find((item) => item.session_id === conversationId),
+    [conversationId, projectSessions, sessions],
+  );
+  const selectedProject = useMemo(
+    () => projects.find((project) => recordId(project, 'project_id', 'id') === selectedProjectId),
+    [projects, selectedProjectId],
+  );
   const currentConfig = useMemo(() => configs.find((config) => recordId(config, 'id', 'conf_id') === configId), [configId, configs]);
   const currentProvider = useMemo(() => providers.find((item) => item.id === provider) || providers[0], [provider, providers]);
   const currentLanguage = chatLanguageOptions.find((item) => item.code === i18n.language) || chatLanguageOptions[0];
@@ -209,6 +220,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   }, [provider]);
 
   const loadMessages = useCallback(async () => {
+    const requestId = ++messageLoadRequestRef.current;
     if (!conversationId) {
       setMessages([]);
       setLoading(false);
@@ -219,12 +231,14 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     try {
       const data = unwrap<JsonObject>(await getChatSession({ path: { session_id: conversationId } }));
       const history = Array.isArray(data?.history) ? data.history : Array.isArray(data?.messages) ? data.messages : [];
-      setMessages(history.map(normalizeRecord));
+      if (requestId === messageLoadRequestRef.current) setMessages(history.map(normalizeRecord));
     } catch (cause) {
-      setError(errorMessage(cause, 'Failed to load conversation.'));
-      setMessages([]);
+      if (requestId === messageLoadRequestRef.current) {
+        setError(errorMessage(cause, 'Failed to load conversation.'));
+        setMessages([]);
+      }
     } finally {
-      setLoading(false);
+      if (requestId === messageLoadRequestRef.current) setLoading(false);
     }
   }, [conversationId]);
 
@@ -246,6 +260,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   }, [expandedProjectIds, loadProjectSessions, loadingProjectIds, projectSessions, projects]);
 
   useEffect(() => {
+    if (conversationId) setSelectedProjectId('');
     if (pendingLocalSessionRef.current === conversationId) {
       pendingLocalSessionRef.current = null;
       setLoading(false);
@@ -286,11 +301,16 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     return () => document.removeEventListener('pointerdown', closeSettings);
   }, []);
 
-  const createSession = async () => {
+  const createSession = async (projectId = '') => {
     const data = unwrap<JsonObject>(await createChatSession());
     const id = recordId(data, 'session_id', 'id');
     if (!id) throw new Error('The server did not return a session ID.');
+    if (projectId) {
+      await addChatProjectSession({ path: { project_id: projectId, session_id: id } });
+      await loadProjectSessions(projectId);
+    }
     await loadSessions();
+    setSelectedProjectId('');
     pendingLocalSessionRef.current = id;
     navigate(`${basePath}/${encodeURIComponent(id)}`);
     return id;
@@ -301,6 +321,8 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     audioRecorderRef.current.cancel();
     activeSessionRef.current = '';
     pendingLocalSessionRef.current = null;
+    messageLoadRequestRef.current += 1;
+    setSelectedProjectId('');
     setMessages([]);
     setFiles([]);
     setRecording(false);
@@ -338,6 +360,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       await deleteChatSession({ path: { session_id: session.session_id } });
       if (conversationId === session.session_id) newChat();
       await loadSessions();
+      await Promise.all(Object.keys(projectSessions).map((projectId) => loadProjectSessions(projectId)));
     } catch (cause) {
       toast.error(errorMessage(cause, t('features.chat.batch.requestFailed')));
     }
@@ -349,6 +372,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     try {
       await updateChatSession({ path: { session_id: session.session_id }, body: { display_name: title.trim() } });
       await loadSessions();
+      await Promise.all(Object.keys(projectSessions).map((projectId) => loadProjectSessions(projectId)));
     } catch (cause) {
       toast.error(errorMessage(cause, 'Failed to rename conversation.'));
     }
@@ -405,6 +429,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
         localStorage.setItem('chat.projectExpandedIds', JSON.stringify([...next]));
         return next;
       });
+      if (selectedProjectId === projectId) newChat();
     } catch (cause) {
       toast.error(errorMessage(cause, t('features.chat.project.deleteFailed')));
     } finally {
@@ -433,6 +458,36 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       localStorage.setItem('chat.projectExpandedIds', JSON.stringify([...next]));
       return next;
     });
+  };
+
+  const selectProject = (projectId: string) => {
+    if (!projectId) return;
+    abortRef.current?.abort();
+    audioRecorderRef.current.cancel();
+    activeSessionRef.current = '';
+    pendingLocalSessionRef.current = null;
+    messageLoadRequestRef.current += 1;
+    setSelectedProjectId(projectId);
+    setMessages([]);
+    setLoading(false);
+    setFiles([]);
+    setRecording(false);
+    setSending(false);
+    navigate(basePath);
+    if (!projectSessions[projectId] && !loadingProjectIds.has(projectId)) void loadProjectSessions(projectId);
+    setSidebarOpen(false);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  const selectProjectRow = (projectId: string) => {
+    toggleProject(projectId);
+    selectProject(projectId);
+  };
+
+  const selectSession = (sessionId: string) => {
+    setSelectedProjectId('');
+    navigate(`${basePath}/${encodeURIComponent(sessionId)}`);
+    setSidebarOpen(false);
   };
 
   const selectProvider = (item: ProviderConfig) => {
@@ -502,11 +557,12 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     setSending(true);
     setError('');
     let sessionId = conversationId;
+    const targetProjectId = selectedProjectId;
     let bot: ChatRecord | null = null;
     let abort: AbortController | null = null;
     let streamRender: ReturnType<typeof createStreamRenderScheduler> | null = null;
     try {
-      if (!sessionId) sessionId = await createSession();
+      if (!sessionId) sessionId = await createSession(targetProjectId);
       const outgoing: ChatPart[] = [
         ...(text ? [{ type: 'plain', text }] : []),
         ...files.map((file) => ({ type: file.type, attachment_id: file.attachment_id, filename: file.filename })),
@@ -521,7 +577,10 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
 
       if (!current?.display_name && text) {
         void updateChatSession({ path: { session_id: sessionId }, body: { display_name: text.slice(0, 40) } })
-          .then(loadSessions)
+          .then(async () => {
+            await loadSessions();
+            if (targetProjectId) await loadProjectSessions(targetProjectId);
+          })
           .catch(() => undefined);
       }
 
@@ -594,6 +653,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
         applyPayloads(parseSseEvents(buffer, true).payloads);
       }
       await loadSessions();
+      if (targetProjectId) await loadProjectSessions(targetProjectId);
     } catch (cause) {
       if ((cause as Error)?.name !== 'AbortError') {
         const message = errorMessage(cause, 'Failed to send message.');
@@ -704,11 +764,22 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     }
   };
 
-  const sessionTitle = current?.display_name || t('features.chat.conversation.newConversation');
+  const selectedProjectWorkspace = useMemo(() => {
+    if (!selectedProject) return '';
+    const type = String(selectedProject.workspace_type || 'session');
+    if (type === 'session') return t('features.chat.project.workspace.session');
+    const path = String(selectedProject.resolved_workspace_path || selectedProject.workspace_path || '').trim();
+    const label = type === 'custom'
+      ? t('features.chat.project.workspace.custom')
+      : t('features.chat.project.workspace.project');
+    return path ? `${label} · ${path}` : label;
+  }, [selectedProject, t]);
+  const selectedProjectSessions = selectedProjectId ? projectSessions[selectedProjectId] || [] : [];
+  const sessionTitle = current?.display_name || (selectedProject ? String(selectedProject.title || t('features.chat.project.title')) : t('features.chat.conversation.newConversation'));
   const modelTitle = provider || 'Default model';
   const modelMeta = currentProvider?.model || model;
   const configTitle = String(currentConfig?.name || configId || 'default');
-  const emptyChat = !loading && !messages.length;
+  const emptyChat = !selectedProject && !loading && !messages.length;
 
   return <div className={`chat-shell ${chatbox ? 'chat-shell--box' : ''} ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
     <aside className={`chat-sessions ${sidebarOpen ? 'is-open' : ''}`}>
@@ -730,12 +801,12 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
             return <div className="chat-project-group" key={projectId || `project-${index}`}>
               <div
                 aria-expanded={expanded}
-                className="chat-project-row"
-                onClick={() => toggleProject(projectId)}
+                className={`chat-project-row ${selectedProjectId === projectId ? 'is-active' : ''}`}
+                onClick={() => selectProjectRow(projectId)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
-                    toggleProject(projectId);
+                    selectProjectRow(projectId);
                   }
                 }}
                 role="button"
@@ -755,15 +826,17 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
                 {loadingProjectIds.has(projectId)
                   ? <div className="chat-project-session-empty">{t('features.chat.project.loadingSessions')}</div>
                   : projectSessions[projectId]?.length
-                    ? projectSessions[projectId].map((session) => <button
-                        className={session.session_id === conversationId ? 'is-active' : ''}
+                    ? projectSessions[projectId].map((session) => <div
+                        className={`chat-project-session-row ${session.session_id === conversationId ? 'is-active' : ''}`}
                         key={session.session_id}
-                        onClick={() => {
-                          navigate(`${basePath}/${encodeURIComponent(session.session_id)}`);
-                          setSidebarOpen(false);
-                        }}
-                        type="button"
-                      >{session.display_name?.trim() || t('features.chat.conversation.newConversation')}</button>)
+                      >
+                        <button onClick={() => selectSession(session.session_id)} type="button">{session.display_name?.trim() || t('features.chat.conversation.newConversation')}</button>
+                        <span onClick={(event) => event.stopPropagation()}>
+                          <button aria-label={t('features.chat.conversation.editDisplayName')} onClick={() => void renameSession(session)} title={t('features.chat.conversation.editDisplayName')} type="button"><PencilIcon /></button>
+                          <button aria-label={t('features.chat.actions.deleteChat')} onClick={() => void removeSession(session)} title={t('features.chat.actions.deleteChat')} type="button"><TrashIcon /></button>
+                        </span>
+                        {sending && session.session_id === conversationId && <MdiIcon className="chat-project-session-progress" name="mdi-loading" />}
+                      </div>)
                     : <div className="chat-project-session-empty">{t('features.chat.project.noSessions')}</div>}
               </div>}
             </div>;
@@ -772,7 +845,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
         <div className="chat-session-list">
           <div className="chat-session-list__label">{t('features.chat.conversation.title')}</div>
           {sessions.map((session) => <div className={session.session_id === conversationId ? 'is-active' : ''} key={session.session_id}>
-            <button onClick={() => { navigate(`${basePath}/${encodeURIComponent(session.session_id)}`); setSidebarOpen(false); }} type="button"><span>{session.display_name || session.session_id}</span></button>
+            <button onClick={() => selectSession(session.session_id)} type="button"><span>{session.display_name || session.session_id}</span></button>
             <div><button aria-label={t('features.chat.conversation.editDisplayName')} onClick={() => void renameSession(session)} title={t('features.chat.conversation.editDisplayName')} type="button"><PencilIcon /></button><button aria-label={t('features.chat.actions.deleteChat')} onClick={() => void removeSession(session)} title={t('features.chat.actions.deleteChat')} type="button"><TrashIcon /></button></div>
           </div>)}
         </div>
@@ -799,7 +872,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       </div>
     </aside>
     {sidebarOpen && <button aria-label="Close conversations" className="chat-sidebar-backdrop" onClick={() => setSidebarOpen(false)} type="button" />}
-    <main className={`chat-main ${emptyChat ? 'is-empty-chat' : ''}`}>
+    <main className={`chat-main ${emptyChat ? 'is-empty-chat' : ''} ${selectedProject ? 'is-project-workspace' : ''}`}>
       <header className="chat-toolbar">
         <button aria-label="Open conversations" className="chat-toolbar__sidebar-open" onClick={() => setSidebarOpen(true)} type="button"><MdiIcon name="mdi-menu" /></button>
         <details className="chat-model-menu" onToggle={(event) => { if (event.currentTarget.open) void loadProviders(); }} ref={modelMenuRef}>
@@ -823,6 +896,29 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       </header>
       <section aria-live="polite" className="chat-messages">
         {loading && <div className="monitor-loading">Loading…</div>}
+        {selectedProject && <div className="chat-project-workspace">
+          <header className="chat-project-workspace__header">
+            <h1><span>{String(selectedProject.emoji || '📁')}</span>{String(selectedProject.title || t('features.chat.project.title'))}</h1>
+            {Boolean(selectedProject.description) && <p>{String(selectedProject.description)}</p>}
+            <small><MdiIcon name="mdi-folder-cog-outline" />{selectedProjectWorkspace}</small>
+          </header>
+          <div className="chat-project-workspace__sessions">
+            {loadingProjectIds.has(selectedProjectId)
+              ? <div className="chat-project-workspace__empty">{t('features.chat.project.loadingSessions')}</div>
+              : selectedProjectSessions.length
+                ? selectedProjectSessions.map((session) => <article className="chat-project-workspace__session" key={session.session_id}>
+                    <button onClick={() => selectSession(session.session_id)} type="button">
+                      <strong>{session.display_name?.trim() || t('features.chat.conversation.newConversation')}</strong>
+                      <small>{formatProjectSessionDate(session.updated_at || session.created_at, i18n.language)}</small>
+                    </button>
+                    <div>
+                      <button aria-label={t('features.chat.conversation.editDisplayName')} onClick={() => void renameSession(session)} title={t('features.chat.conversation.editDisplayName')} type="button"><PencilIcon /></button>
+                      <button aria-label={t('features.chat.actions.deleteChat')} onClick={() => void removeSession(session)} title={t('features.chat.actions.deleteChat')} type="button"><TrashIcon /></button>
+                    </div>
+                  </article>)
+                : <div className="chat-project-workspace__empty"><MdiIcon name="mdi-message-outline" /><span>{t('features.chat.project.noSessions')}</span></div>}
+          </div>
+        </div>}
         {emptyChat && <div className="chat-empty"><h1>{t('features.chat.welcome.title')}</h1></div>}
         {messages.map((message, index) => <Message canRegenerate={!sending && message.content.type !== 'user' && index === messages.length - 1 && message.id != null && !String(message.id).startsWith('local-') && Boolean(message.llm_checkpoint_id)} isStreaming={sending && message.content.type !== 'user' && index === messages.length - 1} key={String(message.id || index)} message={message} onRegenerate={(selectedProvider, selectedModel) => void regenerate(message, selectedProvider, selectedModel)} providerMetadata={providerMetadata} providers={providers} selectedModel={model} selectedProvider={provider} />)}
         {error && <div className="monitor-error">{error}</div>}
@@ -991,6 +1087,16 @@ function messageTime(value: unknown) {
   if (typeof value !== 'string' && typeof value !== 'number') return '';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatProjectSessionDate(value: unknown, locale: string) {
+  if (!value) return '';
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date);
 }
 
 function inputTokens(stats: JsonObject) {
