@@ -15,6 +15,7 @@ import {
   stopChatSession,
   testProviderById,
   updateChatSession,
+  updateChatProject,
   uploadFile,
 } from '@/api/openapi';
 import { readAuthToken } from '@/auth/storage';
@@ -60,6 +61,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const [configs, setConfigs] = useState<JsonObject[]>([]);
   const [projects, setProjects] = useState<JsonObject[]>([]);
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<JsonObject | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState('');
   const [projectError, setProjectError] = useState('');
   const [projectSaving, setProjectSaving] = useState(false);
@@ -102,6 +104,15 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const currentConfig = useMemo(() => configs.find((config) => recordId(config, 'id', 'conf_id') === configId), [configId, configs]);
   const currentProvider = useMemo(() => providers.find((item) => item.id === provider) || providers[0], [provider, providers]);
   const currentLanguage = chatLanguageOptions.find((item) => item.code === i18n.language) || chatLanguageOptions[0];
+  const editingProjectForm = useMemo<ChatProjectForm | null>(() => editingProject ? {
+    description: String(editingProject.description || ''),
+    emoji: String(editingProject.emoji || '📁'),
+    title: String(editingProject.title || ''),
+    workspace_path: String(editingProject.workspace_path || ''),
+    workspace_type: (['custom', 'project', 'session'].includes(String(editingProject.workspace_type))
+      ? editingProject.workspace_type
+      : 'session') as ChatProjectForm['workspace_type'],
+  } : null, [editingProject]);
   const isDark = themeMode === 'dark' || (themeMode === 'system' && document.documentElement.dataset.theme === 'dark');
   const filteredProviders = useMemo(() => {
     const query = providerSearch.trim().toLowerCase();
@@ -307,23 +318,25 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     }
   };
 
-  const createProject = async (form: ChatProjectForm) => {
+  const saveProject = async (form: ChatProjectForm) => {
     setProjectSaving(true);
     setProjectError('');
     try {
-      await createChatProject({
-        body: {
-          description: form.description || undefined,
-          emoji: form.emoji || '📁',
-          title: form.title,
-          workspace_type: form.workspace_type,
-          workspace_path: form.workspace_type === 'custom' ? form.workspace_path : undefined,
-        },
-      });
+      const body = {
+        description: form.description || undefined,
+        emoji: form.emoji || '📁',
+        title: form.title,
+        workspace_type: form.workspace_type,
+        workspace_path: form.workspace_type === 'custom' ? form.workspace_path : undefined,
+      };
+      const projectId = editingProject ? recordId(editingProject, 'project_id', 'id') : '';
+      if (projectId) await updateChatProject({ path: { project_id: projectId }, body });
+      else await createChatProject({ body });
       await loadProjects();
       setProjectDialogOpen(false);
+      setEditingProject(null);
     } catch (cause) {
-      const message = errorMessage(cause, t('features.chat.errors.createProjectFailed', 'Failed to create project.'));
+      const message = errorMessage(cause, t('features.chat.project.saveFailed'));
       setProjectError(message);
       toast.error(message);
     } finally {
@@ -350,6 +363,18 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     } finally {
       setDeletingProjectId('');
     }
+  };
+
+  const openCreateProject = () => {
+    setEditingProject(null);
+    setProjectError('');
+    setProjectDialogOpen(true);
+  };
+
+  const openEditProject = (project: JsonObject) => {
+    setEditingProject(project);
+    setProjectError('');
+    setProjectDialogOpen(true);
   };
 
   const selectProvider = (item: ProviderConfig) => {
@@ -640,22 +665,19 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       </nav>
       <div className="chat-sessions__content">
         <section className="chat-project-list">
-          <div className="chat-section-header"><span>{t('features.chat.project.title')}</span><button aria-label={t('features.chat.project.create')} onClick={() => { setProjectError(''); setProjectDialogOpen(true); }} title={t('features.chat.project.create')} type="button"><PlusIcon /></button></div>
+          <div className="chat-section-header"><span>{t('features.chat.project.title')}</span><button aria-label={t('features.chat.project.create')} onClick={openCreateProject} title={t('features.chat.project.create')} type="button"><PlusIcon /></button></div>
           {projects.map((project, index) => {
             const projectId = recordId(project, 'project_id', 'id');
             return <div className="chat-project-row" key={projectId || `project-${index}`}>
               <span>{String(project.emoji || '📁')}</span>
-              <strong>{String(project.title || t('features.chat.project.title'))}</strong>
-              <button
-                aria-label={t('core.common.delete')}
-                className="chat-project-row__delete"
-                disabled={!projectId || deletingProjectId === projectId}
-                onClick={() => void removeProject(project)}
-                title={t('core.common.delete')}
-                type="button"
-              >
-                <TrashIcon />
-              </button>
+              <span className="chat-project-row__title">
+                <strong>{String(project.title || t('features.chat.project.title'))}</strong>
+                <MdiIcon name="mdi-chevron-right" />
+              </span>
+              <span className="chat-project-row__actions">
+                <button aria-label={t('features.chat.project.edit')} onClick={() => openEditProject(project)} title={t('features.chat.project.edit')} type="button"><PencilIcon /></button>
+                <button aria-label={t('core.common.delete')} disabled={!projectId || deletingProjectId === projectId} onClick={() => void removeProject(project)} title={t('core.common.delete')} type="button"><TrashIcon /></button>
+              </span>
             </div>;
           })}
         </section>
@@ -735,7 +757,20 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
           {sending ? <button aria-label={t('features.chat.input.stopGenerating')} className="chat-send" onClick={() => void stop()} type="button"><MdiIcon name="mdi-stop" /></button> : <button aria-label={t('features.chat.input.send')} className="chat-send" disabled={recording || (!draft.trim() && !files.length)} onClick={() => void send()} type="button"><MdiIcon name="mdi-arrow-up" /></button>}
         </div>
       </footer>
-      <ChatProjectDialog error={projectError} onOpenChange={(open) => { setProjectDialogOpen(open); if (!open) setProjectError(''); }} onSave={(form) => void createProject(form)} open={projectDialogOpen} saving={projectSaving} />
+      <ChatProjectDialog
+        error={projectError}
+        onOpenChange={(open) => {
+          setProjectDialogOpen(open);
+          if (!open) {
+            setProjectError('');
+            setEditingProject(null);
+          }
+        }}
+        onSave={(form) => void saveProject(form)}
+        open={projectDialogOpen}
+        project={editingProjectForm}
+        saving={projectSaving}
+      />
     </main>
   </div>;
 }

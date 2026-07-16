@@ -19,11 +19,12 @@ const emptyProjectForm = (): ChatProjectForm => ({
   workspace_type: 'project',
 });
 
-export function ChatProjectDialog({ error, onOpenChange, onSave, open, saving }: {
+export function ChatProjectDialog({ error, onOpenChange, onSave, open, project, saving }: {
   error?: string;
   onOpenChange: (open: boolean) => void;
   onSave: (value: ChatProjectForm) => void;
   open: boolean;
+  project?: ChatProjectForm | null;
   saving?: boolean;
 }) {
   const { t } = useTranslation();
@@ -34,8 +35,8 @@ export function ChatProjectDialog({ error, onOpenChange, onSave, open, saving }:
   ), [form]);
 
   useEffect(() => {
-    if (open) setForm(emptyProjectForm());
-  }, [open]);
+    if (open) setForm(project ? { ...project } : emptyProjectForm());
+  }, [open, project]);
 
   const set = <Key extends keyof ChatProjectForm>(key: Key, value: ChatProjectForm[Key]) => {
     setForm((current) => ({
@@ -54,7 +55,7 @@ export function ChatProjectDialog({ error, onOpenChange, onSave, open, saving }:
     });
   };
 
-  return <Dialog onOpenChange={(next) => { if (!saving) onOpenChange(next); }} open={open} title={t('features.chat.project.create')}>
+  return <Dialog onOpenChange={(next) => { if (!saving) onOpenChange(next); }} open={open} title={t(`features.chat.project.${project ? 'edit' : 'create'}`)}>
     <form className="chat-project-dialog" onSubmit={(event) => { event.preventDefault(); save(); }}>
       <label className="chat-project-field">
         <span>{t('features.chat.project.emoji')}</span>
