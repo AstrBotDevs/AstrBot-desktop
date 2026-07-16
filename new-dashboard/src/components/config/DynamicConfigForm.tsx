@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { ExpandCollapse } from '@/components/motion/ExpandCollapse';
 import { toast } from '@/stores/feedback';
+import { ConfigSpecialSelector, isConfigSelectorSpecial, PersonaQuickPreview } from './ConfigSpecialControls';
 
 import {
   configItemsForValue,
@@ -269,7 +270,14 @@ function ConfigControl({ embeddingDimensionLoading, metadata, onChange, onGetEmb
   const { t } = useTranslation();
   const type = metadata.type ?? (typeof value === 'boolean' ? 'bool' : typeof value === 'number' ? 'float' : 'string');
   const disabled = metadata.readonly;
-  const labels = Array.isArray(metadata.labels) ? metadata.labels : [];
+  const translatedLabels = typeof metadata.labels === 'string'
+    ? t(`features.config-metadata.${metadata.labels}`, { defaultValue: [], returnObjects: true })
+    : metadata.labels;
+  const labels = Array.isArray(translatedLabels) ? translatedLabels : [];
+
+  if (isConfigSelectorSpecial(metadata._special)) {
+    return <ConfigSpecialSelector disabled={disabled} onChange={onChange} special={String(metadata._special)} value={value} />;
+  }
 
   if (metadata._special === 'get_embedding_dim') {
     return (
@@ -420,7 +428,11 @@ export function ConfigGroup({ conditionValue, embeddingDimensionLoading, fieldsF
         </section>
       );
     }
-    return <div className="dynamic-config__row" key={key}><div className="dynamic-config__label"><label htmlFor={`config-${translationPath}-${key}`}><span>{label}</span><small>{key}</small></label>{hint && <p>{hint}</p>}</div><div className="dynamic-config__control" id={`config-${translationPath}-${key}`}><ConfigControl embeddingDimensionLoading={embeddingDimensionLoading} metadata={item} onChange={(next) => onChange(setConfigValue(value, key, next))} onGetEmbeddingDimension={onGetEmbeddingDimension} value={getConfigValue(value, key)} /></div></div>;
+    const currentValue = getConfigValue(value, key);
+    return <Fragment key={key}>
+      <div className="dynamic-config__row"><div className="dynamic-config__label"><label htmlFor={`config-${translationPath}-${key}`}><span>{label}</span><small>{key}</small></label>{hint && <p>{hint}</p>}</div><div className="dynamic-config__control" id={`config-${translationPath}-${key}`}><ConfigControl embeddingDimensionLoading={embeddingDimensionLoading} metadata={item} onChange={(next) => onChange(setConfigValue(value, key, next))} onGetEmbeddingDimension={onGetEmbeddingDimension} value={currentValue} /></div></div>
+      {item._special === 'select_persona' && key === 'provider_settings.default_personality' && <PersonaQuickPreview personaId={typeof currentValue === 'string' ? currentValue : ''} />}
+    </Fragment>;
   };
 
   if (!entries.length) return null;

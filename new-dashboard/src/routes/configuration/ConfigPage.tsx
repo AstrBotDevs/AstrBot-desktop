@@ -131,10 +131,13 @@ export default function ConfigPage() {
   return <div className="visual-config-page">
     <div className="visual-config-panel">
       <div className="visual-config-toolbar">
-        <select aria-label={t('features.config.configSelection.selectConfig')} onChange={(event) => void chooseProfile(event.target.value)} value={selected}>
-          {profileOptions.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
-          <option value="__manage__">{t('features.config.configManagement.manageConfigs')}</option>
-        </select>
+        <label className="visual-config-profile">
+          <span>{t('features.config.configSelection.selectConfig')}</span>
+          <select aria-label={t('features.config.configSelection.selectConfig')} onChange={(event) => void chooseProfile(event.target.value)} value={selected}>
+            {profileOptions.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+            <option value="__manage__">{t('features.config.configManagement.manageConfigs')}</option>
+          </select>
+        </label>
         <label className="visual-config-search">
           <MdiIcon name="mdi-magnify" />
           <input aria-label={t('features.config.search.placeholder')} onChange={(event) => setSearch(event.target.value)} placeholder={t('features.config.search.placeholder')} value={search} />
