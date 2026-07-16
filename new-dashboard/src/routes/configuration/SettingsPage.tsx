@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { createApiKey, deleteApiKey, getSystemConfig, listApiKeys, restartCore, updateSystemConfig } from '@/api/openapi';
+import { createApiKey, deleteApiKey, getSystemConfig, listApiKeys, openApiAxiosClient, restartCore, revokeApiKey } from '@/api/openapi';
 import { ConfigGroup } from '@/components/config/DynamicConfigForm';
 import { isConfigRecord, type ConfigGroupMetadata, type ConfigItemMetadata, type ConfigRecord } from '@/components/config/configFormModel';
+import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { confirmAction, toast } from '@/stores/feedback';
 import { LoadingState } from './ConfigurationUi';
 import { errorMessage, JsonObject, objectList, recordId, responseData } from './model';
+import { BackupDialog, ProxySelector, SidebarCustomizer, StorageCleanupPanel } from './SettingsExtras';
 
 type SettingsSection = 'general' | 'appearance' | 'network' | 'security' | 'maintenance' | 'openapi' | 'about';
 type ApiScope = 'bot' | 'provider' | 'persona' | 'im' | 'config' | 'chat' | 'data' | 'file' | 'plugin' | 'mcp' | 'skill';
@@ -62,41 +64,66 @@ export default function SettingsPage() {
   const [expiry, setExpiry] = useState<number | 'permanent'>(30);
   const [scopes, setScopes] = useState<ApiScope[]>(['bot', 'provider', 'im', 'config', 'chat', 'file']);
   const [createdKey, setCreatedKey] = useState('');
+  const [backupOpen, setBackupOpen] = useState(false);
+  const [twoFactorOpen, setTwoFactorOpen] = useState(false);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [twoFactorError, setTwoFactorError] = useState('');
+  const [pendingConfig, setPendingConfig] = useState<{ config: ConfigRecord; snapshot: string } | null>(null);
   const [primary, setPrimary] = useState(() => localStorage.getItem('themePrimary') || '#3c96ca');
   const [secondary, setSecondary] = useState(() => localStorage.getItem('themeSecondary') || '#2f86bd');
+
+  const loadKeys = useCallback(async () => {
+    try {
+      setKeys(objectList(responseData(await listApiKeys()), ['keys', 'api_keys', 'items']));
+    } catch (cause) {
+      toast.error(errorMessage(cause, t(`${prefix}.apiKey.messages.loadFailed`)));
+    }
+  }, [t]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const [configResponse, keyResponse] = await Promise.all([getSystemConfig(), listApiKeys().catch(() => null)]);
+      const configResponse = await getSystemConfig();
       const payload = responseData<JsonObject>(configResponse) ?? {};
       const nextConfig = isConfigRecord(payload.config) ? payload.config : payload;
       setConfig(nextConfig);
       setMetadata(isConfigRecord(payload.metadata) ? payload.metadata : {});
       setSaved(JSON.stringify(nextConfig));
-      setKeys(objectList(responseData(keyResponse), ['keys', 'api_keys', 'items']));
       setRestartRequired(false);
+      void loadKeys();
     } catch (cause) {
       setError(errorMessage(cause, t(`${prefix}.systemConfig.messages.loadFailed`)));
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [loadKeys, t]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const item = NAV_ITEMS.find((navItem) => window.location.hash.includes(navItem.id));
+    if (item) setSection(item.id);
+  }, []);
 
   const rootMetadata = useMemo(() => systemMetadataRoot(metadata), [metadata]);
   const configSnapshot = useMemo(() => JSON.stringify(config), [config]);
   const resolveText = useCallback((path: string, field: 'description' | 'hint', fallback = '') => t(`features.config-metadata.${path}.${field}`, { defaultValue: fallback }), [t]);
+  const twoFactorText = (key: string) => t(`features.config-metadata.system_group.system.dashboard.totp.${key}`);
 
   useEffect(() => {
-    if (loading || saving || configSnapshot === saved || configSnapshot === failedSave) return;
+    if (loading || saving || pendingConfig || configSnapshot === saved || configSnapshot === failedSave) return;
     const nextConfig = config;
     const timeout = window.setTimeout(() => {
       setSaving(true);
-      void updateSystemConfig({ body: nextConfig })
-        .then(() => {
+      void openApiAxiosClient.put('/api/v1/system-config', nextConfig, { validateStatus: (status) => (status >= 200 && status < 300) || status === 401 })
+        .then((response) => {
+          if (response.status === 401 && Boolean(response.data?.data?.totp_required)) {
+            setPendingConfig({ config: nextConfig, snapshot: configSnapshot });
+            setTwoFactorCode('');
+            setTwoFactorError('');
+            setTwoFactorOpen(true);
+            return;
+          }
           setSaved(configSnapshot);
           setFailedSave('');
           setRestartRequired(true);
@@ -109,7 +136,41 @@ export default function SettingsPage() {
         .finally(() => setSaving(false));
     }, 450);
     return () => window.clearTimeout(timeout);
-  }, [config, configSnapshot, failedSave, loading, saved, saving, t]);
+  }, [config, configSnapshot, failedSave, loading, pendingConfig, saved, saving, t]);
+
+  const confirmTwoFactor = async () => {
+    if (!pendingConfig || !twoFactorCode.trim()) return;
+    setSaving(true);
+    setTwoFactorError('');
+    try {
+      const response = await openApiAxiosClient.put('/api/v1/system-config', pendingConfig.config, {
+        headers: { 'X-2FA-Code': twoFactorCode.trim() },
+        validateStatus: (status) => (status >= 200 && status < 300) || status === 401,
+      });
+      if (response.status === 401) {
+        setTwoFactorError(twoFactorText('configSaveError'));
+        return;
+      }
+      setSaved(pendingConfig.snapshot);
+      setFailedSave('');
+      setPendingConfig(null);
+      setTwoFactorOpen(false);
+      setRestartRequired(true);
+      toast.success(t(`${prefix}.systemConfig.messages.saveSuccess`));
+    } catch (cause) {
+      setTwoFactorError(errorMessage(cause, twoFactorText('configSaveError')));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancelTwoFactor = () => {
+    try { setConfig(JSON.parse(saved) as ConfigRecord); } catch { /* keep the current form if the snapshot is invalid */ }
+    setPendingConfig(null);
+    setTwoFactorCode('');
+    setTwoFactorError('');
+    setTwoFactorOpen(false);
+  };
 
   const applyColor = (name: 'primary' | 'secondary', value: string) => {
     const storageKey = name === 'primary' ? 'themePrimary' : 'themeSecondary';
@@ -132,7 +193,7 @@ export default function SettingsPage() {
       setCreatedKey(typeof secret === 'string' ? secret : '');
       setKeyName('');
       toast.success(t(`${prefix}.apiKey.messages.createSuccess`));
-      await load();
+      await loadKeys();
       setSection('openapi');
     } catch (cause) {
       toast.error(errorMessage(cause, t(`${prefix}.apiKey.messages.createFailed`)));
@@ -149,15 +210,34 @@ export default function SettingsPage() {
     });
   };
 
+  const changeSection = (next: SettingsSection) => {
+    setSection(next);
+    const hash = next === 'general' ? 'system-config' : next === 'about' ? 'settings-about' : `settings-${next}`;
+    window.history.replaceState(null, '', `${window.location.pathname}#${hash}`);
+  };
+
   const removeKey = async (item: JsonObject) => {
     const id = recordId(item, 'key_id', 'id');
     if (!id || !await confirmAction({ danger: true, title: t(`${prefix}.apiKey.delete`), message: `${t(`${prefix}.apiKey.delete`)} ${String(item.name || id)}?` })) return;
     try {
       await deleteApiKey({ path: { key_id: id } });
       toast.success(t(`${prefix}.apiKey.messages.deleteSuccess`));
-      await load();
+      await loadKeys();
     } catch (cause) {
       toast.error(errorMessage(cause, t(`${prefix}.apiKey.messages.deleteFailed`)));
+    }
+  };
+
+  const revokeKey = async (item: JsonObject) => {
+    const id = recordId(item, 'key_id', 'id');
+    if (!id || !await confirmAction({ danger: true, title: t(`${prefix}.apiKey.revoke`), message: `${t(`${prefix}.apiKey.revoke`)} ${String(item.name || id)}?` })) return;
+    try {
+      await revokeApiKey({ path: { key_id: id } });
+      toast.success(t(`${prefix}.apiKey.messages.revokeSuccess`));
+      await loadKeys();
+      setSection('openapi');
+    } catch (cause) {
+      toast.error(errorMessage(cause, t(`${prefix}.apiKey.messages.revokeFailed`)));
     }
   };
 
@@ -180,20 +260,24 @@ export default function SettingsPage() {
     { description: aboutDescriptions[3], icon: 'mdi-github' as const, label: t('core.navigation.github'), url: 'https://github.com/AstrBotDevs/AstrBot' },
     { description: t('features.welcome.resources.afdianDesc'), icon: 'mdi-hand-heart' as const, label: t('features.welcome.resources.afdianTitle'), url: 'https://afdian.com/a/astrbot_team' },
   ];
+  const pendingDashboard = pendingConfig && isConfigRecord(pendingConfig.config.dashboard) ? pendingConfig.config.dashboard : null;
+  const pendingTotp = pendingDashboard && isConfigRecord(pendingDashboard.totp) ? pendingDashboard.totp : null;
+  const showRotationHint = typeof pendingTotp?.secret === 'string' && pendingTotp.secret.trim().length > 0;
 
-  return <div className="settings-page"><div className="settings-layout"><nav aria-label={t(`${prefix}.page.title`)} className="settings-nav">{NAV_ITEMS.map((item) => <button aria-pressed={section === item.id} key={item.id} onClick={() => setSection(item.id)} type="button"><MdiIcon name={item.icon} /><span>{item.id === 'about' ? t('core.navigation.about') : t(`${prefix}.sections.${item.id}.title`)}</span></button>)}</nav><main className="settings-main">
+  return <div className="settings-page"><header className="settings-page__header"><h1 className="settings-page__title">{t(`${prefix}.page.title`)}</h1></header><div className="settings-layout"><nav aria-label={t(`${prefix}.page.title`)} className="settings-nav">{NAV_ITEMS.map((item) => <button aria-pressed={section === item.id} key={item.id} onClick={() => changeSection(item.id)} type="button"><MdiIcon name={item.icon} /><span>{item.id === 'about' ? t('core.navigation.about') : t(`${prefix}.sections.${item.id}.title`)}</span></button>)}</nav><main className="settings-main">
     {section === 'about' && <section className="settings-section"><header className="settings-section__heading"><h2 className="settings-section__title">{t('core.navigation.about')}</h2></header><div className="settings-about-card settings-list-card">{aboutResources.map((resource) => <article className="settings-about-item" key={resource.label}><div><strong>{resource.label}</strong><p>{resource.description}</p></div><a href={resource.url} rel="noreferrer" target="_blank"><MdiIcon name={resource.icon} />{resource.label}</a></article>)}</div></section>}
     {section !== 'about' && <>
     {restartRequired && <div className="settings-restart" role="status"><span><MdiIcon name="mdi-alert-circle" />{t(`${prefix}.systemConfig.restartRequired`)}</span><button onClick={() => void restart()} type="button"><MdiIcon name="mdi-restart" />{t(`${prefix}.system.restart.button`)}</button></div>}
+    {saving && <div className="settings-saving-bar" role="progressbar"><span /></div>}
     <LoadingState error={error} loading={loading} />
     {!loading && <section className="settings-section"><header className="settings-section__heading"><h2 className="settings-section__title">{t(`${prefix}.sections.${section}.title`)}</h2></header><div className="settings-section__content">
-    {!loading && section === 'general' && <>{renderGroup('runtime')}{renderGroup('logs')}{renderGroup('tempStorage')}</>}
-    {!loading && section === 'appearance' && <><section className="settings-list-card route-card"><div className="settings-item"><div><h2>{t(`${prefix}.theme.customize.title`)}</h2><p>{t(`${prefix}.theme.subtitle`)}</p></div><div className="settings-color-controls"><label>{t(`${prefix}.theme.customize.primary`)}<input onChange={(event) => applyColor('primary', event.target.value)} type="color" value={primary} /></label><label>{t(`${prefix}.theme.customize.secondary`)}<input onChange={(event) => applyColor('secondary', event.target.value)} type="color" value={secondary} /></label><button onClick={resetColors} type="button"><MdiIcon name="mdi-restore" />{t(`${prefix}.theme.customize.reset`)}</button></div></div></section>{renderGroup('t2iRendering')}</>}
-    {!loading && section === 'network' && renderGroup('network')}
+    {!loading && section === 'general' && <>{renderGroup('runtime')}{renderGroup('logs')}{renderGroup('tempStorage')}<StorageCleanupPanel /></>}
+    {!loading && section === 'appearance' && <><section className="settings-list-card route-card"><div className="settings-item"><div><h2>{t(`${prefix}.sidebar.customize.title`)}</h2><p>{t(`${prefix}.sidebar.customize.subtitle`)}</p></div><div className="settings-item__control"><SidebarCustomizer /></div></div><div className="settings-item settings-item--color"><div><h2>{t(`${prefix}.theme.customize.title`)}</h2><p>{t(`${prefix}.theme.subtitle`)}</p></div><div className="settings-color-controls"><label>{t(`${prefix}.theme.customize.primary`)}<input onChange={(event) => applyColor('primary', event.target.value)} type="color" value={primary} /></label><label>{t(`${prefix}.theme.customize.secondary`)}<input onChange={(event) => applyColor('secondary', event.target.value)} type="color" value={secondary} /></label><button onClick={resetColors} type="button"><MdiIcon name="mdi-restore" />{t(`${prefix}.theme.customize.reset`)}</button></div></div></section>{renderGroup('t2iRendering')}</>}
+    {!loading && section === 'network' && <>{renderGroup('network')}<section className="settings-list-card route-card"><div className="settings-item settings-item--stack"><div><h2>{t(`${prefix}.network.githubProxy.title`)}</h2><p>{t(`${prefix}.network.githubProxy.subtitle`)}</p></div><ProxySelector /></div></section></>}
     {!loading && section === 'security' && renderGroup('webuiSecurity')}
-    {!loading && section === 'maintenance' && <section className="settings-list-card route-card"><div className="settings-item"><div><h2>{t(`${prefix}.system.restart.title`)}</h2><p>{t(`${prefix}.system.restart.subtitle`)}</p></div><button className="button--danger" onClick={() => void restart()} type="button"><MdiIcon name="mdi-restart" />{t(`${prefix}.system.restart.button`)}</button></div></section>}
-    {!loading && section === 'openapi' && <section className="settings-list-card route-card"><header><h2>{t(`${prefix}.apiKey.manageTitle`)}</h2><p>{t(`${prefix}.apiKey.subtitle`)}</p></header><div className="api-key-create"><input onChange={(event) => setKeyName(event.target.value)} placeholder={t(`${prefix}.apiKey.name`)} value={keyName} /><select aria-label={t(`${prefix}.apiKey.expiresInDays`)} onChange={(event) => setExpiry(event.target.value === 'permanent' ? 'permanent' : Number(event.target.value))} value={expiry}><option value={1}>{t(`${prefix}.apiKey.expiryOptions.day1`)}</option><option value={7}>{t(`${prefix}.apiKey.expiryOptions.day7`)}</option><option value={30}>{t(`${prefix}.apiKey.expiryOptions.day30`)}</option><option value={90}>{t(`${prefix}.apiKey.expiryOptions.day90`)}</option><option value="permanent">{t(`${prefix}.apiKey.expiryOptions.permanent`)}</option></select><button disabled={!keyName.trim() || !scopes.length} onClick={() => void addKey()} type="button"><MdiIcon name="mdi-key-plus" />{t(`${prefix}.apiKey.create`)}</button></div><div className="api-key-scopes"><span>{t(`${prefix}.apiKey.scopes`)}</span>{API_SCOPES.map((scope) => <label className={scopes.includes(scope) ? 'is-selected' : ''} key={scope}><input checked={scopes.includes(scope)} onChange={() => toggleScope(scope)} type="checkbox" />{scope}</label>)}</div>{createdKey && <div className="config-secret" role="status"><strong>{t(`${prefix}.apiKey.plaintextHint`)}</strong><code>{createdKey}</code><button onClick={() => void navigator.clipboard?.writeText(createdKey)} type="button"><MdiIcon name="mdi-content-copy" />{t(`${prefix}.apiKey.copy`)}</button></div>}<div className="monitor-table-wrap"><table className="monitor-table"><thead><tr><th>{t(`${prefix}.apiKey.table.name`)}</th><th>{t(`${prefix}.apiKey.table.scopes`)}</th><th>{t(`${prefix}.apiKey.table.status`)}</th><th>{t(`${prefix}.apiKey.table.createdAt`)}</th><th>{t(`${prefix}.apiKey.table.actions`)}</th></tr></thead><tbody>{keys.map((item, index) => { const id = recordId(item, 'key_id', 'id') || `key-${index}`; const inactive = item.is_revoked || item.is_expired; return <tr key={id}><td><strong>{String(item.name || id)}</strong><small>{String(item.key_prefix || '')}</small></td><td>{Array.isArray(item.scopes) ? item.scopes.join(', ') : '—'}</td><td><span className={`status-chip ${inactive ? 'status-chip--error' : 'status-chip--success'}`}>{t(`${prefix}.apiKey.status.${inactive ? 'inactive' : 'active'}`)}</span></td><td>{String(item.created_at || '—')}</td><td><button className="button--danger" onClick={() => void removeKey(item)} type="button">{t(`${prefix}.apiKey.delete`)}</button></td></tr>; })}</tbody></table>{!keys.length && <div className="monitor-empty">{t(`${prefix}.apiKey.empty`)}</div>}</div></section>}
+    {!loading && section === 'maintenance' && <section className="settings-list-card route-card"><div className="settings-item"><div><h2>{t(`${prefix}.system.backup.title`)}</h2><p>{t(`${prefix}.system.backup.subtitle`)}</p></div><button onClick={() => setBackupOpen(true)} type="button"><MdiIcon name="mdi-backup-restore" />{t(`${prefix}.system.backup.button`)}</button></div><div className="settings-item"><div><h2>{t(`${prefix}.system.restart.title`)}</h2><p>{t(`${prefix}.system.restart.subtitle`)}</p></div><button className="button--danger" onClick={() => void restart()} type="button"><MdiIcon name="mdi-restart" />{t(`${prefix}.system.restart.button`)}</button></div></section>}
+    {!loading && section === 'openapi' && <section className="settings-list-card route-card"><header><h2>{t(`${prefix}.apiKey.manageTitle`)} <a aria-label={t(`${prefix}.apiKey.docsLink`)} href="https://docs.astrbot.app/dev/openapi.html" rel="noreferrer" target="_blank"><MdiIcon name="mdi-help-circle-outline" /></a></h2><p>{t(`${prefix}.apiKey.subtitle`)}</p></header><div className="api-key-create"><input onChange={(event) => setKeyName(event.target.value)} placeholder={t(`${prefix}.apiKey.name`)} value={keyName} /><select aria-label={t(`${prefix}.apiKey.expiresInDays`)} onChange={(event) => setExpiry(event.target.value === 'permanent' ? 'permanent' : Number(event.target.value))} value={expiry}><option value={1}>{t(`${prefix}.apiKey.expiryOptions.day1`)}</option><option value={7}>{t(`${prefix}.apiKey.expiryOptions.day7`)}</option><option value={30}>{t(`${prefix}.apiKey.expiryOptions.day30`)}</option><option value={90}>{t(`${prefix}.apiKey.expiryOptions.day90`)}</option><option value="permanent">{t(`${prefix}.apiKey.expiryOptions.permanent`)}</option></select><button disabled={!keyName.trim() || !scopes.length} onClick={() => void addKey()} type="button"><MdiIcon name="mdi-key-plus" />{t(`${prefix}.apiKey.create`)}</button></div>{expiry === 'permanent' && <div className="settings-alert settings-alert--warning">{t(`${prefix}.apiKey.permanentWarning`)}</div>}<div className="api-key-scopes"><span>{t(`${prefix}.apiKey.scopes`)}</span>{API_SCOPES.map((scope) => <label className={scopes.includes(scope) ? 'is-selected' : ''} key={scope}><input checked={scopes.includes(scope)} onChange={() => toggleScope(scope)} type="checkbox" />{scope}</label>)}</div>{createdKey && <div className="config-secret" role="status"><strong>{t(`${prefix}.apiKey.plaintextHint`)}</strong><code>{createdKey}</code><button onClick={() => void navigator.clipboard?.writeText(createdKey).then(() => toast.success(t(`${prefix}.apiKey.messages.copySuccess`))).catch(() => toast.error(t(`${prefix}.apiKey.messages.copyFailed`)))} type="button"><MdiIcon name="mdi-content-copy" />{t(`${prefix}.apiKey.copy`)}</button></div>}<div className="monitor-table-wrap"><table className="monitor-table"><thead><tr><th>{t(`${prefix}.apiKey.table.name`)}</th><th>{t(`${prefix}.apiKey.table.scopes`)}</th><th>{t(`${prefix}.apiKey.table.status`)}</th><th>{t(`${prefix}.apiKey.table.lastUsed`)}</th><th>{t(`${prefix}.apiKey.table.createdAt`)}</th><th>{t(`${prefix}.apiKey.table.actions`)}</th></tr></thead><tbody>{keys.map((item, index) => { const id = recordId(item, 'key_id', 'id') || `key-${index}`; const inactive = Boolean(item.is_revoked || item.is_expired); return <tr key={id}><td><strong>{String(item.name || id)}</strong><small>{String(item.key_prefix || '')}</small></td><td>{Array.isArray(item.scopes) ? item.scopes.join(', ') : '—'}</td><td><span className={`status-chip ${inactive ? 'status-chip--error' : 'status-chip--success'}`}>{t(`${prefix}.apiKey.status.${inactive ? 'inactive' : 'active'}`)}</span></td><td>{item.last_used_at ? new Date(String(item.last_used_at)).toLocaleString() : '—'}</td><td>{item.created_at ? new Date(String(item.created_at)).toLocaleString() : '—'}</td><td><div className="api-key-actions">{!inactive && <button onClick={() => void revokeKey(item)} type="button">{t(`${prefix}.apiKey.revoke`)}</button>}<button className="button--danger" onClick={() => void removeKey(item)} type="button">{t(`${prefix}.apiKey.delete`)}</button></div></td></tr>; })}</tbody></table>{!keys.length && <div className="monitor-empty">{t(`${prefix}.apiKey.empty`)}</div>}</div></section>}
     </div></section>}
     </>}
-  </main></div></div>;
+  </main></div><BackupDialog onRestart={restart} open={backupOpen} setOpen={setBackupOpen} /><Dialog onOpenChange={(open) => { if (!open) cancelTwoFactor(); }} open={twoFactorOpen} title={twoFactorText('configSaveTitle')}><div className="settings-two-factor"><p>{twoFactorText('configSaveSubtitle')}</p><label>{twoFactorText('configSaveCode')}<input autoFocus inputMode="numeric" maxLength={8} onChange={(event) => setTwoFactorCode(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void confirmTwoFactor(); }} value={twoFactorCode} /></label>{showRotationHint && <div className="settings-alert settings-alert--info">{twoFactorText('configSaveRotationHint')}</div>}{twoFactorError && <div className="settings-alert settings-alert--error">{twoFactorError}</div>}<div className="dialog-actions"><span /><DialogClose asChild><button onClick={cancelTwoFactor} type="button">{twoFactorText('configSaveCancel')}</button></DialogClose><button className="button--primary" disabled={!twoFactorCode.trim() || saving} onClick={() => void confirmTwoFactor()} type="button">{twoFactorText('configSaveConfirm')}</button></div></div></Dialog></div>;
 }
