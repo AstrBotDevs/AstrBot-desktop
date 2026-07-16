@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { hasChatProvider, normalizeComputerAccessRuntime, resolveWelcomeAnnouncement } from './welcomeModel';
+import {
+  hasChatProvider,
+  isComputerAccessRuntimeConfigured,
+  normalizeComputerAccessRuntime,
+  resolveWelcomeAnnouncement,
+} from './welcomeModel';
 
 describe('welcome page model', () => {
   it('recognizes direct and source-backed chat providers', () => {
@@ -14,6 +19,14 @@ describe('welcome page model', () => {
   it('keeps the legacy sandbox-to-local compatibility mapping', () => {
     expect(normalizeComputerAccessRuntime('sandbox')).toBe('local');
     expect(normalizeComputerAccessRuntime('other')).toBe('none');
+  });
+
+  it('matches the original dashboard computer access completion rule', () => {
+    expect(isComputerAccessRuntimeConfigured('local')).toBe(true);
+    expect(isComputerAccessRuntimeConfigured('none')).toBe(true);
+    expect(isComputerAccessRuntimeConfigured('sandbox')).toBe(true);
+    expect(isComputerAccessRuntimeConfigured(undefined)).toBe(false);
+    expect(isComputerAccessRuntimeConfigured('other')).toBe(false);
   });
 
   it('falls back between announcement locales', () => {

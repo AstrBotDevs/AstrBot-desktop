@@ -23,6 +23,10 @@ export function normalizeComputerAccessRuntime(value: unknown): ComputerAccessRu
   return value === 'local' || value === 'sandbox' ? 'local' : 'none';
 }
 
+export function isComputerAccessRuntimeConfigured(value: unknown) {
+  return value === 'local' || value === 'none' || value === 'sandbox';
+}
+
 export function resolveWelcomeAnnouncement(raw: unknown, locale: string) {
   if (typeof raw === 'string') return raw.trim();
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return '';

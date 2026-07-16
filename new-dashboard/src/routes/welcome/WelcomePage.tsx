@@ -9,6 +9,7 @@ import { toast } from '@/stores/feedback';
 import {
   greetingPeriod,
   hasChatProvider,
+  isComputerAccessRuntimeConfigured,
   normalizeComputerAccessRuntime,
   resolveWelcomeAnnouncement,
   unwrapApiData,
@@ -22,6 +23,7 @@ export default function WelcomePage() {
   const [hasPlatform, setHasPlatform] = useState(false);
   const [hasProvider, setHasProvider] = useState(false);
   const [runtime, setRuntime] = useState<ComputerAccessRuntime>('none');
+  const [hasConfiguredRuntime, setHasConfiguredRuntime] = useState(false);
   const [savingRuntime, setSavingRuntime] = useState(false);
   const [announcementRaw, setAnnouncementRaw] = useState<unknown>(null);
   const announcement = useMemo(() => resolveWelcomeAnnouncement(announcementRaw, i18n.language), [announcementRaw, i18n.language]);
@@ -41,7 +43,9 @@ export default function WelcomePage() {
         if (profile.status === 'fulfilled') {
           const data = unwrapApiData<ConfigPayload>(profile.value)?.config ?? unwrapApiData<Record<string, unknown>>(profile.value) ?? {};
           const settings = data.provider_settings as Record<string, unknown> | undefined;
-          setRuntime(normalizeComputerAccessRuntime(settings?.computer_use_runtime));
+          const configuredRuntime = settings?.computer_use_runtime;
+          setRuntime(normalizeComputerAccessRuntime(configuredRuntime));
+          setHasConfiguredRuntime(isComputerAccessRuntimeConfigured(configuredRuntime));
         }
       });
     void fetch('https://cloud.astrbot.app/api/v1/announcement')
@@ -53,6 +57,7 @@ export default function WelcomePage() {
 
   const saveRuntime = async (next: ComputerAccessRuntime) => {
     const previous = runtime;
+    const wasConfigured = hasConfiguredRuntime;
     setRuntime(next);
     setSavingRuntime(true);
     try {
@@ -61,9 +66,11 @@ export default function WelcomePage() {
       const config = (wrapper?.config ?? wrapper ?? {}) as Record<string, unknown>;
       const providerSettings = { ...(config.provider_settings as Record<string, unknown> | undefined), computer_use_runtime: next };
       await updateConfigProfileContent({ body: { ...config, provider_settings: providerSettings }, path: { config_id: 'default' } });
+      setHasConfiguredRuntime(true);
       toast.success(t(`${prefix}.onboard.${next === 'local' ? 'computerAccessAllowed' : 'computerAccessDenied'}`));
     } catch (cause) {
       setRuntime(previous);
+      setHasConfiguredRuntime(wasConfigured);
       toast.error(cause instanceof Error ? cause.message : t(`${prefix}.onboard.computerAccessUpdateFailed`));
     } finally {
       setSavingRuntime(false);
@@ -93,7 +100,7 @@ export default function WelcomePage() {
               {hasPlatform && <span className="onboarding-complete">{t(`${prefix}.onboard.completed`)}</span>}
             </div>
           </li>
-          <li>
+          <li className={hasConfiguredRuntime ? 'is-complete' : ''}>
             <span className="onboarding-list__marker"><MdiIcon name="mdi-numeric-3" /></span>
             <div className="onboarding-list__content"><h3>{t(`${prefix}.onboard.step3Title`)}</h3><p>{t(`${prefix}.onboard.step3Desc`)}</p>
               <select disabled={savingRuntime} onChange={(event) => void saveRuntime(event.target.value as ComputerAccessRuntime)} value={runtime}>
