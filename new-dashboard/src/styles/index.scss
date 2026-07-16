@@ -1495,18 +1495,20 @@ textarea {
 .provider-page .button--primary:hover { background: var(--astrbot-secondary); color: #fff; }
 .provider-page .button--danger { color: var(--astrbot-error); }
 
-.provider-source-fields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 15px 18px;
-  padding: 20px;
+.provider-source-config__settings {
   border-bottom: 1px solid var(--provider-border);
 }
 
-.provider-source-fields label { display: grid; min-width: 0; gap: 7px; }
-.provider-source-fields label > span { color: color-mix(in srgb, var(--astrbot-text) 70%, transparent); font-size: 12px; font-weight: 600; }
-.provider-source-fields__wide { grid-column: 1 / -1; }
-.provider-source-fields input,
+.provider-source-config__section { padding: 20px; }
+.provider-source-config__section + .provider-source-config__section { border-top: 1px solid var(--provider-border); }
+.provider-source-config__section > h3 { margin: 0 0 12px; font-size: 16px; }
+.provider-source-config__section .dynamic-config--inline { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.provider-source-config__section .dynamic-config__row { min-height: 58px; padding: 9px 0; }
+.provider-source-config__section .dynamic-config__row:hover { background: transparent; }
+.provider-source-config__section .dynamic-config__control { display: flex; justify-content: flex-end; }
+.provider-source-config__section .dynamic-config__control > * { width: 100%; max-width: 520px; }
+.provider-source-config__section .dynamic-config__control > .dynamic-switch { width: 44px; margin-left: auto; }
+
 .provider-model-search {
   width: 100%;
   min-width: 0;
@@ -1516,8 +1518,6 @@ textarea {
   background: var(--provider-surface);
   color: inherit;
 }
-.provider-source-fields input { padding: 8px 11px; outline: 0; }
-.provider-source-fields input:focus { border-color: var(--astrbot-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--astrbot-primary) 11%, transparent); }
 
 .provider-models { display: flex; min-width: 0; flex: 1; flex-direction: column; padding: 20px; }
 .provider-models__header { align-items: flex-start; margin-bottom: 13px; }
@@ -1620,8 +1620,10 @@ textarea {
   .provider-type-panel > header { align-items: stretch; flex-direction: column; }
   .provider-source-config__actions,
   .provider-models__actions { justify-content: flex-start; }
-  .provider-source-fields { grid-template-columns: 1fr; padding: 14px; }
-  .provider-source-fields__wide { grid-column: auto; }
+  .provider-source-config__section { padding: 14px; }
+  .provider-source-config__section .dynamic-config__row { grid-template-columns: 1fr; align-items: stretch; gap: 10px; }
+  .provider-source-config__section .dynamic-config__control { justify-content: stretch; }
+  .provider-source-config__section .dynamic-config__control > * { max-width: none; }
   .provider-models { padding: 14px; }
   .provider-model-row { align-items: flex-start; flex-direction: column; }
   .provider-model-row__actions { width: 100%; justify-content: flex-end; }

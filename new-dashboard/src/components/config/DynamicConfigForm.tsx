@@ -125,36 +125,38 @@ function ConfigControl({ metadata, onChange, value }: { metadata: ConfigItemMeta
 }
 
 type ConfigGroupProps = {
+  conditionValue?: ConfigRecord;
   fieldsFromValue?: boolean;
   metadata: ConfigGroupMetadata;
   onChange: (value: ConfigRecord) => void;
-  resolveText: TextResolver;
+  resolveText?: TextResolver;
   search?: string;
   title?: string;
   translationPath: string;
   value: ConfigRecord;
-  variant?: 'default' | 'settings';
+  variant?: 'default' | 'inline' | 'settings';
 };
 
-export function ConfigGroup({ fieldsFromValue = false, metadata, onChange, resolveText, search = '', title, translationPath, value, variant = 'default' }: ConfigGroupProps) {
+export function ConfigGroup({ conditionValue, fieldsFromValue = false, metadata, onChange, resolveText, search = '', title, translationPath, value, variant = 'default' }: ConfigGroupProps) {
   const { t } = useTranslation();
+  const textResolver = resolveText ?? defaultTextResolver(t);
   const [showCollapsed, setShowCollapsed] = useState(false);
   const needle = search.trim().toLocaleLowerCase();
-  const groupTitle = title ?? resolveText(translationPath, 'description', metadata.description);
-  const groupHint = resolveText(translationPath, 'hint', metadata.hint);
+  const groupTitle = title ?? textResolver(translationPath, 'description', metadata.description);
+  const groupHint = textResolver(translationPath, 'hint', metadata.hint);
   const groupMatchesSearch = needle && [metadata.description, metadata.hint, groupTitle, groupHint]
     .some((candidate) => String(candidate ?? '').toLocaleLowerCase().includes(needle));
   const itemMetadata = fieldsFromValue ? configItemsForValue(metadata, value) : metadata.items ?? {};
   const entries = Object.entries(itemMetadata).filter(([key, item]) => {
-    if (item.invisible || !matchesConfigCondition(value, item)) return false;
+    if (item.invisible || !matchesConfigCondition(conditionValue ?? value, item)) return false;
     if (!needle || groupMatchesSearch) return true;
     const path = `${translationPath}.${key}`;
     return [
       key,
       item.description,
       item.hint,
-      resolveText(path, 'description', item.description),
-      resolveText(path, 'hint', item.hint),
+      textResolver(path, 'description', item.description),
+      textResolver(path, 'hint', item.hint),
     ].some((candidate) => String(candidate ?? '').toLocaleLowerCase().includes(needle));
   });
   const visible = entries.filter(([, item]) => !item.collapsed);
@@ -162,8 +164,8 @@ export function ConfigGroup({ fieldsFromValue = false, metadata, onChange, resol
 
   const renderEntry = ([key, item]: [string, ConfigItemMetadata]) => {
     const path = `${translationPath}.${key}`;
-    const label = resolveText(path, 'description', item.description) || key;
-    const hint = resolveText(path, 'hint', item.hint);
+    const label = textResolver(path, 'description', item.description) || key;
+    const hint = textResolver(path, 'hint', item.hint);
     return <div className="dynamic-config__row" key={key}><div className="dynamic-config__label"><label htmlFor={`config-${translationPath}-${key}`}><span>{label}</span><small>{key}</small></label>{hint && <p>{hint}</p>}</div><div className="dynamic-config__control" id={`config-${translationPath}-${key}`}><ConfigControl metadata={item} onChange={(next) => onChange(setConfigValue(value, key, next))} value={getConfigValue(value, key)} /></div></div>;
   };
 

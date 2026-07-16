@@ -14,6 +14,8 @@ import {
   updateProviderById,
   upsertProviderSourceById,
 } from '@/api/openapi';
+import { ConfigGroup } from '@/components/config/DynamicConfigForm';
+import type { ConfigGroupMetadata } from '@/components/config/configFormModel';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { confirmAction, toast } from '@/stores/feedback';
 import { JsonConfigDialog, LoadingState } from './ConfigurationUi';
@@ -23,8 +25,10 @@ import {
   buildModelProvider,
   capabilityBadges,
   formatContextLimit,
+  mergeProviderSourceSection,
   PROVIDER_TABS,
   providerSchemaData,
+  providerSourceSections,
   recordsForType,
   sourceFromTemplate,
   sourceTemplatesForType,
@@ -38,11 +42,13 @@ export default function ProviderPage() {
   const [providers, setProviders] = useState<JsonObject[]>([]);
   const [providerSources, setProviderSources] = useState<JsonObject[]>([]);
   const [providerTemplates, setProviderTemplates] = useState<JsonObject>({});
+  const [providerSourceSchema, setProviderSourceSchema] = useState<JsonObject>({});
   const [modelMetadata, setModelMetadata] = useState<JsonObject>({});
   const [activeType, setActiveType] = useState<ProviderType>('chat_completion');
   const [selectedSourceId, setSelectedSourceId] = useState('');
   const [editableSource, setEditableSource] = useState<JsonObject | null>(null);
   const [sourceOriginalId, setSourceOriginalId] = useState('');
+  const [newSourceId, setNewSourceId] = useState('');
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [availableMetadata, setAvailableMetadata] = useState<JsonObject>({});
   const [modelSearch, setModelSearch] = useState('');
@@ -54,9 +60,6 @@ export default function ProviderPage() {
   const [savingProvider, setSavingProvider] = useState(false);
   const [editingProvider, setEditingProvider] = useState<JsonObject | null>(null);
   const [providerJson, setProviderJson] = useState('{}');
-  const [editingSourceDialog, setEditingSourceDialog] = useState<JsonObject | null>(null);
-  const [sourceDialogOriginalId, setSourceDialogOriginalId] = useState('');
-  const [sourceJson, setSourceJson] = useState('{}');
 
   const load = useCallback(async (preferredSourceId = '') => {
     setLoading(true);
@@ -68,7 +71,9 @@ export default function ProviderPage() {
       setProviders(data.providers);
       setProviderSources(data.providerSources);
       setProviderTemplates(data.templates);
+      setProviderSourceSchema(data.sourceSchema);
       setModelMetadata(data.modelMetadata);
+      setNewSourceId('');
       setSelectedSourceId((current) => {
         const candidate = preferredSourceId || current;
         return data.providerSources.some((source) => recordId(source, 'id') === candidate) ? candidate : '';
@@ -79,6 +84,7 @@ export default function ProviderPage() {
         setProviders(fallback);
         setProviderSources([]);
         setProviderTemplates({});
+        setProviderSourceSchema({});
         setModelMetadata({});
         setSelectedSourceId('');
       } catch {
@@ -115,8 +121,31 @@ export default function ProviderPage() {
     [providers, selectedSourceId],
   );
   const sourceIsDirty = Boolean(
-    selectedSource && editableSource && prettyJson(selectedSource) !== prettyJson(editableSource),
+    selectedSource && editableSource
+      && (selectedSourceId === newSourceId || prettyJson(selectedSource) !== prettyJson(editableSource)),
   );
+  const sourceSections = useMemo(
+    () => editableSource ? providerSourceSections(editableSource) : null,
+    [editableSource],
+  );
+  const sourceFieldMetadata = useMemo(() => {
+    const items = isObject(providerSourceSchema.items) ? providerSourceSchema.items : {};
+    const item = (key: string) => isObject(items[key]) ? items[key] as JsonObject : {};
+    return {
+      ...providerSourceSchema,
+      items: {
+        ...items,
+        id: { ...item('id'), hint: t('features.provider.providerSources.hints.id') },
+        key: { ...item('key'), hint: t('features.provider.providerSources.hints.key') },
+        api_base: { ...item('api_base'), hint: t('features.provider.providerSources.hints.apiBase') },
+        proxy: {
+          ...item('proxy'),
+          description: t('features.provider.providerSources.labels.proxy'),
+          hint: t('features.provider.providerSources.hints.proxy'),
+        },
+      },
+    } as ConfigGroupMetadata;
+  }, [providerSourceSchema, t]);
 
   const mergedModels = useMemo(() => {
     const configured = new Set(sourceProviders.map((provider) => String(provider.model || '')));
@@ -140,46 +169,10 @@ export default function ProviderPage() {
 
   const startSource = (template: JsonObject) => {
     const next = sourceFromTemplate(template, providerSources);
-    setSourceDialogOriginalId('');
-    setEditingSourceDialog(next);
-    setSourceJson(prettyJson(next));
-  };
-
-  const openSourceAdvanced = () => {
-    if (!editableSource) return;
-    setSourceDialogOriginalId(sourceOriginalId);
-    setEditingSourceDialog(editableSource);
-    setSourceJson(prettyJson(editableSource));
-  };
-
-  const saveSourceDialog = async () => {
-    let config: JsonObject;
-    try {
-      config = parseJsonObject(sourceJson);
-    } catch (cause) {
-      toast.error(errorMessage(cause, 'Invalid JSON.'));
-      return;
-    }
-    const id = recordId(config, 'id');
-    if (!id) {
-      toast.error(t('features.provider.providerSources.hints.id'));
-      return;
-    }
-    setSavingSource(true);
-    try {
-      if (sourceDialogOriginalId) {
-        await upsertProviderSourceById({ body: { source_id: sourceDialogOriginalId, config } });
-      } else {
-        await createProviderSource({ body: { id, config } });
-      }
-      toast.success(t('features.provider.providerSources.saveSuccess'));
-      setEditingSourceDialog(null);
-      await load(id);
-    } catch (cause) {
-      toast.error(errorMessage(cause, t('features.provider.providerSources.saveError')));
-    } finally {
-      setSavingSource(false);
-    }
+    const id = recordId(next, 'id');
+    setProviderSources((current) => [...current, next]);
+    setNewSourceId(id);
+    setSelectedSourceId(id);
   };
 
   const saveEditableSource = async () => {
@@ -191,7 +184,11 @@ export default function ProviderPage() {
     }
     setSavingSource(true);
     try {
-      await upsertProviderSourceById({ body: { source_id: sourceOriginalId, config: editableSource } });
+      if (selectedSourceId === newSourceId) {
+        await createProviderSource({ body: { id, config: editableSource } });
+      } else {
+        await upsertProviderSourceById({ body: { source_id: sourceOriginalId, config: editableSource } });
+      }
       toast.success(t('features.provider.providerSources.saveSuccess'));
       await load(id);
       return true;
@@ -210,6 +207,12 @@ export default function ProviderPage() {
       title: t('features.provider.providerSources.delete'),
       message: t('features.provider.providerSources.deleteConfirm', { id }),
     })) return;
+    if (id === newSourceId) {
+      setProviderSources((current) => current.filter((item) => recordId(item, 'id') !== id));
+      setSelectedSourceId('');
+      setNewSourceId('');
+      return;
+    }
     try {
       await deleteProviderSourceById({ query: { source_id: id } });
       toast.success(t('features.provider.providerSources.deleteSuccess'));
@@ -422,16 +425,40 @@ export default function ProviderPage() {
                 <header className="provider-source-config__header">
                   <div><h2>{recordId(editableSource, 'id')}</h2><p>{String(editableSource.api_base || editableSource.provider || '')}</p></div>
                   <div className="provider-source-config__actions">
-                    <button onClick={openSourceAdvanced} type="button"><MdiIcon name="mdi-tune-variant" />{t('features.provider.providerSources.advancedConfig')}</button>
                     <button className="button--primary" disabled={!sourceIsDirty || savingSource} onClick={() => void saveEditableSource()} type="button"><MdiIcon name="mdi-content-save-outline" />{savingSource ? '…' : t('features.provider.providerSources.save')}</button>
                   </div>
                 </header>
 
-                <section className="provider-source-fields">
-                  <label><span>{t('features.provider.providerSources.fields.name')}</span><input onChange={(event) => setEditableSource({ ...editableSource, id: event.target.value })} value={String(editableSource.id || '')} /></label>
-                  <label><span>{t('features.provider.providerSources.fields.apiKey')}</span><input autoComplete="off" onChange={(event) => setEditableSource({ ...editableSource, key: event.target.value })} type="password" value={String(editableSource.key || '')} /></label>
-                  <label className="provider-source-fields__wide"><span>{t('features.provider.providerSources.fields.baseUrl')}</span><input onChange={(event) => setEditableSource({ ...editableSource, api_base: event.target.value })} placeholder="https://api.openai.com/v1" value={String(editableSource.api_base || '')} /></label>
-                </section>
+                {sourceSections && (
+                  <div className="provider-source-config__settings">
+                    <section className="provider-source-config__section">
+                      <h3>{t('features.provider.providers.settings')}</h3>
+                      <ConfigGroup
+                        conditionValue={editableSource}
+                        fieldsFromValue
+                        metadata={sourceFieldMetadata}
+                        onChange={(next) => setEditableSource(mergeProviderSourceSection(editableSource, next))}
+                        translationPath="provider"
+                        value={sourceSections.basic}
+                        variant="inline"
+                      />
+                    </section>
+                    {Object.keys(sourceSections.advanced).length > 0 && (
+                      <section className="provider-source-config__section">
+                        <h3>{t('features.provider.providerSources.advancedConfig')}</h3>
+                        <ConfigGroup
+                          conditionValue={editableSource}
+                          fieldsFromValue
+                          metadata={sourceFieldMetadata}
+                          onChange={(next) => setEditableSource(mergeProviderSourceSection(editableSource, next))}
+                          translationPath="provider"
+                          value={sourceSections.advanced}
+                          variant="inline"
+                        />
+                      </section>
+                    )}
+                  </div>
+                )}
 
                 <section className="provider-models">
                   <header className="provider-models__header">
@@ -482,7 +509,6 @@ export default function ProviderPage() {
         </section>
       )}
 
-      <JsonConfigDialog busy={savingSource} onChange={setSourceJson} onOpenChange={(open) => !open && setEditingSourceDialog(null)} onSave={() => void saveSourceDialog()} open={editingSourceDialog !== null} title={sourceDialogOriginalId ? t('features.provider.dialogs.config.editTitle') : t('features.provider.providerSources.add')} value={sourceJson} />
       <JsonConfigDialog busy={savingProvider} onChange={setProviderJson} onOpenChange={(open) => !open && setEditingProvider(null)} onSave={() => void saveProvider()} open={editingProvider !== null} title={recordId(editingProvider ?? {}, 'id') ? t('features.provider.dialogs.config.editTitle') : t('features.provider.dialogs.config.addTitle')} value={providerJson} />
     </div>
   );

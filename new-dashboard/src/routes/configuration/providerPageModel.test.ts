@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildModelProvider, formatContextLimit, providerSchemaData, providerTypeOf, recordsForType, sourceFromTemplate } from './providerPageModel';
+import { buildModelProvider, formatContextLimit, mergeProviderSourceSection, providerSchemaData, providerSourceSections, providerTypeOf, recordsForType, sourceFromTemplate } from './providerPageModel';
 
 describe('provider page model', () => {
   it('normalizes current capability and legacy provider types', () => {
@@ -17,7 +17,22 @@ describe('provider page model', () => {
     })).toMatchObject({
       providerSources: [{ id: 'openai' }],
       providers: [{ id: 'openai/gpt-4.1' }],
+      sourceSchema: { config_template: { OpenAI: { provider: 'openai' } } },
       templates: { OpenAI: { provider: 'openai' } },
+    });
+  });
+
+  it('splits and updates provider-specific source configuration fields', () => {
+    const source = {
+      id: 'gemini', key: 'secret', api_base: 'https://example.com', provider: 'google',
+      provider_type: 'chat_completion', timeout: 120, safety_settings: [{ category: 'test' }],
+    };
+    expect(providerSourceSections(source)).toEqual({
+      basic: { id: 'gemini', key: 'secret', api_base: 'https://example.com' },
+      advanced: { timeout: 120, safety_settings: [{ category: 'test' }] },
+    });
+    expect(mergeProviderSourceSection(source, { timeout: 30 })).toMatchObject({
+      provider: 'google', timeout: 30, safety_settings: [{ category: 'test' }],
     });
   });
 
@@ -26,6 +41,9 @@ describe('provider page model', () => {
       id: 'openai', provider: 'openai', provider_type: 'chat_completion', model: 'gpt-4.1', key: '',
     }, [{ id: 'openai' }])).toEqual({
       id: 'openai_1', provider: 'openai', provider_type: 'chat_completion', key: '', type: undefined, enable: true,
+    });
+    expect(sourceFromTemplate({ id: 'ollama', provider: 'ollama' }, [])).toMatchObject({
+      id: 'ollama', ollama_disable_thinking: false,
     });
   });
 

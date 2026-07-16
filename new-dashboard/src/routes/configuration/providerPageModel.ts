@@ -72,8 +72,30 @@ export function providerSchemaData(payload: JsonObject) {
     modelMetadata: objectValue(payload.model_metadata),
     providerSources: objectArray(payload.provider_sources),
     providers: objectArray(payload.providers),
+    sourceSchema: providerSchema,
     templates: objectValue(providerSchema.config_template),
   };
+}
+
+const BASIC_SOURCE_FIELDS = ['id', 'key', 'api_base'];
+const INTERNAL_SOURCE_FIELDS = new Set([
+  ...BASIC_SOURCE_FIELDS,
+  'enable',
+  'type',
+  'provider_type',
+  'provider',
+]);
+
+export function providerSourceSections(source: JsonObject) {
+  const basic = Object.fromEntries(BASIC_SOURCE_FIELDS.map((key) => [key, source[key] ?? '']));
+  const advanced = Object.fromEntries(
+    Object.entries(source).filter(([key]) => !INTERNAL_SOURCE_FIELDS.has(key)),
+  );
+  return { basic, advanced };
+}
+
+export function mergeProviderSourceSection(source: JsonObject, section: JsonObject) {
+  return { ...source, ...section };
 }
 
 export function sourceTemplatesForType(templates: JsonObject, type: ProviderType) {
@@ -95,6 +117,9 @@ export function sourceFromTemplate(template: JsonObject, existingSources: JsonOb
   source.provider_type = template.provider_type;
   source.provider = template.provider;
   source.enable = true;
+  if (source.provider === 'ollama' && source.ollama_disable_thinking === undefined) {
+    source.ollama_disable_thinking = false;
+  }
   return source;
 }
 
