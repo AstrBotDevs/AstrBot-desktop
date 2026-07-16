@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildModelProvider, formatContextLimit, mergeProviderSourceSection, providerSchemaData, providerSourceSections, providerTypeOf, recordsForType, sourceFromTemplate } from './providerPageModel';
+import { buildModelProvider, formatContextLimit, mergeProviderSourceSection, mergeProviderWithTemplate, providerFromTemplate, providerSchemaData, providerSourceSections, providerTypeOf, recordsForType, sourceFromTemplate } from './providerPageModel';
 
 describe('provider page model', () => {
   it('normalizes current capability and legacy provider types', () => {
@@ -61,6 +61,18 @@ describe('provider page model', () => {
       model: 'custom-model',
       modalities: ['text', 'image', 'audio', 'tool_use'],
       provider_source_id: 'openai',
+    });
+  });
+
+  it('creates typed providers from templates and restores missing fields while editing', () => {
+    const template = {
+      id: 'dify', type: 'dify', provider_type: 'agent_runner', enable: true,
+      nested: { timeout: 30, options: { stream: true } },
+    };
+    expect(providerFromTemplate(template)).toEqual(template);
+    expect(mergeProviderWithTemplate({ id: 'custom', type: 'dify', nested: { timeout: 60 } }, template)).toEqual({
+      id: 'custom', type: 'dify', provider_type: 'agent_runner', enable: true,
+      nested: { timeout: 60, options: { stream: true } },
     });
   });
 });

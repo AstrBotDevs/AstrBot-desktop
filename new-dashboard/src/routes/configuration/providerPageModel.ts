@@ -123,6 +123,22 @@ export function sourceFromTemplate(template: JsonObject, existingSources: JsonOb
   return source;
 }
 
+export function providerFromTemplate(template: JsonObject) {
+  return cloneValue(template) as JsonObject;
+}
+
+export function mergeProviderWithTemplate(provider: JsonObject, template: JsonObject) {
+  const mergeDefaults = (current: unknown, defaults: unknown): unknown => {
+    if (!isObject(defaults)) return current === undefined ? cloneValue(defaults) : current;
+    const result: JsonObject = isObject(current) ? cloneValue(current) as JsonObject : {};
+    for (const [key, value] of Object.entries(defaults)) {
+      result[key] = mergeDefaults(result[key], value);
+    }
+    return result;
+  };
+  return mergeDefaults(provider, template) as JsonObject;
+}
+
 export function buildModelProvider(sourceId: string, modelName: string, metadata?: JsonObject): JsonObject {
   const modalities = metadata ? ['text'] : ['text', 'image', 'audio', 'tool_use'];
   const metadataModalities = objectValue(metadata?.modalities);
