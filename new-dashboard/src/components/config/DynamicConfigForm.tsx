@@ -431,6 +431,10 @@ export function ConfigGroup({ conditionValue, embeddingDimensionLoading, fieldsF
     const currentValue = getConfigValue(value, key);
     return <Fragment key={key}>
       <div className="dynamic-config__row"><div className="dynamic-config__label"><label htmlFor={`config-${translationPath}-${key}`}><span>{label}</span><small>{key}</small></label>{hint && <p>{hint}</p>}</div><div className="dynamic-config__control" id={`config-${translationPath}-${key}`}><ConfigControl embeddingDimensionLoading={embeddingDimensionLoading} metadata={item} onChange={(next) => onChange(setConfigValue(value, key, next))} onGetEmbeddingDimension={onGetEmbeddingDimension} value={currentValue} /></div></div>
+      {item._special === 'select_plugin_set' && Array.isArray(currentValue) && currentValue.length > 0 && <div className="config-plugin-set-preview">
+        <small>{t('core.shared.pluginSetSelector.selectedPluginsLabel')}</small>
+        <div>{currentValue.filter((plugin): plugin is string => typeof plugin === 'string').map((plugin) => <span key={plugin}>{plugin === '*' ? t('core.shared.pluginSetSelector.allPluginsLabel') : plugin}</span>)}</div>
+      </div>}
       {item._special === 'select_persona' && key === 'provider_settings.default_personality' && <PersonaQuickPreview personaId={typeof currentValue === 'string' ? currentValue : ''} />}
     </Fragment>;
   };

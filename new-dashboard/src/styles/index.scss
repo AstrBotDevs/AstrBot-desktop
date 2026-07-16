@@ -1930,6 +1930,24 @@ textarea {
 .config-special-selector__chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 .config-special-selector__chips span,
 .persona-quick-preview > div span { padding: 3px 7px; border-radius: 6px; background: color-mix(in srgb, var(--astrbot-primary) 10%, transparent); color: var(--astrbot-primary); font-size: 11px; }
+.config-plugin-set-preview { margin: 0 12px 12px; padding: 12px; border: 1px solid color-mix(in srgb, var(--astrbot-primary) 12%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--astrbot-primary) 5%, var(--astrbot-surface)); }
+.config-plugin-set-preview > small { color: color-mix(in srgb, var(--astrbot-text) 62%, transparent); }
+.config-plugin-set-preview > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+.config-plugin-set-preview span { padding: 4px 9px; border: 1px solid var(--astrbot-primary); border-radius: 6px; color: var(--astrbot-primary); font-size: 12px; }
+.plugin-set-dialog { display: grid; gap: 16px; margin-top: 18px; }
+.plugin-set-dialog__modes { display: grid; gap: 12px; }
+.plugin-set-dialog__modes label { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 16px; }
+.plugin-set-dialog__modes input { width: 20px; height: 20px; accent-color: var(--astrbot-primary); }
+.plugin-set-dialog__plugins { display: grid; max-height: 300px; gap: 3px; overflow-y: auto; }
+.plugin-set-dialog__plugins > label { display: flex; min-height: 58px; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.plugin-set-dialog__plugins > label:hover { background: color-mix(in srgb, var(--astrbot-primary) 6%, transparent); }
+.plugin-set-dialog__plugins > label > input { width: 19px; height: 19px; flex: 0 0 auto; accent-color: var(--astrbot-primary); }
+.plugin-set-dialog__plugins > label > span { display: grid; min-width: 0; gap: 3px; }
+.plugin-set-dialog__plugins strong,
+.plugin-set-dialog__plugins small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plugin-set-dialog__plugins small { color: color-mix(in srgb, var(--astrbot-text) 58%, transparent); font-weight: 400; }
+.plugin-set-dialog__note { padding: 8px 10px 2px 41px; color: color-mix(in srgb, var(--astrbot-text) 62%, transparent); }
+.headless-dialog__content:has(.plugin-set-dialog) { width: min(700px, calc(100vw - 32px)); }
 .config-selector-dialog { display: grid; gap: 14px; margin-top: 16px; }
 .config-selector-dialog__loading { display: flex; min-height: 180px; align-items: center; justify-content: center; gap: 8px; }
 .config-selector-dialog__loading .mdi-loading { animation: provider-spin .8s linear infinite; }

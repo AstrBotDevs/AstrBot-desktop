@@ -22,6 +22,19 @@ type SpecialControlProps = {
   value: unknown;
 };
 
+export type PluginSelectionMode = 'all' | 'none' | 'custom';
+
+export function pluginSelectionMode(value: unknown): PluginSelectionMode {
+  if (!Array.isArray(value) || value.length === 0) return 'none';
+  return value.length === 1 && value[0] === '*' ? 'all' : 'custom';
+}
+
+export function pluginSelectionValue(mode: PluginSelectionMode, selected: string[]) {
+  if (mode === 'all') return ['*'];
+  if (mode === 'none') return [];
+  return [...selected];
+}
+
 function responseData(response: unknown): unknown {
   const outer = (response as { data?: unknown } | null)?.data;
   if (outer && typeof outer === 'object' && 'data' in outer) return (outer as { data: unknown }).data;
@@ -44,6 +57,23 @@ function stringId(item: Item, ...keys: string[]) {
     if (typeof value === 'string' && value) return value;
   }
   return '';
+}
+
+export function selectablePlugins(data: unknown) {
+  return records(data, ['plugins', 'items', 'data'])
+    .filter((item) => item.activated === true && !item.reserved)
+    .sort((left, right) => stringId(left, 'name').localeCompare(stringId(right, 'name')));
+}
+
+function localizedPluginValue(item: Item, locale: string, key: string) {
+  const translations = item.i18n;
+  if (!translations || typeof translations !== 'object' || Array.isArray(translations)) return '';
+  const localeData = (translations as Item)[locale];
+  if (!localeData || typeof localeData !== 'object' || Array.isArray(localeData)) return '';
+  const metadata = (localeData as Item).metadata;
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return '';
+  const value = (metadata as Item)[key];
+  return typeof value === 'string' ? value : '';
 }
 
 function specialParts(special: string) {
@@ -218,11 +248,103 @@ function PersonaSelectorDialog({ draft, onCancel, onConfirm, onDraftChange, open
   </Dialog>;
 }
 
+function PluginSetSelector({ disabled, onChange, value }: Omit<SpecialControlProps, 'special'>) {
+  const { i18n, t } = useTranslation();
+  const selected = useMemo(
+    () => Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [],
+    [value],
+  );
+  const [draft, setDraft] = useState<string[]>(selected);
+  const [mode, setMode] = useState<PluginSelectionMode>(() => pluginSelectionMode(selected));
+  const [items, setItems] = useState<Item[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const text = (key: string, options?: Record<string, unknown>) => t(`core.shared.pluginSetSelector.${key}`, options);
+
+  useEffect(() => {
+    setDraft(selected);
+    setMode(pluginSelectionMode(selected));
+  }, [selected]);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    void listPlugins()
+      .then((response) => setItems(selectablePlugins(responseData(response))))
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false));
+  }, [open]);
+
+  const resetDraft = () => {
+    setDraft(selected);
+    setMode(pluginSelectionMode(selected));
+  };
+  const close = () => {
+    resetDraft();
+    setOpen(false);
+  };
+  const confirm = () => {
+    onChange(pluginSelectionValue(mode, draft));
+    setOpen(false);
+  };
+  const toggle = (id: string) => {
+    setDraft((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  };
+  const displayValue = selected.length === 1 && selected[0] === '*'
+    ? text('allPlugins')
+    : selected.length === 0
+      ? text('notSelected')
+      : text('selectedCount', { count: selected.length });
+
+  return <div className="config-special-selector config-plugin-set-selector">
+    <div className="config-special-selector__summary">
+      <span className={selected.length === 0 ? 'is-empty' : ''}>{displayValue}</span>
+      <button className="button--primary-soft" disabled={disabled} onClick={() => { resetDraft(); setOpen(true); }} type="button">{text('buttonText')}</button>
+    </div>
+    <Dialog onOpenChange={(nextOpen) => nextOpen ? setOpen(true) : close()} open={open} title={text('dialogTitle')}>
+      <div className="plugin-set-dialog">
+        {loading ? <div className="config-selector-dialog__loading"><MdiIcon className="mdi-spin" name="mdi-loading" />{text('loading')}</div> : <>
+          <div className="plugin-set-dialog__modes" role="radiogroup">
+            {([
+              ['all', 'enableAll'],
+              ['none', 'enableNone'],
+              ['custom', 'customSelect'],
+            ] as const).map(([selectionMode, label]) => <label key={selectionMode}>
+              <input checked={mode === selectionMode} name="plugin-selection-mode" onChange={() => setMode(selectionMode)} type="radio" value={selectionMode} />
+              <span>{text(label)}</span>
+            </label>)}
+          </div>
+          {mode === 'custom' && <div className="plugin-set-dialog__plugins">
+            {items.map((item) => {
+              const id = stringId(item, 'name');
+              if (!id) return null;
+              const displayName = localizedPluginValue(item, i18n.language, 'display_name') || String(item.display_name || id);
+              const description = localizedPluginValue(item, i18n.language, 'desc') || String(item.desc || item.description || text('noDescription'));
+              return <label key={id}>
+                <input checked={draft.includes(id)} onChange={() => toggle(id)} type="checkbox" value={id} />
+                <span><strong>{displayName}</strong><small>{description}</small></span>
+              </label>;
+            })}
+            {!items.length && <div className="dynamic-editor-empty"><MdiIcon name="mdi-puzzle-outline" /><p>{text('noPlugins')}</p></div>}
+            {items.length > 0 && <small className="plugin-set-dialog__note">{text('note')}</small>}
+          </div>}
+        </>}
+        <div className="dialog-actions"><button onClick={close} type="button">{text('cancelSelection')}</button><button className="button--primary" onClick={confirm} type="button">{text('confirmSelection')}</button></div>
+      </div>
+    </Dialog>
+  </div>;
+}
+
 export function isConfigSelectorSpecial(special: unknown) {
   return typeof special === 'string' && Boolean(selectorKind(special));
 }
 
 export function ConfigSpecialSelector({ disabled, onChange, special, value }: SpecialControlProps) {
+  if (selectorKind(special) === 'plugin') return <PluginSetSelector disabled={disabled} onChange={onChange} value={value} />;
+  return <GenericConfigSpecialSelector disabled={disabled} onChange={onChange} special={special} value={value} />;
+}
+
+function GenericConfigSpecialSelector({ disabled, onChange, special, value }: SpecialControlProps) {
   const { t } = useTranslation();
   const kind = selectorKind(special);
   const { name, subtype } = specialParts(special);
@@ -256,8 +378,6 @@ export function ConfigSpecialSelector({ disabled, onChange, special, value }: Sp
         setItems(records(responseData(await listPersonas()), ['personas', 'items', 'data']));
       } else if (kind === 'knowledge') {
         setItems(records(responseData(await listKnowledgeBases({ query: { page: 1, page_size: 100 } })), ['knowledge_bases', 'items', 'data']));
-      } else if (kind === 'plugin') {
-        setItems(records(responseData(await listPlugins({ query: { enabled: true } })), ['plugins', 'items', 'data']));
       }
     };
     void load().catch(() => setItems([])).finally(() => setLoading(false));
@@ -317,10 +437,6 @@ export function ConfigSpecialSelector({ disabled, onChange, special, value }: Sp
           {!multiple && <button className={draft[0] === '' ? 'is-active' : ''} onClick={() => setDraft([''])} type="button">
             <span><strong>{text('clearSelection')}</strong><small>{text('clearSelectionSubtitle')}</small></span>
             {draft[0] === '' && <MdiIcon name="mdi-check-circle" />}
-          </button>}
-          {kind === 'plugin' && <button className={draft.includes('*') ? 'is-active' : ''} onClick={() => setDraft(['*'])} type="button">
-            <span><strong>{text('allPlugins')}</strong></span>
-            {draft.includes('*') && <MdiIcon name="mdi-check-circle" />}
           </button>}
           {items.map((item) => {
             const id = itemId(item);
