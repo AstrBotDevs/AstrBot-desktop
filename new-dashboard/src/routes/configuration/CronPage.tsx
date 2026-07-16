@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -12,7 +12,8 @@ import {
 } from '@/api/openapi';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
-import { confirmAction, toast } from '@/stores/feedback';
+import { Menu, MenuItem } from '@/components/headless/Menu';
+import { toast } from '@/stores/feedback';
 import {
   buildCronExpression,
   cronFormFromJob,
@@ -44,6 +45,83 @@ const NO_DELIVERY_TARGET = '__astrbot_no_delivery_target__';
 function parseUmo(umo: string): UmoInfo {
   const [platform = '', messageType = '', ...sessionParts] = umo.split(':');
   return { umo, platform, message_type: messageType, session_id: sessionParts.join(':') || umo, display_name: umo };
+}
+
+function umoName(info: UmoInfo) {
+  if (info.user_alias && info.auto_name && info.user_alias !== info.auto_name) {
+    return `${info.user_alias}（${info.auto_name}）`;
+  }
+  return info.user_alias || info.auto_name || info.display_name || info.umo;
+}
+
+function UmoSummary({ info }: { info: UmoInfo }) {
+  return <span className="cron-umo-summary">
+    <strong>{umoName(info)}</strong>
+    {info.platform && <em>{info.platform}</em>}
+    <small>{info.session_id || info.umo}</small>
+  </span>;
+}
+
+function CronUmoSelect({
+  emptyText,
+  infoMap,
+  label,
+  loading,
+  onChange,
+  onOpen,
+  options,
+  value,
+}: {
+  emptyText: string;
+  infoMap: Record<string, UmoInfo>;
+  label: string;
+  loading: boolean;
+  onChange: (value: string) => void;
+  onOpen: () => void;
+  options: string[];
+  value: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const rootRef = useRef<HTMLDivElement>(null);
+  const selected = value ? (infoMap[value] ?? parseUmo(value)) : null;
+  const filtered = options.filter((umo) => {
+    const search = query.trim().toLowerCase();
+    if (!search) return true;
+    const info = infoMap[umo] ?? parseUmo(umo);
+    return umo.toLowerCase().includes(search) || umoName(info).toLowerCase().includes(search);
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [open]);
+
+  return <div className="cron-form__field">
+    <span>{label}</span>
+    <div className="cron-umo-select" ref={rootRef}>
+      <button aria-expanded={open} aria-haspopup="listbox" className="cron-umo-select__control" onClick={() => {
+        setOpen((current) => !current);
+        setQuery('');
+        onOpen();
+      }} type="button">
+        {selected ? <UmoSummary info={selected} /> : <span>{loading ? '…' : emptyText}</span>}
+        <MdiIcon name={open ? 'mdi-chevron-up' : 'mdi-chevron-down'} />
+      </button>
+      {value && <button aria-label="clear" className="cron-umo-select__clear" onClick={() => onChange('')} type="button"><MdiIcon name="mdi-close" /></button>}
+      {open && <div className="cron-umo-select__menu">
+        <label><MdiIcon name="mdi-magnify" /><input autoFocus onChange={(event) => setQuery(event.target.value)} value={query} /></label>
+        <div role="listbox">
+          {filtered.map((umo) => <button aria-selected={umo === value} key={umo} onClick={() => { onChange(umo); setOpen(false); }} role="option" type="button"><UmoSummary info={infoMap[umo] ?? parseUmo(umo)} />{umo === value && <MdiIcon name="mdi-check" />}</button>)}
+          {!loading && filtered.length === 0 && <p>{emptyText}</p>}
+        </div>
+      </div>}
+    </div>
+  </div>;
 }
 
 export default function CronPage() {
@@ -160,6 +238,11 @@ export default function CronPage() {
     if (descriptor.kind === 'monthly') return k('card.monthlyAt', descriptor.values);
     return k('card.customCron', descriptor.values);
   };
+  const taskPreview = (job: JsonObject) => {
+    const value = String(job.note || job.description || '').trim();
+    if (!value) return recordId(job, 'job_id', 'id') || k('table.notAvailable');
+    return value.length > 86 ? `${value.slice(0, 86)}...` : value;
+  };
 
   const openCreate = () => {
     setEditingId('');
@@ -227,12 +310,10 @@ export default function CronPage() {
   };
   const remove = async (job: JsonObject) => {
     const id = recordId(job, 'job_id', 'id');
-    if (!id || !await confirmAction({ danger: true, title: k('actions.delete'), message: `${k('actions.delete')} ${String(job.name || id)}?` })) return;
+    if (!id) return;
     try { await deleteCronJob({ path: { job_id: id } }); setJobs((current) => current.filter((item) => recordId(item, 'job_id', 'id') !== id)); toast.success(k('messages.deleteSuccess')); }
     catch (cause) { toast.error(errorMessage(cause, k('messages.deleteFailed'))); }
   };
-
-  const selectedUmoInfo = form.session ? (umoInfo[form.session] ?? parseUmo(form.session)) : null;
 
   return <div className="cron-page-react">
     <div className="cron-page-react__inner">
@@ -241,18 +322,18 @@ export default function CronPage() {
       <section className="cron-task-surface">
         {jobs.length > 0 && <div className="cron-filters"><label><MdiIcon name="mdi-magnify" /><input onChange={(event) => setSearch(event.target.value)} placeholder={k('filters.search')} value={search} /></label><label><MdiIcon name="mdi-send-outline" /><select onChange={(event) => setTargetFilter(event.target.value)} value={targetFilter}><option value="">{k('filters.umo')}</option>{jobs.some((job) => !jobSession(job)) && <option value={NO_DELIVERY_TARGET}>{k('filters.noDeliveryTarget')}</option>}{targets.map((target) => <option key={target} value={target}>{target}</option>)}</select></label></div>}
         {error && <div className="monitor-error" role="alert">{error}</div>}
-        {loading && jobs.length === 0 ? <div className="monitor-loading"><MdiIcon className="mdi-spin" name="mdi-loading" /></div> : jobs.length === 0 ? <div className="cron-empty"><MdiIcon name="mdi-calendar-blank-outline" /><p>{k('table.empty')}</p><button className="button--primary" onClick={openCreate} type="button"><MdiIcon name="mdi-plus" />{k('actions.create')}</button></div> : visibleJobs.length === 0 ? <div className="cron-empty"><MdiIcon name="mdi-file-search-outline" /><p>{k('filters.noMatches')}</p></div> : <div className="cron-task-list">{visibleJobs.map((job, index) => {
+        {loading && jobs.length === 0 ? <div className="cron-loading"><span /></div> : jobs.length === 0 ? <div className="cron-empty"><MdiIcon name="mdi-calendar-blank-outline" /><p>{k('table.empty')}</p></div> : visibleJobs.length === 0 ? <div className="cron-empty"><MdiIcon name="mdi-file-search-outline" /><p>{k('filters.noMatches')}</p></div> : <div className="cron-task-list">{visibleJobs.map((job, index) => {
           const id = recordId(job, 'job_id', 'id') || `job-${index}`;
           const target = jobSession(job);
           const runLabel = job.run_once ? k('card.runAt', { time: formatTime(job.run_at) }) : k('card.nextRun', { time: formatTime(job.next_run_time) });
-          return <article className={`cron-task${job.enabled === false ? ' is-disabled' : ''}`} key={id} onClick={() => openEdit(job)}><div className="cron-task__body"><header><h2>{String(job.name || k('table.notAvailable'))}</h2><span className={job.run_once ? 'is-once' : ''}>{scheduleLabel(job)}</span></header><p>{String(job.note || job.description || id)}</p><footer><span title={target}><MdiIcon name="mdi-send-outline" />{target || k('card.noDeliveryTarget')}</span><span title={`${k('table.headers.lastRun')}: ${formatTime(job.last_run_at)}${job.last_error ? ` · ${String(job.last_error)}` : ''}`}><MdiIcon name="mdi-clock-time-four-outline" />{runLabel}</span></footer></div><div className="cron-task__controls" onClick={(event) => event.stopPropagation()}><label className="cron-switch" title={k('form.enabled')}><input checked={job.enabled !== false} onChange={() => void toggleJob(job)} type="checkbox" /><span /></label><details className="cron-action-menu"><summary aria-label={k('actions.more')} title={k('actions.more')}><MdiIcon name="mdi-dots-horizontal" /></summary><div><button onClick={() => openEdit(job)} type="button"><MdiIcon name="mdi-pencil-outline" />{k('actions.edit')}</button><button disabled={runningIds.has(id)} onClick={() => void runNow(job)} type="button"><MdiIcon className={runningIds.has(id) ? 'mdi-spin' : ''} name={runningIds.has(id) ? 'mdi-loading' : 'mdi-play-circle-outline'} />{k('actions.runNow')}</button><button className="button--danger" onClick={() => void remove(job)} type="button"><MdiIcon name="mdi-delete-outline" />{k('actions.delete')}</button></div></details></div></article>;
+          return <article className={`cron-task${job.enabled === false ? ' is-disabled' : ''}`} key={id} onClick={() => openEdit(job)}><div className="cron-task__body"><header><h2>{String(job.name || k('table.notAvailable'))}</h2><span className={job.run_once ? 'is-once' : ''}>{scheduleLabel(job)}</span></header><p>{taskPreview(job)}</p><footer><span title={target}><MdiIcon name="mdi-send-outline" />{target || k('card.noDeliveryTarget')}</span><span title={`${k('table.headers.lastRun')}: ${formatTime(job.last_run_at)}${job.last_error ? ` · ${String(job.last_error)}` : ''}`}><MdiIcon name="mdi-clock-time-four-outline" />{runLabel}</span></footer></div><div className="cron-task__controls" onClick={(event) => event.stopPropagation()}><Menu className="cron-action-menu" label={k('actions.more')} trigger={(props) => <button {...props} aria-label={k('actions.more')} className="cron-action-menu__trigger" title={k('actions.more')} type="button"><MdiIcon name="mdi-dots-horizontal" /></button>}><MenuItem onSelect={() => openEdit(job)}><span className="headless-menu__item-label"><MdiIcon name="mdi-pencil-outline" />{k('actions.edit')}</span></MenuItem><MenuItem disabled={runningIds.has(id)} onSelect={() => void runNow(job)}><span className="headless-menu__item-label"><MdiIcon className={runningIds.has(id) ? 'mdi-spin' : ''} name={runningIds.has(id) ? 'mdi-loading' : 'mdi-play-circle-outline'} />{k('actions.runNow')}</span></MenuItem><MenuItem onSelect={() => void remove(job)}><span className="headless-menu__item-label cron-action-menu__danger"><MdiIcon name="mdi-delete-outline" />{k('actions.delete')}</span></MenuItem></Menu><label className="cron-switch" title={k('form.enabled')}><input checked={job.enabled !== false} onChange={() => void toggleJob(job)} type="checkbox" /><span /></label></div></article>;
         })}</div>}
       </section>
     </div>
 
     <Dialog onOpenChange={setPlatformDialog} open={platformDialog} title={k('platformDialog.title')}><div className="cron-platform-dialog"><p>{k('platformDialog.description')}</p>{platforms.length ? <div>{platforms.map((platform) => <article key={platform.id}><strong>{platform.displayName || platform.name || platform.id}</strong><span>{platform.id}</span></article>)}</div> : <div className="monitor-empty">{k('page.proactive.unsupported')}</div>}<div className="dialog-actions"><DialogClose asChild><button type="button">{k('actions.close')}</button></DialogClose></div></div></Dialog>
 
-    <Dialog onOpenChange={(open) => { setFormOpen(open); if (!open) setEditingId(''); }} open={formOpen} title={k(editingId ? 'form.editTitle' : 'form.title')}><form className="cron-form" onSubmit={(event) => { event.preventDefault(); void save(); }}><p className="cron-form__hint"><MdiIcon name="mdi-information-outline" />{k('form.chatHint')}</p><label><span>{k('form.name')}</span><input autoFocus onChange={(event) => updateForm('name', event.target.value)} value={form.name} /></label><label><span>{k('form.note')}</span><textarea onChange={(event) => updateForm('note', event.target.value)} rows={4} value={form.note} /></label><div className="cron-form__schedule"><label><span>{k('form.scheduleMode')}</span><select onChange={(event) => updateForm('scheduleMode', event.target.value as ScheduleMode)} value={form.scheduleMode}>{(['once', 'interval', 'daily', 'weekly', 'monthly', 'cron'] as ScheduleMode[]).map((mode) => <option key={mode} value={mode}>{k(`form.scheduleModes.${mode}`)}</option>)}</select></label><ScheduleFields form={form} k={k} updateForm={updateForm} /></div><label><span>{k('form.session')}</span><input list="cron-umo-options" onFocus={() => void loadUmos()} onChange={(event) => updateForm('session', event.target.value)} placeholder={loadingUmos ? k('actions.refresh') : k('form.noUmos')} value={form.session} /><datalist id="cron-umo-options">{availableUmos.map((umo) => <option key={umo} value={umo}>{umoInfo[umo]?.user_alias || umoInfo[umo]?.auto_name || umo}</option>)}</datalist>{selectedUmoInfo && <small><span>{selectedUmoInfo.platform || k('table.notAvailable')}</span>{selectedUmoInfo.user_alias || selectedUmoInfo.auto_name || selectedUmoInfo.session_id || form.session}</small>}</label><label><span>{k('form.timezone')}</span><input onChange={(event) => updateForm('timezone', event.target.value)} placeholder="Asia/Shanghai" value={form.timezone} /></label><label className="cron-form__enabled"><span>{k('form.enabled')}</span><span className="cron-switch"><input checked={form.enabled} onChange={(event) => updateForm('enabled', event.target.checked)} type="checkbox" /><span /></span></label><div className="dialog-actions"><DialogClose asChild><button type="button">{k('actions.cancel')}</button></DialogClose><button className="button--primary" disabled={saving} type="submit">{k(editingId ? 'actions.save' : 'actions.submit')}</button></div></form></Dialog>
+    <Dialog onOpenChange={(open) => { setFormOpen(open); if (!open) setEditingId(''); }} open={formOpen} title={k(editingId ? 'form.editTitle' : 'form.title')}><form className="cron-form" onSubmit={(event) => { event.preventDefault(); void save(); }}><label><span>{k('form.name')}</span><input autoFocus onChange={(event) => updateForm('name', event.target.value)} value={form.name} /></label><label><span>{k('form.note')}</span><textarea onChange={(event) => updateForm('note', event.target.value)} rows={5} value={form.note} /></label><div className="cron-form__schedule"><label><span>{k('form.scheduleMode')}</span><select onChange={(event) => updateForm('scheduleMode', event.target.value as ScheduleMode)} value={form.scheduleMode}>{(['once', 'interval', 'daily', 'weekly', 'monthly', 'cron'] as ScheduleMode[]).map((mode) => <option key={mode} value={mode}>{k(`form.scheduleModes.${mode}`)}</option>)}</select></label><ScheduleFields form={form} k={k} updateForm={updateForm} /></div><CronUmoSelect emptyText={k('form.noUmos')} infoMap={umoInfo} label={k('form.session')} loading={loadingUmos} onChange={(value) => updateForm('session', value)} onOpen={() => void loadUmos()} options={availableUmos} value={form.session} /><div className="dialog-actions"><DialogClose asChild><button type="button">{k('actions.cancel')}</button></DialogClose><button className="button--primary" disabled={saving} type="submit">{k(editingId ? 'actions.save' : 'actions.submit')}</button></div></form></Dialog>
   </div>;
 }
 
