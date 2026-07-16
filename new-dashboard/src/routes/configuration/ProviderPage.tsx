@@ -18,6 +18,7 @@ import { MdiIcon } from '@/components/icons/MdiIcon';
 import { confirmAction, toast } from '@/stores/feedback';
 import { JsonConfigDialog, LoadingState } from './ConfigurationUi';
 import { errorMessage, isObject, JsonObject, objectList, parseJsonObject, prettyJson, recordId, responseData } from './model';
+import { getProviderIcon } from './providerIcons';
 import {
   buildModelProvider,
   capabilityBadges,
@@ -389,7 +390,7 @@ export default function ProviderPage() {
                     <button key={key} onClick={(event) => {
                       (event.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
                       startSource(template);
-                    }} type="button"><ProviderMark provider={String(template.provider || '')} /><span>{key}</span></button>
+                    }} type="button"><ProviderMark provider={String(template.provider || '')} variant="menu" /><span>{key}</span></button>
                   ))}
                   <button onClick={(event) => {
                     (event.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
@@ -545,8 +546,10 @@ function ProviderCard({ onDelete, onEdit, onTest, onToggle, provider, t, testing
   );
 }
 
-function ProviderMark({ provider }: { provider: string }) {
+function ProviderMark({ provider, variant = 'source' }: { provider: string; variant?: 'menu' | 'source' }) {
   const normalized = provider.toLowerCase();
+  const image = getProviderIcon(provider);
+  const [failedImage, setFailedImage] = useState('');
   const icon: `mdi-${string}` = normalized.includes('ollama') || normalized.includes('lm_studio')
     ? 'mdi-server'
     : normalized.includes('azure') || normalized.includes('microsoft')
@@ -554,7 +557,20 @@ function ProviderMark({ provider }: { provider: string }) {
       : normalized.includes('google') || normalized.includes('gemini')
         ? 'mdi-creation'
         : 'mdi-creation-outline';
-  return <span className="provider-mark"><MdiIcon name={icon} /></span>;
+  return (
+    <span className={`provider-mark provider-mark--${variant}`}>
+      {image && failedImage !== image ? (
+        <img
+          alt=""
+          aria-hidden="true"
+          src={image}
+          onError={() => setFailedImage(image)}
+        />
+      ) : (
+        <MdiIcon name={icon} />
+      )}
+    </span>
+  );
 }
 
 function providerEnabled(provider: JsonObject) {
