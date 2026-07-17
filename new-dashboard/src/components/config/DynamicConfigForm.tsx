@@ -6,6 +6,7 @@ import { MdiIcon } from '@/components/icons/MdiIcon';
 import { ExpandCollapse } from '@/components/motion/ExpandCollapse';
 import { toast } from '@/stores/feedback';
 import { ConfigSpecialSelector, isConfigSelectorSpecial, PersonaQuickPreview } from './ConfigSpecialControls';
+import { DashboardTotpManager, T2ITemplateEditor } from './ConfigSpecialEditors';
 
 import {
   configItemsForValue,
@@ -260,10 +261,12 @@ function StringListControl({ disabled, onChange, value }: { disabled?: boolean; 
   </div>;
 }
 
-function ConfigControl({ embeddingDimensionLoading, metadata, onChange, onGetEmbeddingDimension, value }: {
+function ConfigControl({ configRoot, embeddingDimensionLoading, metadata, onChange, onConfigRootChange, onGetEmbeddingDimension, value }: {
+  configRoot: ConfigRecord;
   embeddingDimensionLoading?: boolean;
   metadata: ConfigItemMetadata;
   onChange: (value: unknown) => void;
+  onConfigRootChange: (value: ConfigRecord) => void;
   onGetEmbeddingDimension?: () => void;
   value: unknown;
 }) {
@@ -277,6 +280,14 @@ function ConfigControl({ embeddingDimensionLoading, metadata, onChange, onGetEmb
 
   if (isConfigSelectorSpecial(metadata._special)) {
     return <ConfigSpecialSelector disabled={disabled} onChange={onChange} special={String(metadata._special)} value={value} />;
+  }
+
+  if (metadata._special === 't2i_template') {
+    return <T2ITemplateEditor />;
+  }
+
+  if (metadata._special === 'dashboard_totp_manager') {
+    return <DashboardTotpManager configRoot={configRoot} onConfigRootChange={onConfigRootChange} value={Boolean(value)} />;
   }
 
   if (metadata._special === 'get_embedding_dim') {
@@ -336,10 +347,12 @@ function ConfigControl({ embeddingDimensionLoading, metadata, onChange, onGetEmb
 
 type ConfigGroupProps = {
   conditionValue?: ConfigRecord;
+  configRoot?: ConfigRecord;
   embeddingDimensionLoading?: boolean;
   fieldsFromValue?: boolean;
   metadata: ConfigGroupMetadata;
   onChange: (value: ConfigRecord) => void;
+  onConfigRootChange?: (value: ConfigRecord) => void;
   onGetEmbeddingDimension?: () => void;
   resolveText?: TextResolver;
   search?: string;
@@ -363,19 +376,27 @@ function resolveValueHint(t: ReturnType<typeof useTranslation>['t'], hint: unkno
   return directHint || hint;
 }
 
+export function ConfigRichText({ children }: { children: string }) {
+  const parts = children.split(/(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|`[^`]+`|https?:\/\/[^\s，。；、)]+)/g);
+  return <>{parts.map((part, index) => {
+    const markdownLink = part.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
+    if (markdownLink) return <a href={markdownLink[2]} key={`${part}-${index}`} rel="noreferrer" target="_blank">{markdownLink[1]}</a>;
+    if (part.startsWith('http')) return <a href={part} key={`${part}-${index}`} rel="noreferrer" target="_blank">{part}</a>;
+    if (part.startsWith('`') && part.endsWith('`')) return <code key={`${part}-${index}`}>{part.slice(1, -1)}</code>;
+    return part;
+  })}</>;
+}
+
 function ValueHint({ children }: { children: string }) {
-  const parts = children.split(/(https?:\/\/[^\s，。；、]+)/g);
   return (
     <div className="dynamic-config__value-hint" role="note">
       <MdiIcon name="mdi-information-outline" />
-      <p>{parts.map((part, index) => part.startsWith('http')
-        ? <a href={part} key={`${part}-${index}`} rel="noreferrer" target="_blank">{part}</a>
-        : part)}</p>
+      <p><ConfigRichText>{children}</ConfigRichText></p>
     </div>
   );
 }
 
-export function ConfigGroup({ conditionValue, embeddingDimensionLoading, fieldsFromValue = false, metadata, onChange, onGetEmbeddingDimension, resolveText, search = '', showValueHint = false, title, translationPath, value, variant = 'default' }: ConfigGroupProps) {
+export function ConfigGroup({ conditionValue, configRoot, embeddingDimensionLoading, fieldsFromValue = false, metadata, onChange, onConfigRootChange, onGetEmbeddingDimension, resolveText, search = '', showValueHint = false, title, translationPath, value, variant = 'default' }: ConfigGroupProps) {
   const { t } = useTranslation();
   const textResolver = resolveText ?? defaultTextResolver(t);
   const [showCollapsed, setShowCollapsed] = useState(false);
@@ -383,6 +404,8 @@ export function ConfigGroup({ conditionValue, embeddingDimensionLoading, fieldsF
   const groupTitle = title ?? textResolver(translationPath, 'description', metadata.description);
   const groupHint = textResolver(translationPath, 'hint', metadata.hint);
   const valueHint = showValueHint ? resolveValueHint(t, value.hint) : '';
+  const rootValue = configRoot ?? value;
+  const changeRoot = onConfigRootChange ?? onChange;
   const groupMatchesSearch = needle && [metadata.description, metadata.hint, groupTitle, groupHint]
     .some((candidate) => String(candidate ?? '').toLocaleLowerCase().includes(needle));
   const itemMetadata = fieldsFromValue ? configItemsForValue(metadata, value) : metadata.items ?? {};
@@ -410,14 +433,16 @@ export function ConfigGroup({ conditionValue, embeddingDimensionLoading, fieldsF
       return (
         <section className="dynamic-config__nested" key={key}>
           <header>
-            <h3>{label}</h3>
-            {hint && <p>{hint}</p>}
+            <h3><ConfigRichText>{label}</ConfigRichText></h3>
+            {hint && <p><ConfigRichText>{hint}</ConfigRichText></p>}
           </header>
           <ConfigGroup
             conditionValue={nestedValue}
+            configRoot={rootValue}
             fieldsFromValue
             metadata={item as ConfigGroupMetadata}
             onChange={(next) => onChange(setConfigValue(value, key, next))}
+            onConfigRootChange={changeRoot}
             onGetEmbeddingDimension={onGetEmbeddingDimension}
             embeddingDimensionLoading={embeddingDimensionLoading}
             resolveText={textResolver}
@@ -430,7 +455,7 @@ export function ConfigGroup({ conditionValue, embeddingDimensionLoading, fieldsF
     }
     const currentValue = getConfigValue(value, key);
     return <Fragment key={key}>
-      <div className="dynamic-config__row"><div className="dynamic-config__label"><label htmlFor={`config-${translationPath}-${key}`}><span>{label}</span><small>{key}</small></label>{hint && <p>{hint}</p>}</div><div className="dynamic-config__control" id={`config-${translationPath}-${key}`}><ConfigControl embeddingDimensionLoading={embeddingDimensionLoading} metadata={item} onChange={(next) => onChange(setConfigValue(value, key, next))} onGetEmbeddingDimension={onGetEmbeddingDimension} value={currentValue} /></div></div>
+      <div className="dynamic-config__row"><div className="dynamic-config__label"><label htmlFor={`config-${translationPath}-${key}`}><span><ConfigRichText>{label}</ConfigRichText></span><small>{key}</small></label>{hint && <p><ConfigRichText>{hint}</ConfigRichText></p>}</div><div className="dynamic-config__control" id={`config-${translationPath}-${key}`}><ConfigControl configRoot={rootValue} embeddingDimensionLoading={embeddingDimensionLoading} metadata={item} onChange={(next) => onChange(setConfigValue(value, key, next))} onConfigRootChange={changeRoot} onGetEmbeddingDimension={onGetEmbeddingDimension} value={currentValue} /></div></div>
       {item._special === 'select_plugin_set' && Array.isArray(currentValue) && currentValue.length > 0 && <div className="config-plugin-set-preview">
         <small>{t('core.shared.pluginSetSelector.selectedPluginsLabel')}</small>
         <div>{currentValue.filter((plugin): plugin is string => typeof plugin === 'string').map((plugin) => <span key={plugin}>{plugin === '*' ? t('core.shared.pluginSetSelector.allPluginsLabel') : plugin}</span>)}</div>
@@ -440,7 +465,7 @@ export function ConfigGroup({ conditionValue, embeddingDimensionLoading, fieldsF
   };
 
   if (!entries.length) return null;
-  const form = <section className={`dynamic-config route-card dynamic-config--${variant}`}>{variant === 'default' && <header><h2>{groupTitle}</h2>{groupHint && <p>{groupHint}</p>}</header>}{valueHint && <ValueHint>{valueHint}</ValueHint>}{visible.map(renderEntry)}{collapsed.length > 0 && <><button aria-expanded={showCollapsed} className="dynamic-config__more" onClick={() => setShowCollapsed((current) => !current)} type="button">{showCollapsed ? t('core.actions.collapse', 'Collapse') : t('features.config.sections.moreConfig', 'More settings')}</button><ExpandCollapse className="dynamic-config__collapsed" open={showCollapsed}>{collapsed.map(renderEntry)}</ExpandCollapse></>}</section>;
+  const form = <section className={`dynamic-config route-card dynamic-config--${variant}`}>{variant === 'default' && <header><h2><ConfigRichText>{groupTitle}</ConfigRichText></h2>{groupHint && <p><ConfigRichText>{groupHint}</ConfigRichText></p>}</header>}{valueHint && <ValueHint>{valueHint}</ValueHint>}{visible.map(renderEntry)}{collapsed.length > 0 && <><button aria-expanded={showCollapsed} className="dynamic-config__more" onClick={() => setShowCollapsed((current) => !current)} type="button">{showCollapsed ? t('core.actions.collapse', 'Collapse') : t('features.config.sections.moreConfig', 'More settings')}</button><ExpandCollapse className="dynamic-config__collapsed" open={showCollapsed}>{collapsed.map(renderEntry)}</ExpandCollapse></>}</section>;
   if (variant === 'settings') return <div className="system-config-group"><h2 className="system-config-group__title">{groupTitle}</h2>{form}</div>;
   return form;
 }

@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { I18nextProvider } from 'react-i18next';
 import { describe, expect, it } from 'vitest';
 
-import { ConfigGroup } from './DynamicConfigForm';
+import { ConfigGroup, ConfigRichText } from './DynamicConfigForm';
 
 const i18n = i18next.createInstance();
 void i18n.init({ initAsync: false, lng: 'en', resources: { en: { translation: {} } } });
@@ -101,5 +101,17 @@ describe('DynamicConfigForm', () => {
     expect(markup).toContain('href="https://elevenlabs.io/app/settings/api-keys"');
     expect(markup).toContain('elevenlabs_tts');
     expect(markup).not.toContain('config-provider-hint');
+  });
+
+  it('renders markdown and bare URL links as anchors', () => {
+    const markup = renderToStaticMarkup(
+      <ConfigRichText>
+        {'查看 [时区列表](https://data.iana.org/time-zones/tzdb-2021a/zone1970.tab)，或访问 https://docs.astrbot.app/'}
+      </ConfigRichText>,
+    );
+
+    expect(markup).toContain('href="https://data.iana.org/time-zones/tzdb-2021a/zone1970.tab"');
+    expect(markup).toContain('>时区列表</a>');
+    expect(markup).toContain('href="https://docs.astrbot.app/"');
   });
 });
