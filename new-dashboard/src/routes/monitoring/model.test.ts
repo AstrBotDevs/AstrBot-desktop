@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { cleanConsoleLog, formatTimestamp, logIdentity, parseSseChunk, unwrapData } from './model';
+import { cleanConsoleLog, formatTimestamp, logIdentity, parseSseChunk, splitConsoleLog, unwrapData } from './model';
 
 describe('monitoring data helpers', () => {
   it('unwraps generated API envelopes', () => {
@@ -24,5 +24,13 @@ describe('monitoring data helpers', () => {
     expect(cleanConsoleLog('\ufffd[1;36mINFO\ufffd[0m')).toBe('INFO');
     expect(cleanConsoleLog('\\x1b[31mERROR\\x1b[0m')).toBe('ERROR');
     expect(cleanConsoleLog('array[0] contains \ufffd text')).toBe('array[0] contains \ufffd text');
+  });
+
+  it('splits structured console lines into prefix, level, and message', () => {
+    expect(splitConsoleLog('2026-07-17 10:00 [INFO] service started')).toEqual({
+      level: '[INFO]',
+      message: 'service started',
+      prefix: '2026-07-17 10:00',
+    });
   });
 });

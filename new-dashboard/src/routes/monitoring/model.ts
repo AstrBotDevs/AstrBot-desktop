@@ -54,6 +54,18 @@ export function cleanConsoleLog(value: unknown) {
     .replace(ansiCharsetPattern, '');
 }
 
+export function splitConsoleLog(value: unknown) {
+  const text = cleanConsoleLog(value);
+  const match = text.match(/\[(DEBG|INFO|WARN|ERRO|CRIT|DEBUG|WARNING|ERROR|CRITICAL)\]/);
+  if (!match || match.index == null) return { message: text, prefix: '', level: '' };
+  const levelEnd = match.index + match[0].length;
+  return {
+    level: match[0],
+    message: text.slice(levelEnd).trimStart(),
+    prefix: text.slice(0, match.index).trimEnd(),
+  };
+}
+
 export function formatTimestamp(value: unknown, locale?: string) {
   if (value == null || value === '') return '—';
   const numeric = typeof value === 'number' ? value : Number(value);

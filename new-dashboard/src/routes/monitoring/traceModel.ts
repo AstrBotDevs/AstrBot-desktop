@@ -2,6 +2,7 @@ import type { LogItem } from './model';
 
 export type TraceEvent = {
   firstTime: number;
+  hasAgentPrepare: boolean;
   lastTime: number;
   messageOutline?: string;
   records: Array<{ action: string; fields: unknown; key: string; time: number }>;
@@ -17,6 +18,7 @@ export function groupTraceEvents(logs: LogItem[], maxItems = 300): TraceEvent[] 
     const time = log.time ?? 0;
     const event = events.get(log.span_id) ?? {
       firstTime: time,
+      hasAgentPrepare: log.action === 'astr_agent_prepare',
       lastTime: time,
       messageOutline: log.message_outline,
       records: [],
@@ -30,6 +32,7 @@ export function groupTraceEvents(logs: LogItem[], maxItems = 300): TraceEvent[] 
     }
     event.firstTime = Math.min(event.firstTime, time);
     event.lastTime = Math.max(event.lastTime, time);
+    event.hasAgentPrepare ||= log.action === 'astr_agent_prepare';
     event.messageOutline ||= log.message_outline;
     event.senderName ||= log.sender_name;
     events.set(log.span_id, event);

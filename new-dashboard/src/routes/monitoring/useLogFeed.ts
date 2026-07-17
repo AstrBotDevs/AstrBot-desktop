@@ -9,12 +9,13 @@ const delay = (milliseconds: number, signal: AbortSignal) => new Promise<void>((
   signal.addEventListener('abort', () => { window.clearTimeout(timer); resolve(); }, { once: true });
 });
 
-export function useLogFeed(predicate: (log: LogItem) => boolean, maxItems = 300) {
+export function useLogFeed(predicate: (log: LogItem) => boolean, maxItems = 300, reconnectKey = 0) {
   const [items, setItems] = useState<LogItem[]>([]);
   const [status, setStatus] = useState<'connecting' | 'live' | 'stopped'>('connecting');
 
   useEffect(() => {
     const controller = new AbortController();
+    setItems([]);
     const append = (incoming: LogItem[]) => setItems((current) => {
       const seen = new Set(current.map(logIdentity));
       const merged = [...current];
@@ -38,6 +39,7 @@ export function useLogFeed(predicate: (log: LogItem) => boolean, maxItems = 300)
           setStatus('connecting');
           const token = readAuthToken();
           const response = await fetch('/api/v1/logs/live', {
+            credentials: 'include',
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
             signal: controller.signal,
           });
@@ -67,7 +69,7 @@ export function useLogFeed(predicate: (log: LogItem) => boolean, maxItems = 300)
     };
     void connect();
     return () => controller.abort();
-  }, [maxItems, predicate]);
+  }, [maxItems, predicate, reconnectKey]);
 
   return { items, status };
 }

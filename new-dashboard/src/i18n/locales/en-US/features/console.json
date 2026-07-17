@@ -4,6 +4,11 @@
     "enabled": "Auto-scroll enabled",
     "disabled": "Auto-scroll disabled"
   },
+  "fullscreen": {
+    "enter": "Enter fullscreen",
+    "exit": "Exit fullscreen",
+    "failed": "Unable to toggle fullscreen mode"
+  },
   "pipInstall": {
     "button": "Install pip Package",
     "dialogTitle": "Install Pip Package",

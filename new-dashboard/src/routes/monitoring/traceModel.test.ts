@@ -10,4 +10,12 @@ describe('trace grouping', () => {
     expect(events[0].records).toHaveLength(2);
     expect(events[0].lastTime).toBe(3);
   });
+
+  it('marks events that contain an agent preparation record', () => {
+    const events = groupTraceEvents([
+      { action: 'start', span_id: 'span', time: 2, type: 'trace' },
+      { action: 'astr_agent_prepare', span_id: 'span', time: 3, type: 'trace' },
+    ]);
+    expect(events[0].hasAgentPrepare).toBe(true);
+  });
 });

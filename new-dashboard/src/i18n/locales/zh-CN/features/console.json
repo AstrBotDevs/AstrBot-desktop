@@ -4,6 +4,11 @@
     "enabled": "自动滚动已开启",
     "disabled": "自动滚动已关闭"
   },
+  "fullscreen": {
+    "enter": "进入全屏",
+    "exit": "退出全屏",
+    "failed": "无法切换全屏模式"
+  },
   "pipInstall": {
     "button": "安装 pip 库",
     "dialogTitle": "安装 Pip 库",
