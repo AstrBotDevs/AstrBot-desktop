@@ -31,6 +31,9 @@ export function MonacoEditor({
   useEffect(() => {
     let disposed = false;
     let resizeObserver: ResizeObserver | undefined;
+    let resizeFrame: number | undefined;
+    let previousWidth = -1;
+    let previousHeight = -1;
     let cleanup = () => {};
     void import('./monacoRuntime').then(({ monaco }) => {
       if (disposed || !containerRef.current) return;
@@ -45,11 +48,23 @@ export function MonacoEditor({
       editorRef.current = instance;
       const subscription = instance.onDidChangeModelContent(() => onChangeRef.current?.(instance.getValue()));
       if (typeof ResizeObserver !== 'undefined') {
-        resizeObserver = new ResizeObserver(() => instance.layout());
+        resizeObserver = new ResizeObserver(([entry]) => {
+          const width = Math.round(entry.contentRect.width);
+          const height = Math.round(entry.contentRect.height);
+          if (width === previousWidth && height === previousHeight) return;
+          previousWidth = width;
+          previousHeight = height;
+          if (resizeFrame !== undefined) window.cancelAnimationFrame(resizeFrame);
+          resizeFrame = window.requestAnimationFrame(() => {
+            resizeFrame = undefined;
+            instance.layout({ width, height });
+          });
+        });
         resizeObserver.observe(containerRef.current);
       }
       cleanup = () => {
         resizeObserver?.disconnect();
+        if (resizeFrame !== undefined) window.cancelAnimationFrame(resizeFrame);
         subscription.dispose();
         instance.dispose();
         editorRef.current = null;

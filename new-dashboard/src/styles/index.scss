@@ -97,7 +97,7 @@ textarea {
   flex-direction: column;
   width: 100%;
   height: 100%;
-  min-height: 100vh;
+  min-height: 0;
   overflow: auto;
   background: var(--astrbot-background);
   color: var(--astrbot-text);
@@ -109,7 +109,7 @@ textarea {
   grid-template-columns: auto minmax(0, 1fr);
   width: 100%;
   height: 100%;
-  min-height: 100vh;
+  min-height: 0;
   overflow: hidden;
   background: var(--astrbot-background);
   color: var(--astrbot-text);
@@ -135,12 +135,12 @@ textarea {
   overflow: auto;
 }
 
-.full-layout__main:has(.visual-config-page) {
+.full-layout--visual-config .full-layout__main {
   overflow: hidden;
   scrollbar-gutter: stable;
 }
 
-.full-layout__page:has(.visual-config-page) {
+.full-layout__page--visual-config {
   height: 100%;
   min-height: 0;
   overflow: hidden;
@@ -152,7 +152,7 @@ textarea {
 
 .full-layout__page {
   width: 100%;
-  min-height: calc(100vh - 100px);
+  min-height: 100%;
   padding: 8px;
   background: var(--astrbot-background);
 }
@@ -687,7 +687,7 @@ textarea {
 .monitor-terminal {
   flex: 1;
   min-height: 420px;
-  max-height: calc(100vh - 210px);
+  max-height: 100%;
   overflow: auto;
   padding: 14px;
   border-radius: 9px;
@@ -1168,7 +1168,7 @@ textarea {
   --provider-item-background: color-mix(in srgb, var(--astrbot-text) 5%, transparent);
   display: flex;
   width: 100%;
-  height: calc(100vh - var(--astrbot-header-height) - 16px);
+  height: 100%;
   min-height: 0;
   flex-direction: column;
   gap: 14px;
@@ -2122,7 +2122,7 @@ textarea {
 .headless-dialog__content:has(.config-selector-dialog) { width: min(600px, calc(100vw - 32px)); }
 .headless-dialog__content:has(.config-persona-selector) {
   width: min(1000px, calc(100vw - 32px));
-  height: min(720px, calc(100vh - 32px));
+  height: min(720px, calc(100% - 32px));
   overflow: hidden;
   padding: 0;
 }
@@ -2540,7 +2540,7 @@ textarea {
 .sidebar-customizer__list article:hover { border-color: color-mix(in srgb, var(--astrbot-primary) 32%, var(--astrbot-border)); background: color-mix(in srgb, var(--astrbot-primary) 6%, var(--astrbot-surface)); }
 .sidebar-customizer__list article button { width: 28px; min-height: 28px; padding: 0; border: 0; background: transparent; }
 
-.headless-dialog__content:has(.backup-dialog-react) { display: flex; width: min(700px, calc(100vw - 32px)); height: min(720px, calc(100vh - 32px)); max-height: min(820px, calc(100vh - 32px)); flex-direction: column; overflow: hidden; border-radius: 24px; padding: 26px 28px 20px; }
+.headless-dialog__content:has(.backup-dialog-react) { display: flex; width: min(700px, calc(100vw - 32px)); height: min(720px, calc(100% - 32px)); max-height: min(820px, calc(100% - 32px)); flex-direction: column; overflow: hidden; border-radius: 24px; padding: 26px 28px 20px; }
 .headless-dialog__content:has(.backup-dialog-react) > .headless-dialog__title { font-size: 28px; font-weight: 780; letter-spacing: -.03em; }
 .backup-dialog-title { display: inline-flex; align-items: center; gap: 10px; }
 .backup-dialog-title > .mdi { font-size: 32px; }
@@ -2642,7 +2642,7 @@ textarea {
 .settings-list-card:has(> .api-key-create) > .monitor-table-wrap { margin: 0; border: 1px solid var(--astrbot-border); border-radius: 12px; }
 
 .config-special-trigger { display: inline-flex; min-height: 36px; align-items: center; justify-content: center; gap: 7px; padding: 7px 12px; border: 0; border-radius: 9px; background: color-mix(in srgb, var(--astrbot-primary) 12%, var(--astrbot-surface)); color: var(--astrbot-primary); cursor: pointer; font-weight: 650; }
-.headless-dialog__content:has(.t2i-editor) { display: flex; width: min(1400px, calc(100vw - 32px)); height: min(820px, calc(100vh - 32px)); flex-direction: column; overflow: hidden; }
+.headless-dialog__content:has(.t2i-editor) { display: flex; width: min(1400px, calc(100vw - 32px)); height: min(820px, calc(100% - 32px)); flex-direction: column; overflow: hidden; }
 .t2i-editor { display: flex; min-height: 0; flex: 1; flex-direction: column; margin: 0 -24px -24px; }
 .t2i-editor__toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 18px; border-bottom: 1px solid var(--astrbot-border); background: color-mix(in srgb, var(--astrbot-text) 4%, var(--astrbot-surface)); }
 .t2i-editor__toolbar input,
@@ -2927,7 +2927,7 @@ textarea {
 .extension-market-card footer .is-installed { background: var(--astrbot-success); color: #fff; opacity: .72; }
 
 /* Legacy Dashboard MCP and Skills sections */
-.legacy-resource-page { position: relative; min-height: calc(100vh - 210px); padding: 8px 4px 100px; }
+.legacy-resource-page { position: relative; min-height: 100%; padding: 8px 4px 100px; }
 .legacy-resource-list { display: flex; flex-direction: column; gap: 12px; }
 .legacy-resource-item { display: flex; min-height: 104px; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; border: 1px solid var(--astrbot-border); border-radius: 10px; background: var(--astrbot-surface); cursor: pointer; transition: background .16s; }
 .legacy-resource-item:hover, .legacy-resource-item:focus-within { background: var(--astrbot-hover); }
@@ -3538,7 +3538,7 @@ html[data-theme='dark'] .chat-shell {
   --chat-session-active: rgb(255 255 255 / 8%);
 }
 
-.chat-shell--box { min-height: 100vh; }
+.chat-shell--box { min-height: 100%; }
 
 .chat-sessions {
   position: relative;
@@ -4220,7 +4220,7 @@ html[data-theme='dark'] .chat-composer { border-color: rgb(255 255 255 / 12%); b
 .session-group-grid article button.is-danger:hover { color: var(--astrbot-error); }
 .session-groups-empty { padding: 25px 16px; color: color-mix(in srgb, var(--astrbot-text) 55%, transparent); text-align: center; }
 
-.headless-dialog__content:has(.session-rule-editor) { display: flex; width: min(550px, calc(100vw - 32px)); max-height: min(600px, calc(100vh - 32px)); flex-direction: column; overflow: hidden; padding: 0; }
+.headless-dialog__content:has(.session-rule-editor) { display: flex; width: min(550px, calc(100vw - 32px)); max-height: min(600px, calc(100% - 32px)); flex-direction: column; overflow: hidden; padding: 0; }
 .headless-dialog__content:has(.session-rule-editor) > .headless-dialog__title { flex: 0 0 auto; padding: 17px 24px 13px; border-bottom: 1px solid var(--astrbot-border); font-size: 22px; }
 .headless-dialog__content:has(.session-group-editor) { width: min(800px, calc(100vw - 32px)); }
 .headless-dialog__content:has(.session-add-rule) { width: min(600px, calc(100vw - 32px)); }
@@ -4331,7 +4331,7 @@ html[data-theme='dark'] .chat-composer { border-color: rgb(255 255 255 / 12%); b
   .t2i-editor > footer { align-items: stretch; flex-direction: column; }
   .t2i-editor > footer > div { justify-content: flex-end; }
   .totp-manager { flex-wrap: wrap; justify-content: flex-start; }
-  .headless-dialog__content:has(.backup-dialog-react) { width: calc(100vw - 20px); height: calc(100vh - 20px); max-height: calc(100vh - 20px); padding: 20px 16px 14px; border-radius: 18px; }
+  .headless-dialog__content:has(.backup-dialog-react) { width: calc(100vw - 20px); height: calc(100% - 20px); max-height: calc(100% - 20px); padding: 20px 16px 14px; border-radius: 18px; }
   .headless-dialog__content:has(.backup-dialog-react) > .headless-dialog__title { font-size: 23px; }
   .backup-dialog-title > .mdi { font-size: 27px; }
   .backup-dialog-react > nav { margin-top: 12px; overflow-x: auto; }
@@ -4463,7 +4463,7 @@ html[data-theme='dark'] .chat-composer { border-color: rgb(255 255 255 / 12%); b
   top: 50%;
   left: 50%;
   width: min(560px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
+  max-height: calc(100% - 32px);
   overflow: auto;
   padding: 24px;
   border: 1px solid var(--astrbot-border);
@@ -4484,7 +4484,7 @@ html[data-theme='dark'] .chat-composer { border-color: rgb(255 255 255 / 12%); b
   margin: 8px 0 0;
 }
 
-.persona-page { display: flex; width: min(1400px, 100%); height: calc(100vh - var(--astrbot-header-height) - 16px); min-height: 0; flex-direction: column; margin: 0 auto; overflow: hidden; padding: 24px; }
+.persona-page { display: flex; width: min(1400px, 100%); height: 100%; min-height: 0; flex-direction: column; margin: 0 auto; overflow: hidden; padding: 24px; }
 .persona-page__header { flex: 0 0 auto; margin-bottom: 24px; }
 .persona-page__header h1 { margin: 0 0 4px; font-size: clamp(28px, 3vw, 40px); }
 .persona-page__header p { margin: 0; color: color-mix(in srgb, var(--astrbot-text) 58%, transparent); }
@@ -4809,7 +4809,7 @@ html[data-theme='dark'] .chat-composer { border-color: rgb(255 255 255 / 12%); b
 .auth-page {
   display: grid;
   flex: 1;
-  min-height: 100vh;
+  min-height: 100%;
   padding: 24px;
   place-items: center;
   background: color-mix(in srgb, var(--astrbot-primary) 7%, var(--astrbot-background));

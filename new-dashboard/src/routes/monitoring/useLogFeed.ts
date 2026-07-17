@@ -15,16 +15,39 @@ export function useLogFeed(predicate: (log: LogItem) => boolean, maxItems = 300,
 
   useEffect(() => {
     const controller = new AbortController();
+    let flushTimer: number | undefined;
+    let pending: LogItem[] = [];
     setItems([]);
-    const append = (incoming: LogItem[]) => setItems((current) => {
-      const seen = new Set(current.map(logIdentity));
-      const merged = [...current];
-      incoming.filter(predicate).forEach((item) => {
-        const key = logIdentity(item);
-        if (!seen.has(key)) { seen.add(key); merged.push(item); }
+    const flush = () => {
+      flushTimer = undefined;
+      const incoming = pending;
+      pending = [];
+      if (!incoming.length || controller.signal.aborted) return;
+      setItems((current) => {
+        const seen = new Set(current.map(logIdentity));
+        const merged = [...current];
+        let lastTime = merged.at(-1)?.time ?? Number.NEGATIVE_INFINITY;
+        let requiresSort = false;
+        incoming.forEach((item) => {
+          const key = logIdentity(item);
+          if (seen.has(key)) return;
+          seen.add(key);
+          const itemTime = item.time ?? 0;
+          if (itemTime < lastTime) requiresSort = true;
+          lastTime = Math.max(lastTime, itemTime);
+          merged.push(item);
+        });
+        if (merged.length === current.length) return current;
+        if (requiresSort) merged.sort((a, b) => (a.time ?? 0) - (b.time ?? 0));
+        return merged.slice(-maxItems);
       });
-      return merged.sort((a, b) => (a.time ?? 0) - (b.time ?? 0)).slice(-maxItems);
-    });
+    };
+    const append = (incoming: LogItem[]) => {
+      pending.push(...incoming.filter(predicate));
+      // Coalesce bursty SSE chunks so rendering and terminal scrolling happen at
+      // most a few times per second instead of once per network chunk.
+      flushTimer ??= window.setTimeout(flush, 80);
+    };
 
     const loadHistory = async () => {
       const payload = unwrapData<{ logs?: LogItem[] }>(await getLogHistory());
@@ -68,7 +91,11 @@ export function useLogFeed(predicate: (log: LogItem) => boolean, maxItems = 300,
       if (!controller.signal.aborted) setStatus('stopped');
     };
     void connect();
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (flushTimer !== undefined) window.clearTimeout(flushTimer);
+      pending = [];
+    };
   }, [maxItems, predicate, reconnectKey]);
 
   return { items, status };

@@ -38,7 +38,7 @@ export function Header() {
   const { i18n, t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
-  const [mobile, setMobile] = useState(() => window.innerWidth < 768);
+  const [mobile, setMobile] = useState(() => window.matchMedia?.('(max-width: 767px)').matches ?? window.innerWidth < 768);
   const [submenu, setSubmenu] = useState<'language' | 'theme' | null>(null);
   const [updateOpen, setUpdateOpen] = useState(false);
   const [updateChecking, setUpdateChecking] = useState(false);
@@ -61,16 +61,23 @@ export function Header() {
   const isChat = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
 
   useEffect(() => {
-    const updateViewport = () => {
-      const nextMobile = window.innerWidth < 768;
+    const media = window.matchMedia?.('(max-width: 767px)');
+    const updateViewport = (nextMobile: boolean) => {
       setMobile((wasMobile) => {
         if (wasMobile !== nextMobile) setDrawerOpen(!nextMobile);
         return nextMobile;
       });
     };
-    updateViewport();
-    window.addEventListener('resize', updateViewport);
-    return () => window.removeEventListener('resize', updateViewport);
+    if (media) {
+      const handleChange = (event: MediaQueryListEvent) => updateViewport(event.matches);
+      updateViewport(media.matches);
+      media.addEventListener('change', handleChange);
+      return () => media.removeEventListener('change', handleChange);
+    }
+    const handleResize = () => updateViewport(window.innerWidth < 768);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, [setDrawerOpen]);
 
   useEffect(() => {

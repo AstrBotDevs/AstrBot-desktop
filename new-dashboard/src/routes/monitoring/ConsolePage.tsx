@@ -24,11 +24,22 @@ export default function ConsolePage() {
   const [installing, setInstalling] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
+  const scrollFrameRef = useRef<number | null>(null);
   const visible = useMemo(() => items.filter((item) => selected.has(item.level ?? 'INFO')), [items, selected]);
 
   useEffect(() => { localStorage.setItem('console_auto_scroll', String(autoScroll)); }, [autoScroll]);
   useEffect(() => {
-    if (autoScroll && terminalRef.current) terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+    if (!autoScroll || !terminalRef.current) return;
+    if (scrollFrameRef.current !== null) window.cancelAnimationFrame(scrollFrameRef.current);
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      const terminal = terminalRef.current;
+      if (terminal) terminal.scrollTop = terminal.scrollHeight;
+    });
+    return () => {
+      if (scrollFrameRef.current !== null) window.cancelAnimationFrame(scrollFrameRef.current);
+      scrollFrameRef.current = null;
+    };
   }, [autoScroll, visible]);
   useEffect(() => {
     const sync = () => setFullscreen(document.fullscreenElement === wrapperRef.current);
