@@ -2,6 +2,8 @@ export type RouteMigrationEntry = {
   path: string;
 };
 
+export type RouteLayout = 'protected-full' | 'protected-blank' | 'public-blank';
+
 export const routeMigrationManifest: readonly RouteMigrationEntry[] = [
   { path: '/' },
   { path: '/main' },
@@ -40,7 +42,14 @@ export const routeMigrationManifest: readonly RouteMigrationEntry[] = [
 export const migratedRoutePaths = routeMigrationManifest.map((route) => route.path);
 
 const publicRoutePaths = new Set(['/auth/login', '/auth/setup']);
+const protectedBlankRoutePaths = new Set(['/chatbox', '/chatbox/:conversationId']);
+
+export function routeLayout(path: string): RouteLayout {
+  if (publicRoutePaths.has(path)) return 'public-blank';
+  if (protectedBlankRoutePaths.has(path)) return 'protected-blank';
+  return 'protected-full';
+}
 
 export function routeRequiresAuth(path: string) {
-  return !publicRoutePaths.has(path);
+  return routeLayout(path) !== 'public-blank';
 }

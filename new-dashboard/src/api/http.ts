@@ -9,6 +9,8 @@ const AUTH_CHALLENGE_PATHS = new Set([
   '/api/v1/auth/setup-status',
 ]);
 
+export const AUTH_SESSION_EXPIRED_EVENT = 'astrbot:auth-session-expired';
+
 export type ApiEnvelope<T> = {
   data: T;
   message?: string | null;
@@ -115,6 +117,9 @@ export function expireUnauthorizedSession(
 ) {
   if (status !== 401 || !shouldExpireSession(path)) return false;
   clearAuthSession(storage);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(AUTH_SESSION_EXPIRED_EVENT));
+  }
   (onUnauthorized ?? redirectToLogin)();
   return true;
 }

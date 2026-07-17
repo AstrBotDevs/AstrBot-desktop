@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildPluginNavigation,
   defaultNavigationItems,
+  mergePluginNavigation,
   MORE_GROUP_KEY,
+  navigationItemActive,
   resolveNavigationItems,
 } from './navigation';
 
@@ -34,5 +37,26 @@ describe('sidebar navigation compatibility', () => {
     const more = result.find((item) => item.title === MORE_GROUP_KEY);
     expect(more?.children?.map((item) => item.title)).toContain('core.navigation.trace');
     expect(result.some((item) => item.title === 'core.navigation.platforms')).toBe(true);
+  });
+
+  it('builds the legacy plugin WebUI group from active plugins with pages', () => {
+    const group = buildPluginNavigation([
+      { name: 'demo plugin', display_name: 'Demo', activated: true, pages: ['settings'] },
+      { name: 'disabled', activated: false, pages: ['index'] },
+      { name: 'no-pages', activated: true, pages: [] },
+    ]);
+    expect(group?.children).toEqual([expect.objectContaining({
+      title: 'Demo',
+      to: '/plugin-page/demo%20plugin/settings',
+    })]);
+    const merged = mergePluginNavigation(defaultNavigationItems, group);
+    expect(merged.findIndex((item) => item === group))
+      .toBe(merged.findIndex((item) => item.title === MORE_GROUP_KEY) - 1);
+  });
+
+  it('marks and expands a parent group for deep-linked children', () => {
+    const more = defaultNavigationItems.find((item) => item.title === MORE_GROUP_KEY)!;
+    expect(navigationItemActive(more, '/console', '')).toBe(true);
+    expect(navigationItemActive(more, '/settings', '')).toBe(false);
   });
 });

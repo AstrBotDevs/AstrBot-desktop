@@ -6,6 +6,8 @@ export type NavigationItem = {
 };
 
 export const MORE_GROUP_KEY = 'core.navigation.groups.more';
+export const PLUGIN_WEBUI_GROUP_KEY = 'core.navigation.pluginWebui';
+export const PLUGIN_SIDEBAR_CHANGED_EVENT = 'astrbot:plugin-sidebar-changed';
 
 const moreItems: NavigationItem[] = [
   { title: 'core.navigation.conversation', icon: 'mdi-database', to: '/conversation' },
@@ -27,6 +29,61 @@ export const defaultNavigationItems: NavigationItem[] = [
   { title: 'core.navigation.persona', icon: 'mdi-heart', to: '/persona' },
   { title: MORE_GROUP_KEY, icon: 'mdi-dots-horizontal', children: moreItems },
 ];
+
+type PluginNavigationRecord = {
+  activated?: unknown;
+  display_name?: unknown;
+  enabled?: unknown;
+  id?: unknown;
+  name?: unknown;
+  pages?: unknown;
+};
+
+export function buildPluginNavigation(items: unknown[]): NavigationItem | null {
+  const children = items.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== 'object') return [];
+    const item = candidate as PluginNavigationRecord;
+    if (!(item.activated ?? item.enabled)) return [];
+    const pluginName = String(item.name || item.id || '').trim();
+    const pages = Array.isArray(item.pages) ? item.pages : [];
+    const firstPage = pages.map((page) => {
+      if (page && typeof page === 'object') {
+        const record = page as { id?: unknown; name?: unknown; page_name?: unknown };
+        return String(record.name || record.page_name || record.id || '').trim();
+      }
+      return String(page || '').trim();
+    }).find(Boolean);
+    if (!pluginName || !firstPage) return [];
+    return [{
+      title: String(item.display_name || pluginName),
+      icon: 'mdi-puzzle' as const,
+      to: `/plugin-page/${encodeURIComponent(pluginName)}/${encodeURIComponent(firstPage)}`,
+    }];
+  });
+  return children.length ? {
+    title: PLUGIN_WEBUI_GROUP_KEY,
+    icon: 'mdi-puzzle-outline',
+    children,
+  } : null;
+}
+
+export function mergePluginNavigation(items: NavigationItem[], pluginItem: NavigationItem | null) {
+  if (!pluginItem) return items;
+  const moreIndex = items.findIndex((item) => item.title === MORE_GROUP_KEY);
+  if (moreIndex < 0) return [...items, pluginItem];
+  return [...items.slice(0, moreIndex), pluginItem, ...items.slice(moreIndex)];
+}
+
+export function navigationTargetActive(to: string | undefined, pathname: string, hash: string) {
+  if (!to) return false;
+  const [targetPath, targetHash] = to.split('#');
+  return pathname === targetPath && (targetHash == null || hash === `#${targetHash}`);
+}
+
+export function navigationItemActive(item: NavigationItem, pathname: string, hash: string): boolean {
+  return navigationTargetActive(item.to, pathname, hash)
+    || Boolean(item.children?.some((child) => navigationItemActive(child, pathname, hash)));
+}
 
 type SidebarCustomization = { mainItems?: unknown; moreItems?: unknown };
 

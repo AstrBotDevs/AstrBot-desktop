@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   resolveAuthenticatedRoute,
+  sanitizeReturnUrl,
   sessionNeedsPasswordSetup,
 } from './sessionFlow';
 
@@ -32,5 +33,22 @@ describe('authenticated session flow', () => {
       .resolves.toBe('/dashboard/default');
     await expect(resolveAuthenticatedRoute(session, async () => false))
       .resolves.toBe('/welcome');
+  });
+
+  it('restores a safe protected target after authentication', async () => {
+    await expect(resolveAuthenticatedRoute(
+      session,
+      async () => true,
+      '/knowledge-base/kb-1?tab=documents',
+    )).resolves.toBe('/knowledge-base/kb-1?tab=documents');
+    await expect(resolveAuthenticatedRoute(session, async () => false, '/providers'))
+      .resolves.toBe('/welcome');
+  });
+
+  it('rejects external and recursive authentication targets', () => {
+    expect(sanitizeReturnUrl('https://example.com')).toBeNull();
+    expect(sanitizeReturnUrl('//example.com')).toBeNull();
+    expect(sanitizeReturnUrl('/auth/login?redirect=/settings')).toBeNull();
+    expect(sanitizeReturnUrl('/settings#security')).toBe('/settings#security');
   });
 });

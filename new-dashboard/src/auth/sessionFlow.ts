@@ -16,6 +16,13 @@ export function sessionNeedsPasswordSetup(session: AuthSession) {
   );
 }
 
+export function sanitizeReturnUrl(value: string | null | undefined) {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return null;
+  const path = value.split(/[?#]/, 1)[0];
+  if (path === '/auth/login' || path === '/auth/setup') return null;
+  return value;
+}
+
 export async function checkOnboardingCompleted(): Promise<boolean> {
   try {
     const { getProviderSchema, getSystemConfig } = await import('@/api/openapi');
@@ -51,7 +58,9 @@ export async function checkOnboardingCompleted(): Promise<boolean> {
 export async function resolveAuthenticatedRoute(
   session: AuthSession,
   onboardingCheck: () => Promise<boolean> = checkOnboardingCompleted,
+  returnUrl?: string | null,
 ) {
   if (sessionNeedsPasswordSetup(session)) return '/auth/setup';
-  return await onboardingCheck() ? '/dashboard/default' : '/welcome';
+  if (!await onboardingCheck()) return '/welcome';
+  return sanitizeReturnUrl(returnUrl) ?? '/dashboard/default';
 }

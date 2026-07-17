@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { createHashRouter, Navigate, RouterProvider } from 'react-router-dom';
 
 import { RequireAuth } from '@/auth/RequireAuth';
-import { routeMigrationManifest, routeRequiresAuth } from '@/routes/migrationManifest';
+import { routeLayout, routeMigrationManifest, type RouteLayout } from '@/routes/migrationManifest';
 import { NotFoundPage } from '@/routes/NotFoundPage';
 import { BlankLayout } from '@/layouts/blank/BlankLayout';
 import { FullLayout } from '@/layouts/full/FullLayout';
@@ -43,36 +43,36 @@ function loading(element: React.ReactNode) {
 const reactRouteElements: Partial<Record<string, React.ReactNode>> = {
   '/': <Navigate replace to="/welcome" />,
   '/main': <Navigate replace to="/welcome" />,
-  '/auth/login': <BlankLayout>{loading(<LoginPage />)}</BlankLayout>,
-  '/auth/setup': <BlankLayout>{loading(<SetupPage />)}</BlankLayout>,
-  '/welcome': <FullLayout>{loading(<WelcomePage />)}</FullLayout>,
-  '/about': <FullLayout>{loading(<AboutPage />)}</FullLayout>,
-  '/dashboard/default': <FullLayout>{loading(<StatsPage />)}</FullLayout>,
-  '/console': <FullLayout>{loading(<ConsolePage />)}</FullLayout>,
-  '/trace': <FullLayout>{loading(<TracePage />)}</FullLayout>,
-  '/conversation': <FullLayout>{loading(<ConversationPage />)}</FullLayout>,
-  '/session-management': <FullLayout>{loading(<SessionManagementPage />)}</FullLayout>,
-  '/platforms': <FullLayout>{loading(<PlatformPage />)}</FullLayout>,
-  '/providers': <FullLayout>{loading(<ProviderPage />)}</FullLayout>,
-  '/config': <FullLayout>{loading(<ConfigPage />)}</FullLayout>,
+  '/auth/login': loading(<LoginPage />),
+  '/auth/setup': loading(<SetupPage />),
+  '/welcome': loading(<WelcomePage />),
+  '/about': loading(<AboutPage />),
+  '/dashboard/default': loading(<StatsPage />),
+  '/console': loading(<ConsolePage />),
+  '/trace': loading(<TracePage />),
+  '/conversation': loading(<ConversationPage />),
+  '/session-management': loading(<SessionManagementPage />),
+  '/platforms': loading(<PlatformPage />),
+  '/providers': loading(<ProviderPage />),
+  '/config': loading(<ConfigPage />),
   '/normal': <Navigate replace to="/config" />,
   '/system': <Navigate replace to="/settings#system-config" />,
-  '/settings': <FullLayout>{loading(<SettingsPage />)}</FullLayout>,
-  '/persona': <FullLayout>{loading(<PersonaPage />)}</FullLayout>,
-  '/subagent': <FullLayout>{loading(<SubagentPage />)}</FullLayout>,
-  '/cron': <FullLayout>{loading(<CronPage />)}</FullLayout>,
-  '/extension': <FullLayout>{loading(<ExtensionPage />)}</FullLayout>,
-  '/extension/:pluginId': <FullLayout>{loading(<ExtensionPage />)}</FullLayout>,
-  '/extension-marketplace': <FullLayout>{loading(<ExtensionPage />)}</FullLayout>,
-  '/plugin-page/:pluginName/:pageName': <FullLayout>{loading(<PluginPage />)}</FullLayout>,
-  '/knowledge-base': <FullLayout>{loading(<KnowledgeBaseListPage />)}</FullLayout>,
-  '/knowledge-base/:kbId': <FullLayout>{loading(<KnowledgeBaseDetailPage />)}</FullLayout>,
-  '/knowledge-base/:kbId/document/:docId': <FullLayout>{loading(<DocumentDetailPage />)}</FullLayout>,
-  '/alkaid/knowledge-base': <FullLayout>{loading(<KnowledgeBaseListPage />)}</FullLayout>,
-  '/chat': <FullLayout>{loading(<ChatPage />)}</FullLayout>,
-  '/chat/:conversationId': <FullLayout>{loading(<ChatPage />)}</FullLayout>,
-  '/chatbox': <BlankLayout>{loading(<ChatPage chatbox />)}</BlankLayout>,
-  '/chatbox/:conversationId': <BlankLayout>{loading(<ChatPage chatbox />)}</BlankLayout>,
+  '/settings': loading(<SettingsPage />),
+  '/persona': loading(<PersonaPage />),
+  '/subagent': loading(<SubagentPage />),
+  '/cron': loading(<CronPage />),
+  '/extension': loading(<ExtensionPage />),
+  '/extension/:pluginId': loading(<ExtensionPage />),
+  '/extension-marketplace': loading(<ExtensionPage />),
+  '/plugin-page/:pluginName/:pageName': loading(<PluginPage />),
+  '/knowledge-base': loading(<KnowledgeBaseListPage />),
+  '/knowledge-base/:kbId': loading(<KnowledgeBaseDetailPage />),
+  '/knowledge-base/:kbId/document/:docId': loading(<DocumentDetailPage />),
+  '/alkaid/knowledge-base': loading(<KnowledgeBaseListPage />),
+  '/chat': loading(<ChatPage />),
+  '/chat/:conversationId': loading(<ChatPage />),
+  '/chatbox': loading(<ChatPage chatbox />),
+  '/chatbox/:conversationId': loading(<ChatPage chatbox />),
 };
 
 function resolveReactRoute(path: string) {
@@ -84,18 +84,27 @@ function UnregisteredReactRoute({ path }: { path: string }): never {
   throw new Error(`React route is not registered: ${path}`);
 }
 
-const manifestRoutes = routeMigrationManifest.map((route) => ({
-  path: route.path,
-  element: routeRequiresAuth(route.path)
-    ? <RequireAuth>{resolveReactRoute(route.path)}</RequireAuth>
-    : resolveReactRoute(route.path),
-}));
+function routesForLayout(layout: RouteLayout) {
+  return routeMigrationManifest
+    .filter((route) => routeLayout(route.path) === layout)
+    .map((route) => ({ path: route.path, element: resolveReactRoute(route.path) }));
+}
 
 const router = createHashRouter([
-  ...manifestRoutes,
   {
-    path: '*',
-    element: <NotFoundPage />,
+    element: <BlankLayout />,
+    children: routesForLayout('public-blank'),
+  },
+  {
+    element: <RequireAuth><BlankLayout /></RequireAuth>,
+    children: routesForLayout('protected-blank'),
+  },
+  {
+    element: <RequireAuth><FullLayout /></RequireAuth>,
+    children: [
+      ...routesForLayout('protected-full'),
+      { path: '*', element: <NotFoundPage /> },
+    ],
   },
 ]);
 

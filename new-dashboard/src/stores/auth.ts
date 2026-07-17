@@ -25,7 +25,7 @@ type AuthState = {
   username: string;
 };
 
-export const useAuthStore = create<AuthState>()((set) => ({
+export const useAuthStore = create<AuthState>()((set, get) => ({
   hasToken: Boolean(readAuthToken()),
   returnUrl: null,
   username: readStoredUsername(),
@@ -34,9 +34,11 @@ export const useAuthStore = create<AuthState>()((set) => ({
     set({ hasToken: false, returnUrl: null, username: '' });
   },
   completeSession: async (session, navigate, onboardingCheck) => {
+    const returnUrl = get().returnUrl;
     persistAuthSession(session);
-    set({ hasToken: true, returnUrl: null, username: session.username });
-    const route = await resolveAuthenticatedRoute(session, onboardingCheck);
+    set({ hasToken: true, username: session.username });
+    const route = await resolveAuthenticatedRoute(session, onboardingCheck, returnUrl);
+    set({ returnUrl: null });
     navigate(route, { replace: true });
     return route;
   },

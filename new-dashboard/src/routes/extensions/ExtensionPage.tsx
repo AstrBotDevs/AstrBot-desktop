@@ -21,6 +21,7 @@ import { errorMessage, isObject, type JsonObject, objectList, parseJsonObject, p
 import { ComponentsSection, McpSection, SkillsSection } from './ExtensionSections';
 import { ProxySelector } from '@/routes/configuration/SettingsExtras';
 import { annotatePluginUpdates, getSelectedGitHubProxy, pluginBatchUpdateFailures, pluginUpdateTargets } from './extensionActions';
+import { PLUGIN_SIDEBAR_CHANGED_EVENT } from '@/layouts/full/navigation';
 import {
   addPluginPinyinSearchIndex, categoryValue, filterPlugins, localizedPluginConfigText, localizedPluginDescription, localizedPluginTitle, markdownContent,
   markInstalledMarketPlugins, marketCategoryCounts, marketPluginDisplayName, marketPluginList, normalizeMarketCategory,
@@ -75,6 +76,7 @@ function InstalledPlugins() {
         } catch { markets.set(registry, []); }
       }));
       setItems(annotatePluginUpdates(installed, markets));
+      window.dispatchEvent(new CustomEvent(PLUGIN_SIDEBAR_CHANGED_EVENT, { detail: installed }));
       setFailed(pluginList(responseData(failedResponse)));
     } catch (cause) { setError(errorMessage(cause, e('messages.refreshFailed'))); } finally { setLoading(false); }
   }, [t]);

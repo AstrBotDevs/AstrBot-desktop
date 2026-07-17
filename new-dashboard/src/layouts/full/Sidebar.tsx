@@ -4,17 +4,23 @@ import { Link, useLocation } from 'react-router-dom';
 
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { ExpandCollapse } from '@/components/motion/ExpandCollapse';
+import { listPlugins } from '@/api/openapi';
+import { objectList, responseData } from '@/routes/configuration/model';
 import {
   SIDEBAR_COLLAPSED_WIDTH,
   SIDEBAR_MAX_WIDTH,
   SIDEBAR_MIN_WIDTH,
   useLayoutStore,
 } from '@/stores/layout';
-import { readNavigationItems, type NavigationItem } from './navigation';
-
-function routePath(to: string) {
-  return to.split('#')[0];
-}
+import {
+  buildPluginNavigation,
+  mergePluginNavigation,
+  navigationItemActive,
+  navigationTargetActive,
+  PLUGIN_SIDEBAR_CHANGED_EVENT,
+  readNavigationItems,
+  type NavigationItem,
+} from './navigation';
 
 function NavigationEntry({ item, mini }: { item: NavigationItem; mini: boolean }) {
   const { t } = useTranslation();
@@ -22,15 +28,16 @@ function NavigationEntry({ item, mini }: { item: NavigationItem; mini: boolean }
   const openedGroups = useLayoutStore((state) => state.openedGroups);
   const setOpenedGroups = useLayoutStore((state) => state.setOpenedGroups);
   const closeDrawer = useLayoutStore((state) => state.closeDrawer);
-  const open = openedGroups.includes(item.title);
-  const active = item.to ? location.pathname === routePath(item.to) : false;
+  const active = navigationTargetActive(item.to, location.pathname, location.hash);
+  const groupActive = navigationItemActive(item, location.pathname, location.hash);
+  const open = openedGroups.includes(item.title) || groupActive;
 
   if (item.children?.length) {
     return (
       <li className="sidebar-nav__group">
         <button
           aria-expanded={open}
-          className="sidebar-nav__item sidebar-nav__group-button"
+          className={`sidebar-nav__item sidebar-nav__group-button${groupActive ? ' sidebar-nav__item--active' : ''}`}
           onClick={() => setOpenedGroups(
             open ? openedGroups.filter((key) => key !== item.title) : [...openedGroups, item.title],
           )}
@@ -76,11 +83,13 @@ export function Sidebar() {
   const sidebarWidth = useLayoutStore((state) => state.sidebarWidth);
   const setSidebarWidth = useLayoutStore((state) => state.setSidebarWidth);
   const closeDrawer = useLayoutStore((state) => state.closeDrawer);
-  const [items, setItems] = useState(readNavigationItems);
+  const [baseItems, setBaseItems] = useState(readNavigationItems);
+  const [pluginItem, setPluginItem] = useState<NavigationItem | null>(null);
   const [resizing, setResizing] = useState(false);
+  const items = mergePluginNavigation(baseItems, pluginItem);
 
   useEffect(() => {
-    const refresh = () => setItems(readNavigationItems());
+    const refresh = () => setBaseItems(readNavigationItems());
     const onStorage = (event: StorageEvent) => {
       if (event.key === 'astrbot_sidebar_customization') refresh();
     };
@@ -89,6 +98,29 @@ export function Sidebar() {
     return () => {
       window.removeEventListener('storage', onStorage);
       window.removeEventListener('sidebar-customization-changed', refresh);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const apply = (items: unknown[]) => {
+      if (active) setPluginItem(buildPluginNavigation(items));
+    };
+    const load = () => {
+      void listPlugins({ query: { include_reserved: true } })
+        .then((response) => apply(objectList(responseData(response), ['plugins', 'items', 'data', 'results'])))
+        .catch(() => apply([]));
+    };
+    const onChanged = (event: Event) => {
+      const detail = (event as CustomEvent<unknown[]>).detail;
+      if (Array.isArray(detail)) apply(detail);
+      else load();
+    };
+    load();
+    window.addEventListener(PLUGIN_SIDEBAR_CHANGED_EVENT, onChanged);
+    return () => {
+      active = false;
+      window.removeEventListener(PLUGIN_SIDEBAR_CHANGED_EVENT, onChanged);
     };
   }, []);
 

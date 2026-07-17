@@ -3,6 +3,7 @@ import { matchRoutes } from 'react-router-dom';
 
 import {
   migratedRoutePaths,
+  routeLayout,
   routeMigrationManifest,
   routeRequiresAuth,
 } from './migrationManifest';
@@ -69,6 +70,14 @@ describe('route migration manifest', () => {
     expect(routeRequiresAuth('/auth/login')).toBe(false);
     expect(routeRequiresAuth('/auth/setup')).toBe(false);
     expect(routeRequiresAuth('/dashboard/default')).toBe(true);
+    expect(routeRequiresAuth('/missing')).toBe(true);
+  });
+
+  it('assigns shared layouts without exposing chatbox routes', () => {
+    expect(routeLayout('/auth/login')).toBe('public-blank');
+    expect(routeRequiresAuth('/chatbox/session-2')).toBe(true);
+    expect(routeLayout('/chatbox/:conversationId')).toBe('protected-blank');
+    expect(routeLayout('/settings')).toBe('protected-full');
   });
 
   it('contains only React route metadata after migration completion', () => {
