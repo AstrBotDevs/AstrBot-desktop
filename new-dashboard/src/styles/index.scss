@@ -830,11 +830,10 @@ textarea {
 .console-level-chip--error { background: #fde0e0; color: #a92d2d; }
 .console-level-chip--critical { background: #f0ddf3; color: #7b2c83; }
 .console-page .monitor-terminal { border-radius: 8px; background: #1e1e1e; padding: 16px; }
-.console-log-line { display: grid; grid-template-columns: max-content max-content minmax(0, 1fr); align-items: start; gap: 8px; margin: 0 0 2px; color: #c8c8c8; font-family: SFMono-Regular, Menlo, Monaco, Consolas, var(--astrbot-font-cjk-mono), monospace; font-size: 12px; line-height: 1.55; white-space: normal; animation: motion-fade-in .2s ease both; }
+.console-log-line { display: block; margin: 0 0 2px; color: #c8c8c8; font-family: SFMono-Regular, Menlo, Monaco, Consolas, var(--astrbot-font-cjk-mono, "Microsoft YaHei"), monospace; font-size: 12px; font-variant-ligatures: none; white-space: pre-wrap; animation: motion-fade-in .2s ease both; }
+.console-log-line--structured { display: grid; grid-template-columns: max-content max-content minmax(0, 1fr); column-gap: 8px; align-items: start; white-space: normal; }
 .console-log-prefix, .console-log-level, .console-log-message { min-width: 0; white-space: pre-wrap; }
 .console-log-message { overflow-wrap: anywhere; }
-.console-log-line.is-multiline { grid-template-columns: max-content max-content minmax(0, 1fr); }
-.console-log-line.is-multiline > .console-log-message { grid-column: 1 / -1; overflow-wrap: normal; white-space: pre; }
 .console-log-line--debug { color: #b8bdc5; }
 .console-log-line--info { color: #72b8dc; }
 .console-log-line--warning { color: #d8bf64; }
@@ -4351,7 +4350,7 @@ html[data-theme='dark'] .chat-composer { border-color: rgb(255 255 255 / 12%); b
   .console-filter-controls { align-items: flex-start; }
   .console-filter-controls > div { gap: 5px; }
   .console-level-chip { padding-inline: 8px; }
-  .console-log-line { grid-template-columns: 1fr; gap: 1px; }
+  .console-log-line--structured { grid-template-columns: 1fr; gap: 1px; }
   .console-log-prefix:empty, .console-log-level:empty { display: none; }
   .console-pip-dialog { min-width: 0; }
   .cron-page-react { padding: 18px 12px 36px; }

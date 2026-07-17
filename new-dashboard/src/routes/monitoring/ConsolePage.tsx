@@ -87,6 +87,16 @@ export default function ConsolePage() {
 
 function ConsoleLogLine({ item }: { item: LogItem }) {
   const line = splitConsoleLog(item.data ?? item);
-  const multiline = line.message.includes('\n');
-  return <pre className={`${levelClass(item.level)}${multiline ? ' is-multiline' : ''}`}><span className="console-log-prefix">{line.prefix}</span>{line.level && <span className="console-log-level">{line.level}</span>}<span className="console-log-message">{line.message}</span></pre>;
+  const structured = Boolean(line.level);
+  return (
+    <pre className={`${levelClass(item.level)}${structured ? ' console-log-line--structured' : ''}`}>
+      {structured ? (
+        <>
+          <span className="console-log-prefix">{line.prefix}</span>
+          <span className="console-log-level">{line.level}</span>
+          <span className="console-log-message">{line.message}</span>
+        </>
+      ) : line.message}
+    </pre>
+  );
 }
