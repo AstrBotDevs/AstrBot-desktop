@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildModelProvider, formatContextLimit, mergeProviderSourceSection, mergeProviderWithTemplate, providerFromTemplate, providerSchemaData, providerSourceSections, providerTypeOf, recordsForType, sourceFromTemplate } from './providerPageModel';
+import { buildModelProvider, formatContextLimit, mergeProviderSourceSection, mergeProviderWithTemplate, providerFromTemplate, providerSchemaData, providerSourceSections, providerTestAction, providerTestResult, providerTypeOf, recordsForType, sourceFromTemplate } from './providerPageModel';
 
 describe('provider page model', () => {
   it('normalizes current capability and legacy provider types', () => {
@@ -74,5 +74,27 @@ describe('provider page model', () => {
       id: 'custom', type: 'dify', provider_type: 'agent_runner', enable: true,
       nested: { timeout: 60, options: { stream: true } },
     });
+  });
+
+  it('accepts only an available provider result without an error', () => {
+    expect(providerTestResult({ status: 'available', error: null })).toEqual({
+      status: 'available', error: null,
+    });
+    expect(providerTestResult({ status: 'available', error: 'unauthorized' })).toEqual({
+      status: 'unavailable', error: 'unauthorized',
+    });
+    expect(providerTestResult({ status: 'unavailable', error: null })).toEqual({
+      status: 'unavailable', error: null,
+    });
+    expect(providerTestResult(undefined)).toEqual({
+      status: 'unavailable', error: null,
+    });
+  });
+
+  it('does not request tests for disabled providers or agent runners', () => {
+    expect(providerTestAction({ enable: false })).toBe('disabled');
+    expect(providerTestAction({ enable: false, provider_type: 'agent_runner' })).toBe('disabled');
+    expect(providerTestAction({ enable: true, provider_type: 'agent_runner' })).toBe('agent_runner');
+    expect(providerTestAction({ enable: true, provider_type: 'embedding' })).toBe('request');
   });
 });

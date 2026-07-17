@@ -6,6 +6,13 @@ export type PlatformRuntime = {
   translations?: Record<string, JsonObject>;
 };
 
+export type PlatformRouteDraft = {
+  configId: string;
+  messageType: string;
+  sessionId: string;
+  sourceUmo?: string;
+};
+
 export function readPlatformRuntime(value: unknown): PlatformRuntime {
   const data = isRecord(value) ? value : {};
   return {
@@ -53,6 +60,52 @@ export function platformQrPayload(stat?: JsonObject) {
   return null;
 }
 
+export function parsePlatformUmo(umo: string) {
+  const first = umo.indexOf(':');
+  const second = umo.indexOf(':', first + 1);
+  if (first < 0 || second < 0) return null;
+  return {
+    platform: umo.slice(0, first),
+    messageType: umo.slice(first + 1, second),
+    sessionId: umo.slice(second + 1),
+  };
+}
+
+export function platformRoutes(routing: Record<string, string>, platformId: string): PlatformRouteDraft[] {
+  const routes = Object.entries(routing).flatMap(([umo, configId]) => {
+    const parsed = parsePlatformUmo(umo);
+    if (!parsed || parsed.platform !== platformId) return [];
+    return [{
+      configId,
+      messageType: parsed.messageType || '*',
+      sessionId: parsed.sessionId || '*',
+      sourceUmo: parsed.sessionId === '*' ? '' : umo,
+    }];
+  });
+  return routes.length ? routes : [emptyPlatformRoute()];
+}
+
+export function replacePlatformRouting(
+  routing: Record<string, string>,
+  originalPlatformId: string,
+  platformId: string,
+  routes: PlatformRouteDraft[],
+) {
+  const next = Object.fromEntries(Object.entries(routing).filter(([umo]) => {
+    const parsed = parsePlatformUmo(umo);
+    return !parsed || (parsed.platform !== originalPlatformId && parsed.platform !== platformId);
+  }));
+  routes.forEach((route) => {
+    if (!route.configId) return;
+    next[`${platformId}:${route.messageType || '*'}:${route.sessionId || '*'}`] = route.configId;
+  });
+  return next;
+}
+
+export function emptyPlatformRoute(configId = 'default'): PlatformRouteDraft {
+  return { configId, messageType: '*', sessionId: '*', sourceUmo: '' };
+}
+
 export function webhookUrl(config: JsonObject, uuid: string) {
   const configured = typeof config.callback_api_base === 'string' ? config.callback_api_base.trim() : '';
   const base = (configured || 'http(s)://<your-domain-or-ip>').replace(/\/$/, '');
@@ -61,6 +114,14 @@ export function webhookUrl(config: JsonObject, uuid: string) {
 
 export function isValidPlatformId(id: string) {
   return Boolean(id) && !/[!:\s]/.test(id);
+}
+
+export function hasPlatformIdConflict(id: string, platformIds: string[]) {
+  return id === 'webchat' || platformIds.includes(id);
+}
+
+export function hasUnsafeOneBotToken(type: string, token: unknown) {
+  return type === 'aiocqhttp' && (typeof token !== 'string' || !token.trim());
 }
 
 function mergeValue(source: unknown, template: unknown): unknown {

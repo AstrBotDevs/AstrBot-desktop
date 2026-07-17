@@ -2,6 +2,10 @@ import type { JsonObject } from './model';
 
 export type ProviderType = 'chat_completion' | 'agent_runner' | 'speech_to_text' | 'text_to_speech' | 'embedding' | 'rerank';
 export type ProviderCapability = 'chat' | 'agent' | 'stt' | 'tts' | 'embedding' | 'rerank';
+export type ProviderTestStatus = {
+  error: string | null;
+  status: 'available' | 'pending' | 'unavailable';
+};
 
 export const PROVIDER_TABS: Array<{
   capability: ProviderCapability;
@@ -63,6 +67,19 @@ export function providerTypeOf(item: JsonObject): ProviderType | undefined {
 
 export function recordsForType(items: JsonObject[], type: ProviderType) {
   return items.filter((item) => providerTypeOf(item) === type);
+}
+
+export function providerTestResult(value: unknown): ProviderTestStatus {
+  if (!isObject(value)) return { status: 'unavailable', error: null };
+  const status = value.status === 'available' ? 'available' : 'unavailable';
+  const error = typeof value.error === 'string' && value.error.trim() ? value.error : null;
+  return { status: error ? 'unavailable' : status, error };
+}
+
+export function providerTestAction(provider: JsonObject) {
+  if (provider.enable === false || provider.enabled === false) return 'disabled';
+  if (provider.provider_type === 'agent_runner' || provider.type === 'agent_runner') return 'agent_runner';
+  return 'request';
 }
 
 export function providerSchemaData(payload: JsonObject) {

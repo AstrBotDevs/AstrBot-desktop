@@ -34,10 +34,13 @@ import {
   providerFromTemplate,
   providerSchemaData,
   providerSourceSections,
+  providerTestAction,
+  providerTestResult,
   recordsForType,
   sourceFromTemplate,
   sourceTemplatesForType,
   type ProviderType,
+  type ProviderTestStatus,
 } from './providerPageModel';
 
 type AvailableModel = { metadata?: JsonObject; name: string };
@@ -62,6 +65,7 @@ export default function ProviderPage() {
   const [savingSource, setSavingSource] = useState(false);
   const [error, setError] = useState('');
   const [testing, setTesting] = useState('');
+  const [providerStatuses, setProviderStatuses] = useState<Record<string, ProviderTestStatus>>({});
   const [savingProvider, setSavingProvider] = useState(false);
   const [editingProvider, setEditingProvider] = useState<JsonObject | null>(null);
   const [editingProviderOriginalId, setEditingProviderOriginalId] = useState('');
@@ -431,20 +435,34 @@ export default function ProviderPage() {
   const testProvider = async (provider: JsonObject) => {
     const id = recordId(provider, 'id', 'provider_id');
     if (!id) return;
-    if (provider.provider_type === 'agent_runner' || provider.type === 'agent_runner') {
+    const action = providerTestAction(provider);
+    if (action === 'disabled') {
+      const message = t('features.provider.providerSources.disabled');
+      setProviderStatuses((current) => ({ ...current, [id]: { status: 'unavailable', error: message } }));
+      toast.error(message);
+      return;
+    }
+    if (action === 'agent_runner') {
       setAgentRunnerHelpOpen(true);
       return;
     }
     const startedAt = performance.now();
     setTesting(id);
+    setProviderStatuses((current) => ({ ...current, [id]: { status: 'pending', error: null } }));
     try {
-      await testProviderById({ body: { provider_id: id } });
+      const result = providerTestResult(responseData(await testProviderById({ body: { provider_id: id } })));
+      if (result.status !== 'available' || result.error) {
+        throw new Error(result.error || t('features.provider.models.testError'));
+      }
+      setProviderStatuses((current) => ({ ...current, [id]: result }));
       toast.success(t('features.provider.models.testSuccessWithLatency', {
         id,
         latency: Math.max(0, Math.round(performance.now() - startedAt)),
       }));
     } catch (cause) {
-      toast.error(errorMessage(cause, t('features.provider.models.testError')));
+      const message = errorMessage(cause, t('features.provider.models.testError'));
+      setProviderStatuses((current) => ({ ...current, [id]: { status: 'unavailable', error: message } }));
+      toast.error(message);
     } finally {
       setTesting('');
     }
@@ -606,6 +624,7 @@ export default function ProviderPage() {
                           onTest={() => void testProvider(entry.provider!)}
                           onToggle={() => void toggleProvider(entry.provider!)}
                           provider={entry.provider}
+                          status={providerStatuses[recordId(entry.provider, 'id')]}
                           testing={testing === recordId(entry.provider, 'id')}
                           t={t}
                         />)}
@@ -635,7 +654,7 @@ export default function ProviderPage() {
           <header><div><h2>{t(`features.provider.providers.tabs.${activeTab.translation}`)}</h2></div><button className="button--primary" onClick={openProviderPicker} type="button"><MdiIcon name="mdi-plus" />{t('features.provider.providers.addProvider')}</button></header>
           <div className="provider-card-grid">
             {visibleProviders.map((provider) => (
-              <ProviderCard key={recordId(provider, 'id')} onCopy={() => void copyProvider(provider)} onDelete={() => void removeProvider(provider)} onEdit={() => openProvider(provider)} onTest={() => void testProvider(provider)} onToggle={() => void toggleProvider(provider)} provider={provider} testing={testing === recordId(provider, 'id')} t={t} />
+              <ProviderCard key={recordId(provider, 'id')} onCopy={() => void copyProvider(provider)} onDelete={() => void removeProvider(provider)} onEdit={() => openProvider(provider)} onTest={() => void testProvider(provider)} onToggle={() => void toggleProvider(provider)} provider={provider} status={providerStatuses[recordId(provider, 'id')]} testing={testing === recordId(provider, 'id')} t={t} />
             ))}
           </div>
           {!visibleProviders.length && <div className="provider-type-panel__empty"><MdiIcon name={activeTab.icon} /><p>{t('features.provider.providers.empty.typed', { type: t(`features.provider.providers.tabs.${activeTab.translation}`) })}</p><button onClick={openProviderPicker} type="button"><MdiIcon name="mdi-plus" />{t('features.provider.providers.addProvider')}</button></div>}
@@ -777,13 +796,14 @@ function providerTemplateDescription(template: JsonObject, name: string, t: Retu
   return t('features.provider.providers.description.default', { type: String(template.type || '') });
 }
 
-function ProviderRow({ metadata, onDelete, onEdit, onTest, onToggle, provider, t, testing }: {
+function ProviderRow({ metadata, onDelete, onEdit, onTest, onToggle, provider, status, t, testing }: {
   metadata?: JsonObject;
   onDelete: () => void;
   onEdit: () => void;
   onTest: () => void;
   onToggle: () => void;
   provider: JsonObject;
+  status?: ProviderTestStatus;
   t: ReturnType<typeof useTranslation>['t'];
   testing: boolean;
 }) {
@@ -792,6 +812,7 @@ function ProviderRow({ metadata, onDelete, onEdit, onTest, onToggle, provider, t
     <article className="provider-model-row">
       <ProviderModelCopy metadata={metadata} model={String(provider.model || recordId(provider, 'id'))} provider={provider} t={t} />
       <div className="provider-model-row__actions">
+        {status && <ProviderStatus status={status} t={t} />}
         <label className="provider-switch" title={enabled ? t('features.provider.providerSources.enabled') : t('features.provider.providerSources.disabled')}><input checked={enabled} onChange={onToggle} type="checkbox" /><span /></label>
         <button className={testing ? 'is-loading' : ''} disabled={testing} onClick={onTest} title={t('features.provider.models.testButton')} type="button"><MdiIcon name="mdi-connection" /></button>
         <button onClick={onEdit} title={t('features.provider.dialogs.config.editTitle')} type="button"><MdiIcon name="mdi-pencil-outline" /></button>
@@ -810,13 +831,14 @@ function ProviderModelCopy({ metadata, model, provider, t }: { metadata?: JsonOb
   );
 }
 
-function ProviderCard({ onCopy, onDelete, onEdit, onTest, onToggle, provider, t, testing }: {
+function ProviderCard({ onCopy, onDelete, onEdit, onTest, onToggle, provider, status, t, testing }: {
   onCopy: () => void;
   onDelete: () => void;
   onEdit: () => void;
   onTest: () => void;
   onToggle: () => void;
   provider: JsonObject;
+  status?: ProviderTestStatus;
   t: ReturnType<typeof useTranslation>['t'];
   testing: boolean;
 }) {
@@ -825,10 +847,19 @@ function ProviderCard({ onCopy, onDelete, onEdit, onTest, onToggle, provider, t,
   return (
     <article className="provider-card">
       <header><h3 title={recordId(provider, 'id')}>{recordId(provider, 'id')}</h3><label className="provider-switch" title={enabled ? t('core.common.itemCard.enabled') : t('core.common.itemCard.disabled')}><input checked={enabled} onChange={onToggle} type="checkbox" /><span /></label></header>
+      {status && <ProviderStatus status={status} t={t} />}
       <footer><button className="button--danger" onClick={onDelete} type="button">{t('core.common.itemCard.delete')}</button><button className="button--primary-soft" onClick={onEdit} type="button">{t('core.common.itemCard.edit')}</button><button className="button--secondary-soft" onClick={onCopy} type="button">{t('core.common.itemCard.copy')}</button><button className="button--info-soft" disabled={testing} onClick={onTest} type="button">{t('features.provider.availability.test')}</button></footer>
       <div aria-hidden="true" className="provider-card__background"><ProviderMark provider={providerName} /></div>
     </article>
   );
+}
+
+function ProviderStatus({ status, t }: { status: ProviderTestStatus; t: ReturnType<typeof useTranslation>['t'] }) {
+  return <span className={`provider-test-status provider-test-status--${status.status}`} title={status.error || undefined}>
+    <MdiIcon name={status.status === 'available' ? 'mdi-check-circle' : status.status === 'pending' ? 'mdi-loading' : 'mdi-alert-circle'} />
+    {t(`features.provider.availability.${status.status}`)}
+    {status.error && <small>{status.error}</small>}
+  </span>;
 }
 
 function ProviderMark({ provider, variant = 'source' }: { provider: string; variant?: 'menu' | 'source' }) {
