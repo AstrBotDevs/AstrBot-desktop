@@ -99,7 +99,7 @@ export default function StatsPage() {
         <div className="stats-overview-react">{cards.map((card) => <section className="stats-card-react stats-overview-card" key={card.label}><span className="stats-card-react__icon"><MdiIcon name={card.icon} /></span><span className="stats-card-react__label">{card.label}</span><strong>{card.value}</strong><small>{card.note}</small></section>)}</div>
         <StatsSectionHeader actions={<RangeSwitch range={range} setRange={setRange} text={text} />} subtitle={text('messageOverview.subtitle')} title={text('messageOverview.title')} />
         <div className="stats-panel-grid">
-          <section className="stats-card-react stats-chart-card"><header><div><h2>{text('messageTrend.title')}</h2><p>{text('messageTrend.subtitle', { range: rangeLabel })}</p></div><div className="stats-chart-total"><span>{text('messageTrend.totalMessages')}</span><strong>{number.format(base?.message_count ?? 0)}</strong></div></header><AreaChart emptyText="—" locale={i18n.language} series={base?.message_time_series ?? []} /></section>
+          <section className="stats-card-react stats-chart-card"><header><div><h2>{text('messageTrend.title')}</h2><p>{text('messageTrend.subtitle', { range: rangeLabel })}</p></div><div className="stats-chart-total"><span>{text('messageTrend.totalMessages')}</span><strong>{number.format(base?.message_count ?? 0)}</strong></div></header><AreaChart ariaLabel={text('messageTrend.title')} emptyText="—" locale={i18n.language} series={base?.message_time_series ?? []} /></section>
           <RankingCard empty={text('empty.platformStats')} items={platformRanking.map((item) => [item.name, item.count])} number={number} subtitle={text('platformRanking.subtitle', { range: rangeLabel })} title={text('platformRanking.title')} />
         </div>
         <StatsSectionHeader subtitle={text('modelCalls.subtitle')} title={text('modelCalls.title')} />
@@ -124,13 +124,13 @@ function RangeSwitch({ range, setRange, text }: { range: TokenRange; setRange: (
   return <div className="stats-range-switch">{([1, 3, 7] as TokenRange[]).map((value) => <button aria-pressed={range === value} key={value} onClick={() => setRange(value)} type="button">{text(`ranges.${value === 1 ? 'oneDay' : value === 3 ? 'threeDays' : 'oneWeek'}`)}</button>)}</div>;
 }
 
-function AreaChart({ emptyText, locale, series }: { emptyText: string; locale: string; series: Array<[number, number]> }) {
+function AreaChart({ ariaLabel, emptyText, locale, series }: { ariaLabel: string; emptyText: string; locale: string; series: Array<[number, number]> }) {
   const points = makeSparklinePoints(series, 720, 260, 18);
   if (!points) return <div className="stats-chart-empty">{emptyText}</div>;
   const values = series.map((item) => item[1]);
   const max = Math.max(...values, 0);
   const area = `18,242 ${points} 702,242`;
-  return <div className="stats-svg-chart"><svg aria-label="message trend" preserveAspectRatio="none" role="img" viewBox="0 0 720 260"><defs><linearGradient id="stats-area-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="currentColor" stopOpacity=".22" /><stop offset="1" stopColor="currentColor" stopOpacity=".02" /></linearGradient></defs>{[18, 74, 130, 186, 242].map((y) => <line className="stats-chart-grid" key={y} x1="18" x2="702" y1={y} y2={y} />)}<polygon fill="url(#stats-area-fill)" points={area} /><polyline fill="none" points={points} stroke="currentColor" strokeWidth="2.4" vectorEffect="non-scaling-stroke" /></svg><div className="stats-chart-axis"><span>{chartDate(series[0]?.[0]).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit' })}</span><strong>{max.toLocaleString(locale)}</strong><span>{chartDate(series.at(-1)?.[0]).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit' })}</span></div></div>;
+  return <div className="stats-svg-chart"><svg aria-label={ariaLabel} preserveAspectRatio="none" role="img" viewBox="0 0 720 260"><defs><linearGradient id="stats-area-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="currentColor" stopOpacity=".22" /><stop offset="1" stopColor="currentColor" stopOpacity=".02" /></linearGradient></defs>{[18, 74, 130, 186, 242].map((y) => <line className="stats-chart-grid" key={y} x1="18" x2="702" y1={y} y2={y} />)}<polygon fill="url(#stats-area-fill)" points={area} /><polyline fill="none" points={points} stroke="currentColor" strokeWidth="2.4" vectorEffect="non-scaling-stroke" /></svg><div className="stats-chart-axis"><span>{chartDate(series[0]?.[0]).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit' })}</span><strong>{max.toLocaleString(locale)}</strong><span>{chartDate(series.at(-1)?.[0]).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit' })}</span></div></div>;
 }
 
 function StackedBarChart({ compact, locale, series }: { compact: (value: number) => string; locale: string; series: ProviderTrend[] }) {

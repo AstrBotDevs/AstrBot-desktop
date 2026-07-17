@@ -15,6 +15,7 @@
         "description": "Управление MCP-серверами",
         "buttons": {
             "refresh": "Обновить",
+            "delete": "Удалить сервер",
             "add": "Добавить сервер",
             "useTemplateStdio": "Шаблон Stdio",
             "useTemplateStreamableHttp": "Шаблон Streamable HTTP",
@@ -31,6 +32,7 @@
     },
     "functionTools": {
         "title": "Функции (Tools)",
+        "expand": "Развернуть подробности",
         "buttons": {
             "view": "Показать инструменты"
         },

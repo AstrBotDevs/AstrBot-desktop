@@ -138,10 +138,11 @@ function UmoDisplay({
   info: UmoInfo;
   onEdit?: () => void;
 }) {
+  const { t } = useTranslation();
   return <div className={`session-umo${compact ? ' session-umo--compact' : ''}`}>
     <div className="session-umo__title">
       <strong>{displayName(info, customName)}</strong>
-      {onEdit && <button aria-label="edit" onClick={onEdit} type="button"><MdiIcon name="mdi-pencil-outline" /></button>}
+      {onEdit && <button aria-label={t('features.session-management.buttons.edit')} onClick={onEdit} type="button"><MdiIcon name="mdi-pencil-outline" /></button>}
     </div>
     {!compact && <div className="session-umo__meta">
       {info.platform && <span>{info.platform}</span>}
@@ -681,5 +682,6 @@ function TransferList({ danger, emptyText, icon, infoFor, items, label, onItem, 
   onSearch: (value: string) => void;
   search: string;
 }) {
-  return <div className="session-transfer-list"><strong>{label}</strong><label className="session-transfer-list__search"><MdiIcon name="mdi-magnify" /><input onChange={(event) => onSearch(event.target.value)} placeholder="..." value={search} /></label><div className="session-transfer-list__items">{items.map((umo) => <button className={danger ? 'is-danger' : ''} key={umo} onClick={() => onItem(umo)} type="button"><MdiIcon name={icon} /><UmoDisplay compact info={infoFor(umo)} /><span>{infoFor(umo).platform}</span></button>)}{!items.length && <div>{emptyText}</div>}</div></div>;
+  const { t } = useTranslation();
+  return <div className="session-transfer-list"><strong>{label}</strong><label className="session-transfer-list__search"><MdiIcon name="mdi-magnify" /><input onChange={(event) => onSearch(event.target.value)} placeholder={t('features.session-management.groups.searchPlaceholder')} value={search} /></label><div className="session-transfer-list__items">{items.map((umo) => <button className={danger ? 'is-danger' : ''} key={umo} onClick={() => onItem(umo)} type="button"><MdiIcon name={icon} /><UmoDisplay compact info={infoFor(umo)} /><span>{infoFor(umo).platform}</span></button>)}{!items.length && <div>{emptyText}</div>}</div></div>;
 }

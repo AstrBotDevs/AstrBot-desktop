@@ -1313,13 +1313,14 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     reserved: Boolean(command.reserved),
   }));
   const sessionTitle = current?.display_name || (selectedProject ? String(selectedProject.title || t('features.chat.project.title')) : t('features.chat.conversation.newConversation'));
-  const modelTitle = provider || 'Default model';
+  const modelTitle = provider || t('features.chat.models.default');
   const modelMeta = currentProvider?.model || model;
   const emptyChat = !selectedProject && !loading && !messages.length;
   const selectedReferenceItems: unknown[] = selectedRefs && Array.isArray(selectedRefs.used) ? selectedRefs.used : [];
   const composerNode = <ChatComposer
     attachments={composerAttachments}
     commands={composerCommands}
+    commandSuggestionsLabel={t('features.chat.commandSuggestion.label')}
     configs={composerConfigs}
     configId={configId}
     disabled={uploading || configSaving}
@@ -1369,8 +1370,8 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     <aside className={`chat-sessions ${sidebarOpen ? 'is-open' : ''}`}>
       <div className="chat-sessions__brand">
         <div className="chat-sessions__brand-title"><ChatLogo /><span><strong>AstrBot</strong><small>ChatUI</small></span></div>
-        <button aria-label="Toggle sidebar" className="chat-sessions__collapse" onClick={() => setSidebarCollapsed((value) => !value)} title="Toggle sidebar" type="button"><span className="chat-sessions__collapse-normal"><PanelLeftIcon /></span><span className="chat-sessions__rail-stack"><ChatLogo /><PanelLeftIcon /></span></button>
-        <button aria-label="Close conversations" className="chat-sessions__close" onClick={() => setSidebarOpen(false)} type="button"><MdiIcon name="mdi-close" /></button>
+        <button aria-label={t('features.chat.accessibility.toggleSidebar')} className="chat-sessions__collapse" onClick={() => setSidebarCollapsed((value) => !value)} title={t('features.chat.accessibility.toggleSidebar')} type="button"><span className="chat-sessions__collapse-normal"><PanelLeftIcon /></span><span className="chat-sessions__rail-stack"><ChatLogo /><PanelLeftIcon /></span></button>
+        <button aria-label={t('features.chat.accessibility.closeConversations')} className="chat-sessions__close" onClick={() => setSidebarOpen(false)} type="button"><MdiIcon name="mdi-close" /></button>
       </div>
       <nav className="chat-sessions__actions">
         <Link title={t('features.chat.actions.providerConfig')} to={`${basePath}/models`}><BoxIcon /><span>{t('features.chat.actions.providerConfig')}</span></Link>
@@ -1455,14 +1456,14 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
         </details>
       </div>
     </aside>
-    {sidebarOpen && <button aria-label="Close conversations" className="chat-sidebar-backdrop" onClick={() => setSidebarOpen(false)} type="button" />}
+    {sidebarOpen && <button aria-label={t('features.chat.accessibility.closeConversations')} className="chat-sidebar-backdrop" onClick={() => setSidebarOpen(false)} type="button" />}
     <main className={`chat-main ${emptyChat && !isProviderWorkspace ? 'is-empty-chat' : ''} ${selectedProject ? 'is-project-workspace' : ''} ${isProviderWorkspace ? 'is-provider-workspace' : ''} ${reasoningTarget || selectedRefs || activeThread ? 'has-detail-panel' : ''}`}>
       <header className="chat-toolbar">
-        <button aria-label="Open conversations" className="chat-toolbar__sidebar-open" onClick={() => setSidebarOpen(true)} type="button"><MdiIcon name="mdi-menu" /></button>
+        <button aria-label={t('features.chat.accessibility.openConversations')} className="chat-toolbar__sidebar-open" onClick={() => setSidebarOpen(true)} type="button"><MdiIcon name="mdi-menu" /></button>
         <details className="chat-model-menu" onToggle={(event) => { if (event.currentTarget.open) void loadProviders(); }} ref={modelMenuRef}>
           <summary><span><strong>{modelTitle}</strong>{modelMeta && modelMeta !== modelTitle && <em>{modelMeta}</em>}<MdiIcon name="mdi-chevron-down" /></span><small>{sessionTitle}</small></summary>
           <div className="chat-model-menu__panel">
-            <label className="chat-model-search"><MdiIcon name="mdi-magnify" /><input aria-label="Search models" onChange={(event) => setProviderSearch(event.target.value)} placeholder="Search models" value={providerSearch} /></label>
+            <label className="chat-model-search"><MdiIcon name="mdi-magnify" /><input aria-label={t('features.chat.accessibility.searchModels')} onChange={(event) => setProviderSearch(event.target.value)} placeholder={t('features.chat.accessibility.searchModels')} value={providerSearch} /></label>
             <div className="chat-model-list">
               {filteredProviders.map((item) => {
                 const selected = item.id === provider;
@@ -1472,8 +1473,8 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
                   <span className="chat-model-list__actions"><button aria-label={t('features.provider.models.testButton')} className={testingProvider === item.id ? 'is-loading' : ''} disabled={Boolean(testingProvider)} onClick={() => void testProvider(item)} title={t('features.provider.models.testButton')} type="button"><MdiIcon name="mdi-connection" /></button>{selected && <MdiIcon name="mdi-check" />}</span>
                 </div>;
               })}
-              {providersLoading && <div className="chat-model-list__empty">Loading models…</div>}
-              {!providersLoading && !filteredProviders.length && <div className="chat-model-list__empty">No available models</div>}
+              {providersLoading && <div className="chat-model-list__empty">{t('features.chat.models.loading')}</div>}
+              {!providersLoading && !filteredProviders.length && <div className="chat-model-list__empty">{t('features.chat.actions.noAvailableModels')}</div>}
             </div>
           </div>
         </details>

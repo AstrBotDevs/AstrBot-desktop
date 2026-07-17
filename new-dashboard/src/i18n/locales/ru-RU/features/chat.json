@@ -56,6 +56,16 @@
     "toolCallUsed": "Использован инструмент {name}",
     "pythonCodeAnalysis": "Использован анализ кода Python"
   },
+  "accessibility": {
+    "toggleSidebar": "Переключить боковую панель",
+    "closeConversations": "Закрыть список диалогов",
+    "openConversations": "Открыть список диалогов",
+    "searchModels": "Поиск моделей"
+  },
+  "models": {
+    "default": "Модель по умолчанию",
+    "loading": "Загрузка моделей…"
+  },
   "ipython": {
     "output": "Вывод"
   },
@@ -182,6 +192,7 @@
     }
   },
   "commandSuggestion": {
+    "label": "Подсказки команд",
     "navigate": "Выбор",
     "select": "Подтвердить",
     "close": "Закрыть"

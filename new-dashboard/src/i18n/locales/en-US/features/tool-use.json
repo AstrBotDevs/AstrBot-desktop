@@ -15,6 +15,7 @@
     "description": "Manage MCP servers",
     "buttons": {
       "refresh": "Refresh",
+      "delete": "Delete server",
       "add": "Add Server",
       "useTemplateStdio": "Stdio Template",
       "useTemplateStreamableHttp": "Streamable HTTP Template",
@@ -31,6 +32,7 @@
   },
   "functionTools": {
     "title": "Function Tools",
+    "expand": "Expand details",
     "buttons": {
       "view": "View Tools"
     },

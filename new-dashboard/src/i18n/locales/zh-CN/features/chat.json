@@ -56,6 +56,16 @@
     "toolCallUsed": "已使用 {name} 工具",
     "pythonCodeAnalysis": "已使用 Python 代码分析"
   },
+  "accessibility": {
+    "toggleSidebar": "切换侧栏",
+    "closeConversations": "关闭对话列表",
+    "openConversations": "打开对话列表",
+    "searchModels": "搜索模型"
+  },
+  "models": {
+    "default": "默认模型",
+    "loading": "正在加载模型…"
+  },
   "ipython": {
     "output": "输出"
   },
@@ -182,6 +192,7 @@
     }
   },
   "commandSuggestion": {
+    "label": "指令建议",
     "navigate": "选择",
     "select": "确认",
     "close": "关闭"

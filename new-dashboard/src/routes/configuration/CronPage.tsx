@@ -81,6 +81,7 @@ function CronUmoSelect({
   options: string[];
   value: string;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
@@ -112,7 +113,7 @@ function CronUmoSelect({
         {selected ? <UmoSummary info={selected} /> : <span>{loading ? '…' : emptyText}</span>}
         <MdiIcon name={open ? 'mdi-chevron-up' : 'mdi-chevron-down'} />
       </button>
-      {value && <button aria-label="clear" className="cron-umo-select__clear" onClick={() => onChange('')} type="button"><MdiIcon name="mdi-close" /></button>}
+      {value && <button aria-label={t('features.cron.actions.clear')} className="cron-umo-select__clear" onClick={() => onChange('')} type="button"><MdiIcon name="mdi-close" /></button>}
       {open && <div className="cron-umo-select__menu">
         <label><MdiIcon name="mdi-magnify" /><input autoFocus onChange={(event) => setQuery(event.target.value)} value={query} /></label>
         <div role="listbox">

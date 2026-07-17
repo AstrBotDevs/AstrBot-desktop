@@ -91,6 +91,7 @@
     "tryDifferentQuery": "Try a different query",
     "settings": "Retrieval Settings",
     "topK": "Number of Results",
+    "scoreThreshold": "Score threshold",
     "topKHint": "Maximum number of results to return",
     "enableRerank": "Enable Rerank",
     "enableRerankHint": "Use a rerank model to improve retrieval quality",

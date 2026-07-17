@@ -56,6 +56,16 @@
     "toolCallUsed": "Used {name} tool",
     "pythonCodeAnalysis": "Python Code Analysis Used"
   },
+  "accessibility": {
+    "toggleSidebar": "Toggle sidebar",
+    "closeConversations": "Close conversations",
+    "openConversations": "Open conversations",
+    "searchModels": "Search models"
+  },
+  "models": {
+    "default": "Default model",
+    "loading": "Loading models…"
+  },
   "ipython": {
     "output": "Output"
   },
@@ -182,6 +192,7 @@
     }
   },
   "commandSuggestion": {
+    "label": "Command suggestions",
     "navigate": "Navigate",
     "select": "Select",
     "close": "Close"

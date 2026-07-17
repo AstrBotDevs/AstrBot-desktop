@@ -47,6 +47,7 @@
       "newName": "New command name",
       "aliases": "Manage aliases",
       "addAlias": "Add alias",
+      "deleteAlias": "Delete alias",
       "cancel": "Cancel",
       "confirm": "Confirm"
     },

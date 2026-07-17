@@ -91,6 +91,7 @@
     "tryDifferentQuery": "尝试使用不同的查询词",
     "settings": "检索设置",
     "topK": "返回结果数量",
+    "scoreThreshold": "相关度阈值",
     "topKHint": "最多返回多少条检索结果",
     "enableRerank": "启用重排序",
     "enableRerankHint": "使用重排序模型提高检索质量",

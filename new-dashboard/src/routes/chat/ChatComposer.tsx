@@ -67,6 +67,7 @@ export type ChatComposerLabels = Partial<{
 export type ChatComposerProps = {
   attachments?: ChatComposerAttachment[];
   commands?: ChatComposerCommand[];
+  commandSuggestionsLabel: string;
   configs?: ChatComposerConfig[];
   configId?: string;
   disabled?: boolean;
@@ -121,6 +122,7 @@ const defaultLabels: Required<ChatComposerLabels> = {
 export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(function ChatComposer({
   attachments = [],
   commands = [],
+  commandSuggestionsLabel,
   configs = [],
   configId = 'default',
   disabled = false,
@@ -335,7 +337,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
           <button aria-label={`${labels.clear} ${attachment.name}`} className="chat-composer-v2__remove" onClick={() => onRemoveAttachment?.(attachment, index)} type="button"><MdiIcon name="mdi-close" /></button>
         </div>)}
       </div>}
-      {!suggestionsDismissed && suggestions.length > 0 && <ul aria-label="Command suggestions" className="chat-composer-v2__suggestions" role="listbox">
+      {!suggestionsDismissed && suggestions.length > 0 && <ul aria-label={commandSuggestionsLabel} className="chat-composer-v2__suggestions" role="listbox">
         {suggestions.map((command, index) => <li key={`${command.command}-${command.displayCommand}`}>
           <button
             aria-selected={index === selectedCommand}

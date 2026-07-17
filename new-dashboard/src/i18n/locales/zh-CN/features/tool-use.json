@@ -15,6 +15,7 @@
     "description": "管理 MCP 服务器",
     "buttons": {
       "refresh": "刷新",
+      "delete": "删除服务器",
       "add": "新增服务器",
       "useTemplateStdio": "Stdio 模板",
       "useTemplateStreamableHttp": "Streamable HTTP 模板",
@@ -31,6 +32,7 @@
   },
   "functionTools": {
     "title": "函数工具",
+    "expand": "展开详情",
     "buttons": {
       "view": "查看工具"
     },
