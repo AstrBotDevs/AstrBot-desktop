@@ -1,4 +1,4 @@
-import { type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
@@ -47,6 +47,8 @@ import {
   type ChatComposerHandle,
 } from './ChatComposer';
 import { ChatMessageList } from './ChatMessageList';
+import { ChatDetailPanels, type ChatThread } from './ChatDetailPanels';
+import { BoxIcon, ChatLogo, PanelLeftIcon, PencilIcon, PlusIcon, SquarePenIcon, TrashIcon } from './ChatIcons';
 import { ChatProjectDialog, type ChatProjectForm } from './ChatProjectDialog';
 import {
   buildWebchatUmo,
@@ -57,6 +59,8 @@ import {
   type ConfigRouteEntry,
 } from './configBinding';
 import { createStreamRenderScheduler } from './streamRenderScheduler';
+import { readWebSocketChat } from './chatTransport';
+import { useChatPreferences } from './useChatPreferences';
 import {
   agentRunnerTypeFromProfile,
   appendStreamPayload,
@@ -76,13 +80,6 @@ import {
 type ChatPageProps = { chatbox?: boolean };
 type StagedFile = { attachment_id: string; filename: string; preview_url?: string; type: StagedAttachmentType };
 type ProviderConfig = JsonObject & { id: string; model: string };
-type TransportMode = 'sse' | 'websocket';
-type ChatThread = JsonObject & {
-  thread_id: string;
-  parent_message_id?: string | number;
-  selected_text?: string;
-  messages?: ChatRecord[];
-};
 type CommandSuggestion = JsonObject & {
   effective_command: string;
   description?: string;
@@ -145,11 +142,18 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const [agentRunnerLoading, setAgentRunnerLoading] = useState(true);
   const [commands, setCommands] = useState<CommandSuggestion[]>([]);
   const [wakePrefixes, setWakePrefixes] = useState<string[]>(['/']);
-  const [provider, setProvider] = useState(() => localStorage.getItem('selectedProvider') || '');
-  const [model, setModel] = useState(() => localStorage.getItem('selectedProviderModel') || '');
-  const [streaming, setStreaming] = useState(true);
-  const [transportMode, setTransportMode] = useState<TransportMode>(() => localStorage.getItem('chat.transportMode') === 'websocket' ? 'websocket' : 'sse');
-  const [settingsSubmenu, setSettingsSubmenu] = useState<'transport' | 'language' | null>(null);
+  const {
+    model,
+    provider,
+    setModel,
+    setProvider,
+    setSettingsSubmenu,
+    setStreaming,
+    setTransportMode,
+    settingsSubmenu,
+    streaming,
+    transportMode,
+  } = useChatPreferences();
   const [replyTarget, setReplyTarget] = useState<ChatRecord | null>(null);
   const [editingMessage, setEditingMessage] = useState<ChatRecord | null>(null);
   const [editingDraft, setEditingDraft] = useState('');
@@ -534,9 +538,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     });
     return () => window.cancelAnimationFrame(frame);
   }, [activeThread?.messages, threadSending]);
-  useEffect(() => { localStorage.setItem('selectedProvider', provider); }, [provider]);
-  useEffect(() => { localStorage.setItem('selectedProviderModel', model); }, [model]);
-  useEffect(() => { localStorage.setItem('chat.transportMode', transportMode); }, [transportMode]);
   useEffect(() => {
     const closeSettings = (event: PointerEvent) => {
       if (!settingsMenuRef.current?.contains(event.target as Node)) {
@@ -1371,7 +1372,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const modelMeta = currentProvider?.model || model;
   const runnerConfigTitle = composerConfigs.find((config) => config.id === configId)?.name || configId;
   const emptyChat = !selectedProject && !loading && !messages.length;
-  const selectedReferenceItems: unknown[] = selectedRefs && Array.isArray(selectedRefs.used) ? selectedRefs.used : [];
   const composerNode = <ChatComposer
     attachments={composerAttachments}
     commands={composerCommands}
@@ -1676,70 +1676,29 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
           </div>
         </div>
       </Dialog>
-      {reasoningTarget && <aside className="chat-detail-panel">
-        <header><strong>{t('features.chat.reasoning.thinking')}</strong><button aria-label={t('core.common.close')} onClick={() => setReasoningTarget(null)} type="button"><MdiIcon name="mdi-close" /></button></header>
-        <div className="chat-detail-panel__body chat-side-dialog-content">
-          <pre>{reasoningTarget.content.reasoning || reasoningTarget.content.message.filter((part) => ['think', 'reasoning'].includes(part.type)).map((part) => part.think || part.text || '').join('\n')}</pre>
-        </div>
-      </aside>}
-      {selectedRefs && <aside className="chat-detail-panel">
-        <header><strong>{t('features.chat.refs.title')}</strong><button aria-label={t('core.common.close')} onClick={() => setSelectedRefs(null)} type="button"><MdiIcon name="mdi-close" /></button></header>
-        <div className="chat-detail-panel__body chat-reference-list">
-          {selectedReferenceItems.map((reference, index) => {
-            const item = isObject(reference) ? reference : {};
-            return <article key={String(item.id || item.url || index)} onClick={() => item.url && window.open(String(item.url), '_blank')}>
-              <strong>{Boolean(item.favicon) && <img alt="" src={String(item.favicon)} />}{String(item.title || item.url || t('features.chat.refs.title'))}</strong>
-              {Boolean(item.snippet || item.text || item.content) && <p>{String(item.snippet || item.text || item.content)}</p>}
-              {Boolean(item.url) && <small>{referenceHost(String(item.url))}</small>}
-            </article>;
-          })}
-        </div>
-      </aside>}
-      <Dialog onOpenChange={(open) => !open && setImagePreview(null)} open={imagePreview !== null} title={imagePreview?.name || t('features.chat.attachment.image', 'Image')}>
-        {imagePreview && <div className="chat-image-preview"><img alt={imagePreview.name} src={imagePreview.url} /></div>}
-      </Dialog>
-      {activeThread && <aside className="chat-detail-panel chat-thread-panel">
-        <header>
-          <strong>{t('features.chat.thread.title')}</strong>
-          <span>
-            <button aria-label={t('features.chat.thread.delete')} disabled={threadDeleting || threadSending} onClick={() => void removeThread()} type="button"><MdiIcon name="mdi-delete-outline" /></button>
-            <button aria-label={t('core.common.close')} onClick={() => setActiveThread(null)} type="button"><MdiIcon name="mdi-close" /></button>
-          </span>
-        </header>
-        <div className="chat-thread-dialog">
-          {activeThread?.selected_text && <blockquote>{activeThread.selected_text}</blockquote>}
-          <div className="chat-thread-messages" ref={threadMessagesRef}>
-            <ChatMessageList
-              enableEdit={false}
-              enableRetry={false}
-              messages={activeThread?.messages || []}
-              onDownload={(part) => downloadMessagePart(part)}
-              onOpenImage={(url, part) => url && setImagePreview({
-                name: String(part.filename || part.stored_filename || t('features.chat.attachment.image', 'Image')),
-                url,
-              })}
-              resolvePartUrl={(part) => mediaUrlsRef.current[mediaPartKey(part)] || ''}
-              streaming={threadSending}
-            />
-          </div>
-          <div className="chat-thread-composer">
-            <textarea
-              disabled={threadSending}
-              onChange={(event) => setThreadDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-                  event.preventDefault();
-                  void sendThreadMessage();
-                }
-              }}
-              placeholder={t('features.chat.thread.placeholder')}
-              rows={2}
-              value={threadDraft}
-            />
-            <button className="button--primary" disabled={threadSending || !threadDraft.trim()} onClick={() => void sendThreadMessage()} type="button">{t('features.chat.input.send')}</button>
-          </div>
-        </div>
-      </aside>}
+      <ChatDetailPanels
+        activeThread={activeThread}
+        imagePreview={imagePreview}
+        onCloseImage={() => setImagePreview(null)}
+        onCloseReasoning={() => setReasoningTarget(null)}
+        onCloseReferences={() => setSelectedRefs(null)}
+        onCloseThread={() => setActiveThread(null)}
+        onDeleteThread={() => void removeThread()}
+        onDownload={(part) => downloadMessagePart(part)}
+        onOpenImage={(url, part) => url && setImagePreview({
+          name: String(part.filename || part.stored_filename || t('features.chat.attachment.image', 'Image')),
+          url,
+        })}
+        onSendThread={() => void sendThreadMessage()}
+        onThreadDraftChange={setThreadDraft}
+        reasoningTarget={reasoningTarget}
+        referenceData={selectedRefs}
+        resolvePartUrl={(part) => mediaUrlsRef.current[mediaPartKey(part)] || ''}
+        threadDeleting={threadDeleting}
+        threadDraft={threadDraft}
+        threadMessagesRef={threadMessagesRef}
+        threadSending={threadSending}
+      />
       <ChatProjectDialog
         error={projectError}
         onOpenChange={(open) => {
@@ -1758,70 +1717,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   </div>;
 }
 
-type WebSocketChatOptions = {
-  abort: AbortSignal;
-  configId: string;
-  enableStreaming: boolean;
-  message: Array<{ attachment_id?: string; filename?: string; text?: string; type: string }>;
-  messageId: string;
-  onPayload: (payload: unknown) => void;
-  selectedModel: string;
-  selectedProvider: string;
-  sessionId: string;
-  token: string | null;
-};
-
-function readWebSocketChat(options: WebSocketChatOptions) {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const url = `${protocol}//${window.location.host}/api/v1/unified-chat/ws?token=${encodeURIComponent(options.token || '')}`;
-  const socket = new WebSocket(url);
-  return new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const abortError = () => new DOMException('The chat request was aborted.', 'AbortError');
-    const finish = (error?: Error | DOMException) => {
-      if (settled) return;
-      settled = true;
-      options.abort.removeEventListener('abort', handleAbort);
-      socket.onopen = null;
-      socket.onmessage = null;
-      socket.onerror = null;
-      socket.onclose = null;
-      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.close();
-      if (error) reject(error);
-      else resolve();
-    };
-    const handleAbort = () => finish(abortError());
-
-    if (options.abort.aborted) {
-      finish(abortError());
-      return;
-    }
-    options.abort.addEventListener('abort', handleAbort, { once: true });
-    socket.onopen = () => socket.send(JSON.stringify({
-      ct: 'chat',
-      t: 'send',
-      session_id: options.sessionId,
-      message_id: options.messageId,
-      message: options.message,
-      config_id: options.configId || undefined,
-      enable_streaming: options.enableStreaming,
-      selected_provider: options.selectedProvider || undefined,
-      selected_model: options.selectedModel || undefined,
-    }));
-    socket.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(String(event.data)) as JsonObject;
-        options.onPayload(payload);
-        if (payload.type === 'end' || payload.t === 'end') finish();
-      } catch {
-        // Ignore non-JSON keepalive frames.
-      }
-    };
-    socket.onerror = () => finish(new Error('WebSocket connection failed.'));
-    socket.onclose = () => finish(options.abort.aborted ? abortError() : new Error('WebSocket connection closed.'));
-  });
-}
-
 function plainMessageText(message: ChatRecord) {
   return message.content.message
     .filter((part) => part.type === 'plain' || part.type === 'text')
@@ -1831,14 +1726,6 @@ function plainMessageText(message: ChatRecord) {
 
 function mediaPartKey(part: ChatPart) {
   return String(part.attachment_id || part.stored_filename || part.filename || '');
-}
-
-function referenceHost(value: string) {
-  try {
-    return new URL(value).hostname;
-  } catch {
-    return value;
-  }
 }
 
 function formatProjectSessionDate(value: unknown, locale: string) {
@@ -1932,36 +1819,4 @@ function flattenCommandSuggestions(items: JsonObject[]) {
   };
   items.forEach((item) => append(item));
   return result.sort((left, right) => Number(Boolean(right.reserved)) - Number(Boolean(left.reserved)));
-}
-
-function ChatLogo() {
-  return <svg aria-hidden="true" className="chat-logo" focusable="false" viewBox="0 0 24 24"><path d="M11.96 2.6c.22-.53.97-.53 1.19 0l.76 1.84a7.05 7.05 0 0 0 3.72 3.77l1.75.78c.53.23.53 1 0 1.23l-1.81.8a6.86 6.86 0 0 0-3.66 3.68l-.76 1.75c-.22.52-.97.52-1.19 0l-.75-1.75a6.86 6.86 0 0 0-3.66-3.68l-1.81-.8a.67.67 0 0 1 0-1.23l1.75-.78a7.05 7.05 0 0 0 3.72-3.77l.75-1.84Z" fill="currentColor"/><path d="M18.72 15.2c.12-.3.54-.3.67 0l.3.73c.4.96 1.15 1.72 2.1 2.14l.63.28c.3.13.3.56 0 .69l-.67.3a3.5 3.5 0 0 0-2.06 2.06l-.3.68c-.13.3-.55.3-.68 0l-.3-.68a3.5 3.5 0 0 0-2.05-2.06l-.68-.3a.38.38 0 0 1 0-.69l.64-.28a3.7 3.7 0 0 0 2.1-2.14l.3-.73Z" fill="currentColor"/></svg>;
-}
-
-function SidebarIcon({ children }: { children: ReactNode }) {
-  return <svg aria-hidden="true" className="chat-sidebar-icon" fill="none" focusable="false" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">{children}</svg>;
-}
-
-function PanelLeftIcon() {
-  return <SidebarIcon><rect height="18" rx="2" width="18" x="3" y="3"/><path d="M9 3v18"/></SidebarIcon>;
-}
-
-function BoxIcon() {
-  return <SidebarIcon><path d="m21 8-9 5-9-5"/><path d="m3 8 9-5 9 5v8l-9 5-9-5Z"/><path d="M12 13v8"/></SidebarIcon>;
-}
-
-function SquarePenIcon() {
-  return <SidebarIcon><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.4 2.6a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4Z"/></SidebarIcon>;
-}
-
-function PencilIcon() {
-  return <SidebarIcon><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></SidebarIcon>;
-}
-
-function TrashIcon() {
-  return <SidebarIcon><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></SidebarIcon>;
-}
-
-function PlusIcon() {
-  return <SidebarIcon><path d="M12 5v14M5 12h14"/></SidebarIcon>;
 }

@@ -23,11 +23,8 @@ import { MdiIcon } from '@/components/icons/MdiIcon';
 import { confirmAction, toast } from '@/stores/feedback';
 import { LoadingState } from './ConfigurationUi';
 import { errorMessage, isObject, JsonObject, objectList, prettyJson, recordId, responseData } from './model';
-import { getProviderIcon } from './providerIcons';
 import {
   buildModelProvider,
-  capabilityBadges,
-  formatContextLimit,
   mergeProviderSourceSection,
   mergeProviderWithTemplate,
   PROVIDER_TABS,
@@ -42,8 +39,16 @@ import {
   type ProviderType,
   type ProviderTestStatus,
 } from './providerPageModel';
-
-type AvailableModel = { metadata?: JsonObject; name: string };
+import {
+  cloneProviderObject as cloneObject,
+  ProviderCard,
+  providerEnabled,
+  ProviderMark,
+  ProviderModelCopy,
+  ProviderRow,
+  providerTemplateDescription,
+} from './ProviderPresentation';
+import { useProviderModelEditorState } from './useProviderModelEditorState';
 
 export default function ProviderPage() {
   const { t } = useTranslation();
@@ -57,11 +62,25 @@ export default function ProviderPage() {
   const [editableSource, setEditableSource] = useState<JsonObject | null>(null);
   const [sourceOriginalId, setSourceOriginalId] = useState('');
   const [newSourceId, setNewSourceId] = useState('');
-  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
-  const [availableMetadata, setAvailableMetadata] = useState<JsonObject>({});
-  const [modelSearch, setModelSearch] = useState('');
+  const {
+    availableMetadata,
+    availableModels,
+    loadingModels,
+    manualModelId,
+    manualModelOpen,
+    modelEditor,
+    modelEditorOriginalId,
+    modelSearch,
+    setAvailableMetadata,
+    setAvailableModels,
+    setLoadingModels,
+    setManualModelId,
+    setManualModelOpen,
+    setModelEditor,
+    setModelEditorOriginalId,
+    setModelSearch,
+  } = useProviderModelEditorState();
   const [loading, setLoading] = useState(true);
-  const [loadingModels, setLoadingModels] = useState(false);
   const [savingSource, setSavingSource] = useState(false);
   const [error, setError] = useState('');
   const [testing, setTesting] = useState('');
@@ -74,10 +93,6 @@ export default function ProviderPage() {
   const [providerPickerType, setProviderPickerType] = useState<ProviderType>('agent_runner');
   const [agentRunnerHelpOpen, setAgentRunnerHelpOpen] = useState(false);
   const [detectingEmbeddingDimension, setDetectingEmbeddingDimension] = useState(false);
-  const [manualModelOpen, setManualModelOpen] = useState(false);
-  const [manualModelId, setManualModelId] = useState('');
-  const [modelEditor, setModelEditor] = useState<JsonObject | null>(null);
-  const [modelEditorOriginalId, setModelEditorOriginalId] = useState('');
 
   const load = useCallback(async (preferredSourceId = '') => {
     setLoading(true);
@@ -787,112 +802,4 @@ export default function ProviderPage() {
 
     </div>
   );
-}
-
-function providerTemplateDescription(template: JsonObject, name: string, t: ReturnType<typeof useTranslation>['t']) {
-  if (name === 'OpenAI') return t('features.provider.providers.description.openai', { type: String(template.type || '') });
-  if (template.provider === 'kimi-code') return t('features.provider.providers.description.kimi_code');
-  if (name === 'vLLM Rerank') return t('features.provider.providers.description.vllm_rerank', { type: String(template.type || '') });
-  return t('features.provider.providers.description.default', { type: String(template.type || '') });
-}
-
-function ProviderRow({ metadata, onDelete, onEdit, onTest, onToggle, provider, status, t, testing }: {
-  metadata?: JsonObject;
-  onDelete: () => void;
-  onEdit: () => void;
-  onTest: () => void;
-  onToggle: () => void;
-  provider: JsonObject;
-  status?: ProviderTestStatus;
-  t: ReturnType<typeof useTranslation>['t'];
-  testing: boolean;
-}) {
-  const enabled = providerEnabled(provider);
-  return (
-    <article className="provider-model-row">
-      <ProviderModelCopy metadata={metadata} model={String(provider.model || recordId(provider, 'id'))} provider={provider} t={t} />
-      <div className="provider-model-row__actions">
-        {status && <ProviderStatus status={status} t={t} />}
-        <label className="provider-switch" title={enabled ? t('features.provider.providerSources.enabled') : t('features.provider.providerSources.disabled')}><input checked={enabled} onChange={onToggle} type="checkbox" /><span /></label>
-        <button className={testing ? 'is-loading' : ''} disabled={testing} onClick={onTest} title={t('features.provider.models.testButton')} type="button"><MdiIcon name="mdi-connection" /></button>
-        <button onClick={onEdit} title={t('features.provider.dialogs.config.editTitle')} type="button"><MdiIcon name="mdi-pencil-outline" /></button>
-        <button className="button--danger" onClick={onDelete} title={t('features.provider.providerSources.delete')} type="button"><MdiIcon name="mdi-delete-outline" /></button>
-      </div>
-    </article>
-  );
-}
-
-function ProviderModelCopy({ metadata, model, provider, t }: { metadata?: JsonObject; model: string; provider: JsonObject; t: ReturnType<typeof useTranslation>['t'] }) {
-  return (
-    <div className="provider-model-row__copy">
-      <ProviderMark provider={String(provider.provider || '')} />
-      <span><strong>{recordId(provider, 'id') || model}</strong><small><span>{model}</span><span className="provider-model-badges">{capabilityBadges(provider, metadata).map((badge) => <MdiIcon className={badge.enabled ? '' : 'is-disabled'} key={badge.key} name={badge.icon} />)}{formatContextLimit(provider, metadata) && <b title={t('features.provider.models.metadata.context', { tokens: formatContextLimit(provider, metadata) })}>{formatContextLimit(provider, metadata)}</b>}</span></small></span>
-    </div>
-  );
-}
-
-function ProviderCard({ onCopy, onDelete, onEdit, onTest, onToggle, provider, status, t, testing }: {
-  onCopy: () => void;
-  onDelete: () => void;
-  onEdit: () => void;
-  onTest: () => void;
-  onToggle: () => void;
-  provider: JsonObject;
-  status?: ProviderTestStatus;
-  t: ReturnType<typeof useTranslation>['t'];
-  testing: boolean;
-}) {
-  const enabled = providerEnabled(provider);
-  const providerName = String(provider.provider || provider.type || '');
-  return (
-    <article className="provider-card">
-      <header><h3 title={recordId(provider, 'id')}>{recordId(provider, 'id')}</h3><label className="provider-switch" title={enabled ? t('core.common.itemCard.enabled') : t('core.common.itemCard.disabled')}><input checked={enabled} onChange={onToggle} type="checkbox" /><span /></label></header>
-      {status && <ProviderStatus status={status} t={t} />}
-      <footer><button className="button--danger" onClick={onDelete} type="button">{t('core.common.itemCard.delete')}</button><button className="button--primary-soft" onClick={onEdit} type="button">{t('core.common.itemCard.edit')}</button><button className="button--secondary-soft" onClick={onCopy} type="button">{t('core.common.itemCard.copy')}</button><button className="button--info-soft" disabled={testing} onClick={onTest} type="button">{t('features.provider.availability.test')}</button></footer>
-      <div aria-hidden="true" className="provider-card__background"><ProviderMark provider={providerName} /></div>
-    </article>
-  );
-}
-
-function ProviderStatus({ status, t }: { status: ProviderTestStatus; t: ReturnType<typeof useTranslation>['t'] }) {
-  return <span className={`provider-test-status provider-test-status--${status.status}`} title={status.error || undefined}>
-    <MdiIcon name={status.status === 'available' ? 'mdi-check-circle' : status.status === 'pending' ? 'mdi-loading' : 'mdi-alert-circle'} />
-    {t(`features.provider.availability.${status.status}`)}
-    {status.error && <small>{status.error}</small>}
-  </span>;
-}
-
-function ProviderMark({ provider, variant = 'source' }: { provider: string; variant?: 'menu' | 'source' }) {
-  const normalized = provider.toLowerCase();
-  const image = getProviderIcon(provider);
-  const [failedImage, setFailedImage] = useState('');
-  const icon: `mdi-${string}` = normalized.includes('ollama') || normalized.includes('lm_studio')
-    ? 'mdi-server'
-    : normalized.includes('azure') || normalized.includes('microsoft')
-      ? 'mdi-web'
-      : normalized.includes('google') || normalized.includes('gemini')
-        ? 'mdi-creation'
-        : 'mdi-creation-outline';
-  return (
-    <span className={`provider-mark provider-mark--${variant}`}>
-      {image && failedImage !== image ? (
-        <img
-          alt=""
-          aria-hidden="true"
-          src={image}
-          onError={() => setFailedImage(image)}
-        />
-      ) : (
-        <MdiIcon name={icon} />
-      )}
-    </span>
-  );
-}
-
-function providerEnabled(provider: JsonObject) {
-  return (provider.enable ?? provider.enabled) !== false;
-}
-
-function cloneObject(value: JsonObject) {
-  return JSON.parse(JSON.stringify(value)) as JsonObject;
 }

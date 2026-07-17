@@ -1,0 +1,108 @@
+export const FOLLOW_CONFIG_VALUE = '__astrbot_follow_config__';
+
+export type ProviderOption = { id: string; model?: string; name?: string };
+export type PersonaOption = { id?: string; name: string };
+export type PluginOption = { display_name?: string; name: string };
+export type KnowledgeOption = { emoji?: string; kb_id: string; kb_name: string };
+export type UmoInfo = {
+  auto_name?: string;
+  display_name?: string;
+  message_type?: string;
+  platform?: string;
+  session_id?: string;
+  umo: string;
+  user_alias?: string;
+};
+export type ServiceConfig = {
+  custom_name?: string;
+  llm_enabled: boolean;
+  persona_id?: string | null;
+  session_enabled: boolean;
+  tts_enabled: boolean;
+};
+export type PluginConfig = { disabled_plugins: string[]; enabled_plugins: string[] };
+export type KnowledgeConfig = { enable_rerank: boolean; kb_ids: string[]; top_k: number };
+export type SessionRule = UmoInfo & { rules: Record<string, unknown> };
+export type SessionRulesData = {
+  available_chat_providers?: ProviderOption[];
+  available_kbs?: KnowledgeOption[];
+  available_personas?: PersonaOption[];
+  available_plugins?: PluginOption[];
+  available_stt_providers?: ProviderOption[];
+  available_tts_providers?: ProviderOption[];
+  rules?: SessionRule[];
+  total?: number;
+};
+export type SessionGroup = { id: string; name?: string; umo_count?: number; umos?: string[] };
+export type ActiveUmoData = { umo_infos?: UmoInfo[]; umos?: string[] };
+export type BatchScope = 'selected' | 'all' | 'group' | 'private' | `custom_group:${string}`;
+export type EditorState = {
+  kb: KnowledgeConfig;
+  plugin: PluginConfig;
+  providers: {
+    chat_completion: string;
+    speech_to_text: string;
+    text_to_speech: string;
+  };
+  service: ServiceConfig;
+};
+
+export function sessionRecordValue(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function stringList(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+export function parseUmo(umo: string): UmoInfo {
+  const [platform = '', messageType = '', ...sessionParts] = umo.split(':');
+  return {
+    display_name: umo,
+    message_type: messageType,
+    platform,
+    session_id: sessionParts.join(':') || umo,
+    umo,
+  };
+}
+
+export function sessionDisplayName(item: UmoInfo, customName?: string) {
+  const alias = item.user_alias || customName || '';
+  const automatic = item.auto_name || '';
+  if (alias && automatic && alias !== automatic) return `${alias}（${automatic}）`;
+  return alias || automatic || item.umo;
+}
+
+export function initialSessionEditor(item: SessionRule): EditorState {
+  const service = sessionRecordValue(item.rules.session_service_config);
+  const plugin = sessionRecordValue(item.rules.session_plugin_config);
+  const kb = sessionRecordValue(item.rules.kb_config);
+  return {
+    service: {
+      custom_name: typeof service.custom_name === 'string' ? service.custom_name : '',
+      llm_enabled: service.llm_enabled !== false,
+      persona_id: typeof service.persona_id === 'string' ? service.persona_id : null,
+      session_enabled: service.session_enabled !== false,
+      tts_enabled: service.tts_enabled !== false,
+    },
+    providers: {
+      chat_completion: typeof item.rules.provider_perf_chat_completion === 'string'
+        ? item.rules.provider_perf_chat_completion : FOLLOW_CONFIG_VALUE,
+      speech_to_text: typeof item.rules.provider_perf_speech_to_text === 'string'
+        ? item.rules.provider_perf_speech_to_text : FOLLOW_CONFIG_VALUE,
+      text_to_speech: typeof item.rules.provider_perf_text_to_speech === 'string'
+        ? item.rules.provider_perf_text_to_speech : FOLLOW_CONFIG_VALUE,
+    },
+    plugin: {
+      disabled_plugins: stringList(plugin.disabled_plugins),
+      enabled_plugins: stringList(plugin.enabled_plugins),
+    },
+    kb: {
+      enable_rerank: kb.enable_rerank !== false,
+      kb_ids: stringList(kb.kb_ids),
+      top_k: typeof kb.top_k === 'number' ? kb.top_k : 5,
+    },
+  };
+}

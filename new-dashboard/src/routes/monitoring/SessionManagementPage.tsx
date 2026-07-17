@@ -17,140 +17,32 @@ import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { confirmAction, toast } from '@/stores/feedback';
 import { unwrapData } from './model';
-
-const FOLLOW_CONFIG_VALUE = '__astrbot_follow_config__';
-
-type ProviderOption = { id: string; model?: string; name?: string };
-type PersonaOption = { id?: string; name: string };
-type PluginOption = { display_name?: string; name: string };
-type KnowledgeOption = { emoji?: string; kb_id: string; kb_name: string };
-type UmoInfo = {
-  auto_name?: string;
-  display_name?: string;
-  message_type?: string;
-  platform?: string;
-  session_id?: string;
-  umo: string;
-  user_alias?: string;
-};
-type ServiceConfig = {
-  custom_name?: string;
-  llm_enabled: boolean;
-  persona_id?: string | null;
-  session_enabled: boolean;
-  tts_enabled: boolean;
-};
-type PluginConfig = { disabled_plugins: string[]; enabled_plugins: string[] };
-type KnowledgeConfig = { enable_rerank: boolean; kb_ids: string[]; top_k: number };
-type SessionRule = UmoInfo & { rules: Record<string, unknown> };
-type SessionRulesData = {
-  available_chat_providers?: ProviderOption[];
-  available_kbs?: KnowledgeOption[];
-  available_personas?: PersonaOption[];
-  available_plugins?: PluginOption[];
-  available_stt_providers?: ProviderOption[];
-  available_tts_providers?: ProviderOption[];
-  rules?: SessionRule[];
-  total?: number;
-};
-type SessionGroup = { id: string; name?: string; umo_count?: number; umos?: string[] };
-type ActiveUmoData = { umo_infos?: UmoInfo[]; umos?: string[] };
-type BatchScope = 'selected' | 'all' | 'group' | 'private' | `custom_group:${string}`;
-type EditorState = {
-  kb: KnowledgeConfig;
-  plugin: PluginConfig;
-  providers: {
-    chat_completion: string;
-    speech_to_text: string;
-    text_to_speech: string;
-  };
-  service: ServiceConfig;
-};
-
-function recordValue(value: unknown) {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
-}
-
-function stringList(value: unknown) {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
-}
-
-function parseUmo(umo: string): UmoInfo {
-  const [platform = '', messageType = '', ...sessionParts] = umo.split(':');
-  return {
-    display_name: umo,
-    message_type: messageType,
-    platform,
-    session_id: sessionParts.join(':') || umo,
-    umo,
-  };
-}
-
-function displayName(item: UmoInfo, customName?: string) {
-  const alias = item.user_alias || customName || '';
-  const automatic = item.auto_name || '';
-  if (alias && automatic && alias !== automatic) return `${alias}（${automatic}）`;
-  return alias || automatic || item.umo;
-}
-
-function initialEditor(item: SessionRule): EditorState {
-  const service = recordValue(item.rules.session_service_config);
-  const plugin = recordValue(item.rules.session_plugin_config);
-  const kb = recordValue(item.rules.kb_config);
-  return {
-    service: {
-      custom_name: typeof service.custom_name === 'string' ? service.custom_name : '',
-      llm_enabled: service.llm_enabled !== false,
-      persona_id: typeof service.persona_id === 'string' ? service.persona_id : null,
-      session_enabled: service.session_enabled !== false,
-      tts_enabled: service.tts_enabled !== false,
-    },
-    providers: {
-      chat_completion: typeof item.rules.provider_perf_chat_completion === 'string'
-        ? item.rules.provider_perf_chat_completion : FOLLOW_CONFIG_VALUE,
-      speech_to_text: typeof item.rules.provider_perf_speech_to_text === 'string'
-        ? item.rules.provider_perf_speech_to_text : FOLLOW_CONFIG_VALUE,
-      text_to_speech: typeof item.rules.provider_perf_text_to_speech === 'string'
-        ? item.rules.provider_perf_text_to_speech : FOLLOW_CONFIG_VALUE,
-    },
-    plugin: {
-      disabled_plugins: stringList(plugin.disabled_plugins),
-      enabled_plugins: stringList(plugin.enabled_plugins),
-    },
-    kb: {
-      enable_rerank: kb.enable_rerank !== false,
-      kb_ids: stringList(kb.kb_ids),
-      top_k: typeof kb.top_k === 'number' ? kb.top_k : 5,
-    },
-  };
-}
-
-function UmoDisplay({
-  compact = false,
-  customName,
-  info,
-  onEdit,
-}: {
-  compact?: boolean;
-  customName?: string;
-  info: UmoInfo;
-  onEdit?: () => void;
-}) {
-  const { t } = useTranslation();
-  return <div className={`session-umo${compact ? ' session-umo--compact' : ''}`}>
-    <div className="session-umo__title">
-      <strong>{displayName(info, customName)}</strong>
-      {onEdit && <button aria-label={t('features.session-management.buttons.edit')} onClick={onEdit} type="button"><MdiIcon name="mdi-pencil-outline" /></button>}
-    </div>
-    {!compact && <div className="session-umo__meta">
-      {info.platform && <span>{info.platform}</span>}
-      {info.message_type && <span>{info.message_type}</span>}
-      <code title={info.umo}>{info.session_id || info.umo}</code>
-    </div>}
-  </div>;
-}
+import {
+  EditorSection,
+  MultiSelect,
+  ProviderSelect,
+  TransferList,
+  UmoDisplay,
+} from './SessionManagementControls';
+import {
+  FOLLOW_CONFIG_VALUE,
+  initialSessionEditor as initialEditor,
+  parseUmo,
+  sessionRecordValue as recordValue,
+  sessionDisplayName as displayName,
+  type ActiveUmoData,
+  type BatchScope,
+  type EditorState,
+  type KnowledgeOption,
+  type PersonaOption,
+  type PluginOption,
+  type ProviderOption,
+  type SessionGroup,
+  type SessionRule,
+  type SessionRulesData,
+  type UmoInfo,
+} from './sessionManagementModel';
+import { useSessionGroupEditorState } from './useSessionGroupEditorState';
 
 export default function SessionManagementPage() {
   const { t } = useTranslation();
@@ -189,12 +81,20 @@ export default function SessionManagementPage() {
   const [batchChatProvider, setBatchChatProvider] = useState('');
   const [batchUpdating, setBatchUpdating] = useState(false);
 
-  const [groupOpen, setGroupOpen] = useState(false);
-  const [editingGroup, setEditingGroup] = useState<SessionGroup>({ id: '', name: '', umos: [] });
-  const [groupMode, setGroupMode] = useState<'create' | 'edit'>('create');
-  const [availableSearch, setAvailableSearch] = useState('');
-  const [selectedSearch, setSelectedSearch] = useState('');
-  const [savingGroup, setSavingGroup] = useState(false);
+  const {
+    availableSearch,
+    editingGroup,
+    groupMode,
+    groupOpen,
+    savingGroup,
+    selectedSearch,
+    setAvailableSearch,
+    setEditingGroup,
+    setGroupMode,
+    setGroupOpen,
+    setSavingGroup,
+    setSelectedSearch,
+  } = useSessionGroupEditorState();
 
   const mergeUmoInfos = useCallback((infos: UmoInfo[]) => {
     setUmoInfoMap((current) => {
@@ -638,50 +538,4 @@ export default function SessionManagementPage() {
       </div>
     </Dialog>
   </div>;
-}
-
-function EditorSection({ children, onSave, saveText, saving, title }: {
-  children: React.ReactNode;
-  onSave: () => Promise<void>;
-  saveText: string;
-  saving: boolean;
-  title: string;
-}) {
-  return <section className="session-editor-section"><h3>{title}</h3><div className="session-editor-section__fields">{children}</div><div className="session-editor-section__actions"><button disabled={saving} onClick={() => void onSave()} type="button"><MdiIcon className={saving ? 'mdi-spin' : ''} name={saving ? 'mdi-loading' : 'mdi-content-save'} />{saveText}</button></div></section>;
-}
-
-function ProviderSelect({ disabled, followText, label, onChange, options, value }: {
-  disabled?: boolean;
-  followText: string;
-  label: string;
-  onChange: (value: string) => void;
-  options: ProviderOption[];
-  value: string;
-}) {
-  return <label><span>{label}</span><select disabled={disabled} onChange={(event) => onChange(event.target.value)} value={value}><option value={FOLLOW_CONFIG_VALUE}>{followText}</option>{options.map((provider) => <option key={provider.id} value={provider.id}>{provider.model ? `${provider.name || provider.id} (${provider.model})` : provider.name || provider.id}</option>)}</select></label>;
-}
-
-function MultiSelect({ disabled, label, onChange, options, value }: {
-  disabled?: boolean;
-  label: string;
-  onChange: (value: string[]) => void;
-  options: { label: string; value: string }[];
-  value: string[];
-}) {
-  return <label className="session-multi-select"><span>{label}</span><select disabled={disabled} multiple onChange={(event) => onChange([...event.currentTarget.selectedOptions].map((option) => option.value))} value={value}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>{value.length > 0 && <div>{value.map((item) => <button key={item} onClick={() => onChange(value.filter((valueItem) => valueItem !== item))} type="button">{options.find((option) => option.value === item)?.label || item}<MdiIcon name="mdi-close" /></button>)}</div>}</label>;
-}
-
-function TransferList({ danger, emptyText, icon, infoFor, items, label, onItem, onSearch, search }: {
-  danger?: boolean;
-  emptyText: string;
-  icon: `mdi-${string}`;
-  infoFor: (umo: string) => UmoInfo;
-  items: string[];
-  label: string;
-  onItem: (umo: string) => void;
-  onSearch: (value: string) => void;
-  search: string;
-}) {
-  const { t } = useTranslation();
-  return <div className="session-transfer-list"><strong>{label}</strong><label className="session-transfer-list__search"><MdiIcon name="mdi-magnify" /><input onChange={(event) => onSearch(event.target.value)} placeholder={t('features.session-management.groups.searchPlaceholder')} value={search} /></label><div className="session-transfer-list__items">{items.map((umo) => <button className={danger ? 'is-danger' : ''} key={umo} onClick={() => onItem(umo)} type="button"><MdiIcon name={icon} /><UmoDisplay compact info={infoFor(umo)} /><span>{infoFor(umo).platform}</span></button>)}{!items.length && <div>{emptyText}</div>}</div></div>;
 }
