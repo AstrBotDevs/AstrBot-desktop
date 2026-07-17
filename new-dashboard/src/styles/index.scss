@@ -97,7 +97,7 @@ textarea {
   flex-direction: column;
   width: 100%;
   height: 100%;
-  min-height: 100dvh;
+  min-height: 100vh;
   overflow: auto;
   background: var(--astrbot-background);
   color: var(--astrbot-text);
@@ -109,7 +109,7 @@ textarea {
   grid-template-columns: auto minmax(0, 1fr);
   width: 100%;
   height: 100%;
-  min-height: 100dvh;
+  min-height: 100vh;
   overflow: hidden;
   background: var(--astrbot-background);
   color: var(--astrbot-text);
@@ -152,7 +152,7 @@ textarea {
 
 .full-layout__page {
   width: 100%;
-  min-height: calc(100dvh - 100px);
+  min-height: calc(100vh - 100px);
   padding: 8px;
   background: var(--astrbot-background);
 }
@@ -687,7 +687,7 @@ textarea {
 .monitor-terminal {
   flex: 1;
   min-height: 420px;
-  max-height: calc(100dvh - 210px);
+  max-height: calc(100vh - 210px);
   overflow: auto;
   padding: 14px;
   border-radius: 9px;
@@ -1168,7 +1168,7 @@ textarea {
   --provider-item-background: color-mix(in srgb, var(--astrbot-text) 5%, transparent);
   display: flex;
   width: 100%;
-  height: calc(100dvh - var(--astrbot-header-height) - 16px);
+  height: calc(100vh - var(--astrbot-header-height) - 16px);
   min-height: 0;
   flex-direction: column;
   gap: 14px;
@@ -3533,7 +3533,7 @@ html[data-theme='dark'] .chat-shell {
   --chat-session-active: rgb(255 255 255 / 8%);
 }
 
-.chat-shell--box { min-height: 100dvh; }
+.chat-shell--box { min-height: 100vh; }
 
 .chat-sessions {
   position: relative;
@@ -4479,7 +4479,7 @@ html[data-theme='dark'] .chat-composer { border-color: rgb(255 255 255 / 12%); b
   margin: 8px 0 0;
 }
 
-.persona-page { display: flex; width: min(1400px, 100%); height: calc(100dvh - var(--astrbot-header-height) - 16px); min-height: 0; flex-direction: column; margin: 0 auto; overflow: hidden; padding: 24px; }
+.persona-page { display: flex; width: min(1400px, 100%); height: calc(100vh - var(--astrbot-header-height) - 16px); min-height: 0; flex-direction: column; margin: 0 auto; overflow: hidden; padding: 24px; }
 .persona-page__header { flex: 0 0 auto; margin-bottom: 24px; }
 .persona-page__header h1 { margin: 0 0 4px; font-size: clamp(28px, 3vw, 40px); }
 .persona-page__header p { margin: 0; color: color-mix(in srgb, var(--astrbot-text) 58%, transparent); }
@@ -4804,7 +4804,7 @@ html[data-theme='dark'] .chat-composer { border-color: rgb(255 255 255 / 12%); b
 .auth-page {
   display: grid;
   flex: 1;
-  min-height: 100dvh;
+  min-height: 100vh;
   padding: 24px;
   place-items: center;
   background: color-mix(in srgb, var(--astrbot-primary) 7%, var(--astrbot-background));
