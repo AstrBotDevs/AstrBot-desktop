@@ -3179,6 +3179,11 @@ textarea {
 .extension-installed__fabs button { display: grid; width: 56px; height: 56px; place-items: center; padding: 0; border: 0; border-radius: 16px; background: color-mix(in srgb, var(--astrbot-primary) 72%, #17202a); color: #fff; cursor: pointer; font-size: 26px; box-shadow: 0 4px 6px rgb(0 0 0 / 10%); transition: box-shadow .3s ease, transform .3s ease; }
 .extension-installed__fabs button:hover { box-shadow: 0 12px 20px color-mix(in srgb, var(--astrbot-primary) 40%, transparent); transform: translateY(-4px) scale(1.05); }
 .extension-installed__fabs button:disabled { cursor: wait; opacity: .6; transform: none; }
+.extension-update-result { display: grid; min-height: 190px; place-items: center; align-content: center; gap: 18px; padding: 24px; text-align: center; }
+.extension-update-result > i { font-size: 82px; color: var(--astrbot-primary); }
+.extension-update-result.is-success > i { color: var(--astrbot-success); }
+.extension-update-result.is-error > i { color: var(--astrbot-danger); }
+.extension-update-result p { max-width: 620px; margin: 0; white-space: pre-wrap; }
 .extension-doc-dialog { max-height: 65vh; overflow: auto; margin-top: 16px; padding-right: 6px; }
 .headless-dialog__content:has(.extension-doc-dialog) { width: min(900px, calc(100vw - 32px)); }
 .extension-doc-dialog__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }

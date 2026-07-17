@@ -5,7 +5,8 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   bindPluginSource, checkPluginVersionSupport, getPluginById, getPluginChangelogById,
   getPluginConfigById, getPluginReadmeById, installPluginFromUpload, installPluginFromUrl,
-  listFailedPlugins, listPluginMarket, listPluginPagesById,
+  installPluginFromGithub,
+  listCommands, listFailedPlugins, listPluginMarket, listPluginPagesById,
   listPluginSources, listPlugins, reloadFailedPlugin, reloadPluginById, setPluginEnabledById,
   replacePluginSources, uninstallFailedPlugin, uninstallPluginById, updatePluginConfigById, updatePlugins, validatePluginRepo,
 } from '@/api/openapi';
@@ -18,6 +19,8 @@ import { MdiIcon } from '@/components/icons/MdiIcon';
 import { confirmAction, toast } from '@/stores/feedback';
 import { errorMessage, isObject, type JsonObject, objectList, parseJsonObject, prettyJson, recordId, responseData } from '@/routes/configuration/model';
 import { ComponentsSection, McpSection, SkillsSection } from './ExtensionSections';
+import { ProxySelector } from '@/routes/configuration/SettingsExtras';
+import { annotatePluginUpdates, getSelectedGitHubProxy, pluginBatchUpdateFailures, pluginUpdateTargets } from './extensionActions';
 import {
   addPluginPinyinSearchIndex, categoryValue, filterPlugins, localizedPluginConfigText, localizedPluginDescription, localizedPluginTitle, markdownContent,
   markInstalledMarketPlugins, marketCategoryCounts, marketPluginDisplayName, marketPluginList, normalizeMarketCategory,
@@ -50,14 +53,74 @@ function InstalledPlugins() {
   const [pinned, setPinned] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem(PINNED_KEY) || '[]'); } catch { return []; } });
   const [configPlugin, setConfigPlugin] = useState<JsonObject | null>(null); const [config, setConfig] = useState<JsonObject>({}); const [configMetadata, setConfigMetadata] = useState<JsonObject | null>(null); const [configI18n, setConfigI18n] = useState<unknown>({}); const [configLoading, setConfigLoading] = useState(false); const [saving, setSaving] = useState(false);
   const [installOpen, setInstallOpen] = useState(false); const [uninstalling, setUninstalling] = useState<JsonObject | null>(null); const [deleteConfig, setDeleteConfig] = useState(false); const [deleteData, setDeleteData] = useState(false);
+  const [updatingAll, setUpdatingAll] = useState(false); const [updateResult, setUpdateResult] = useState<{ message: string; status: 'loading' | 'success' | 'error' } | null>(null);
   const [documentDialog, setDocumentDialog] = useState<{ item: JsonObject; content: string; error: string; loading: boolean } | null>(null);
   const [sourceBinding, setSourceBinding] = useState<{ candidates: JsonObject[]; item: JsonObject; loading: boolean; saving: boolean; selected: string } | null>(null);
-  const load = useCallback(async () => { setLoading(true); setError(''); try { const [pluginResponse, failedResponse] = await Promise.all([listPlugins({ query: { include_reserved: true } }), listFailedPlugins().catch(() => null)]); setItems(pluginList(responseData(pluginResponse))); setFailed(pluginList(responseData(failedResponse))); } catch (cause) { setError(errorMessage(cause, e('messages.refreshFailed'))); } finally { setLoading(false); } }, [t]);
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      const [pluginResponse, failedResponse] = await Promise.all([listPlugins({ query: { include_reserved: true } }), listFailedPlugins().catch(() => null)]);
+      const installed = pluginList(responseData(pluginResponse));
+      const registries = Array.from(new Set(installed.flatMap((item) => {
+        const source = isObject(item.install_source) ? item.install_source : {};
+        return item.updates_enabled && source.implicit !== true && source.install_method === 'market'
+          ? [normalizePluginUrl(source.registry_url)]
+          : [];
+      })));
+      const markets = new Map<string, JsonObject[]>();
+      await Promise.all(registries.map(async (registry) => {
+        try {
+          const response = await listPluginMarket({ query: { custom_registry: registry || undefined, page: 1, page_size: 1000 } });
+          markets.set(registry, marketPluginList(responseData(response)));
+        } catch { markets.set(registry, []); }
+      }));
+      setItems(annotatePluginUpdates(installed, markets));
+      setFailed(pluginList(responseData(failedResponse)));
+    } catch (cause) { setError(errorMessage(cause, e('messages.refreshFailed'))); } finally { setLoading(false); }
+  }, [t]);
   useEffect(() => { void load(); }, [load]);
   const toggle = async (item: JsonObject) => { const id = pluginId(item); try { await setPluginEnabledById({ body: { plugin_id: id, enabled: (item.activated ?? item.enabled) === false } }); await load(); } catch (cause) { toast.error(errorMessage(cause, e('messages.operationFailed'))); } };
   const reload = async (item: JsonObject) => { const id = pluginId(item); try { await reloadPluginById({ body: { plugin_id: id } }); toast.success(e('messages.reloadSuccess')); await load(); } catch (cause) { toast.error(errorMessage(cause, e('messages.reloadFailed'))); } };
   const update = async (item: JsonObject) => { try { await updatePlugins({ body: { plugin_id: pluginId(item) } }); toast.success(e('messages.updateSuccess')); await load(); } catch (cause) { toast.error(errorMessage(cause, e('messages.operationFailed'))); } };
-  const updateAll = async () => { if (!await confirmAction({ title: e('dialogs.updateAllConfirm.title'), message: e('dialogs.updateAllConfirm.message', { count: items.filter((item) => Boolean(item.has_update)).length }) })) return; try { await updatePlugins({ body: { update_all: true } }); toast.success(e('messages.updateAllSuccess')); await load(); } catch (cause) { toast.error(errorMessage(cause, e('messages.operationFailed'))); } };
+  const updateAll = async () => {
+    if (updatingAll) return;
+    const targets = pluginUpdateTargets(items);
+    if (!targets.length) {
+      toast.info(e('messages.noUpdatesAvailable'));
+      return;
+    }
+    if (!await confirmAction({
+      confirmLabel: e('dialogs.updateAllConfirm.confirm'),
+      message: e('dialogs.updateAllConfirm.message', { count: targets.length }),
+      title: e('dialogs.updateAllConfirm.title'),
+    })) return;
+    setUpdatingAll(true);
+    setUpdateResult({ message: e('status.loading'), status: 'loading' });
+    try {
+      const response = await updatePlugins({ body: { plugin_ids: targets, proxy: getSelectedGitHubProxy() } });
+      const { envelope, failures } = pluginBatchUpdateFailures(response);
+      if (envelope.status === 'error') {
+        setUpdateResult({ message: String(envelope.message || e('messages.updateAllFailed', { failed: targets.length, total: targets.length })), status: 'error' });
+        return;
+      }
+      try {
+        await load();
+      } catch (cause) {
+        failures.push({ name: 'refresh', status: 'error', message: errorMessage(cause, e('messages.refreshFailed')) });
+      }
+      if (failures.length) {
+        const details = failures.map((failure) => `${String(failure.name || '')}: ${String(failure.message || e('messages.operationFailed'))}`).join('\n');
+        setUpdateResult({ message: `${e('messages.updateAllFailed', { failed: failures.length, total: targets.length })}\n${details}`, status: 'error' });
+      } else {
+        setUpdateResult({ message: e('messages.updateAllSuccess'), status: 'success' });
+        window.setTimeout(() => setUpdateResult(null), 2000);
+      }
+    } catch (cause) {
+      setUpdateResult({ message: errorMessage(cause, e('messages.operationFailed')), status: 'error' });
+    } finally {
+      setUpdatingAll(false);
+    }
+  };
   const openConfig = async (item: JsonObject) => {
     const id = pluginId(item);
     setConfigPlugin(item); setConfig({}); setConfigMetadata(null); setConfigI18n({}); setConfigLoading(true);
@@ -171,16 +234,36 @@ function InstalledPlugins() {
       </article>;
     })}</div>}
     {!loading && !visible.length && <div className="extension-installed__empty"><MdiIcon name="mdi-puzzle-outline" /><h3>{e('empty.noPlugins')}</h3><p>{e('empty.noPluginsDesc')}</p></div>}
-    {typeof document !== 'undefined' && createPortal(<div className="extension-installed__fabs"><button aria-label={e('buttons.updateAll')} disabled={loading} onClick={() => void updateAll()} title={e('buttons.updateAll')} type="button"><MdiIcon name="mdi-update" /></button><button aria-label={e('market.installPlugin')} onClick={() => setInstallOpen(true)} title={e('market.installPlugin')} type="button"><MdiIcon name="mdi-plus" /></button></div>, document.body)}
+    {typeof document !== 'undefined' && createPortal(<div className="extension-installed__fabs"><button aria-label={e('buttons.updateAll')} disabled={loading || updatingAll} onClick={() => void updateAll()} title={e('buttons.updateAll')} type="button"><MdiIcon className={updatingAll ? 'mdi-spin' : undefined} name={updatingAll ? 'mdi-loading' : 'mdi-update'} /></button><button aria-label={e('market.installPlugin')} disabled={updatingAll} onClick={() => setInstallOpen(true)} title={e('market.installPlugin')} type="button"><MdiIcon name="mdi-plus" /></button></div>, document.body)}
     <Dialog onOpenChange={(open) => !open && setConfigPlugin(null)} open={configPlugin !== null} title={e('dialogs.config.title')}><div className="extension-plugin-config">{configLoading ? <div className="extension-state"><MdiIcon className="mdi-spin" name="mdi-loading" /></div> : configPlugin && configMetadata && isObject(configMetadata[pluginId(configPlugin)]) ? <ConfigGroup fieldsFromValue metadata={configMetadata[pluginId(configPlugin)] as ConfigGroupMetadata} onChange={setConfig} resolveText={(path, field, fallback) => localizedPluginConfigText(configI18n, i18n.language, path, field, fallback)} translationPath={pluginId(configPlugin)} value={config} /> : <p>{e('dialogs.config.noConfig')}</p>}</div><div className="dialog-actions"><button disabled={saving} onClick={() => void saveConfig()} type="button">{e('buttons.saveAndClose')}</button><button onClick={() => setConfigPlugin(null)} type="button">{e('buttons.close')}</button></div></Dialog>
-    <InstallPluginDialog onInstalled={() => void load()} onOpenChange={setInstallOpen} open={installOpen} />
+    <InstallPluginDialog onInstalled={async (installed) => {
+      await load();
+      if (pluginId(installed)) await viewDocs(installed);
+      try {
+        const payload = responseData<unknown>(await listCommands());
+        const summary = isObject(payload) && isObject(payload.summary) ? payload.summary : {};
+        const conflicts = Number(summary.conflicts || 0);
+        if (conflicts > 0 && await confirmAction({
+          confirmLabel: e('conflicts.goToManage'),
+          message: e('conflicts.message'),
+          title: `${e('conflicts.title')} (${conflicts})`,
+        })) navigate('/extension#components');
+      } catch { /* Conflict discovery must not turn a successful install into an error. */ }
+    }} onOpenChange={setInstallOpen} open={installOpen} />
+    <Dialog onOpenChange={(open) => !open && updateResult?.status !== 'loading' && setUpdateResult(null)} open={updateResult !== null} title={e('dialogs.loading.title')}>
+      <div className={`extension-update-result is-${updateResult?.status || 'loading'}`}>
+        <MdiIcon className={updateResult?.status === 'loading' ? 'mdi-spin' : undefined} name={updateResult?.status === 'success' ? 'mdi-check-circle-outline' : updateResult?.status === 'error' ? 'mdi-alert-circle-outline' : 'mdi-loading'} />
+        <p>{updateResult?.message}</p>
+      </div>
+      <div className="dialog-actions"><button disabled={updateResult?.status === 'loading'} onClick={() => setUpdateResult(null)} type="button">{e('buttons.close')}</button></div>
+    </Dialog>
     <Dialog onOpenChange={(open) => !open && setDocumentDialog(null)} open={documentDialog !== null} title={t('core.common.readme.title')}><div className="extension-doc-dialog__toolbar">{Boolean(documentDialog?.item.repo) && <a href={String(documentDialog?.item.repo)} rel="noreferrer" target="_blank"><MdiIcon name="mdi-github" />{t('core.common.readme.buttons.viewOnGithub')}</a>}<button onClick={() => documentDialog && void viewDocs(documentDialog.item)} type="button"><MdiIcon name="mdi-refresh" />{t('core.common.readme.buttons.refresh')}</button></div><div className="extension-doc-dialog">{documentDialog?.loading ? <div className="extension-state"><MdiIcon className="mdi-spin" name="mdi-loading" /></div> : documentDialog?.error ? <div className="extension-doc-dialog__state"><MdiIcon name="mdi-alert-circle-outline" /><p>{documentDialog.error}</p></div> : documentDialog?.content ? <Markdown content={documentDialog.content} /> : <div className="extension-doc-dialog__state"><MdiIcon name="mdi-file-question-outline" /><p>{e('detail.docsEmpty')}</p></div>}</div><div className="dialog-actions"><button onClick={() => setDocumentDialog(null)} type="button">{e('buttons.close')}</button></div></Dialog>
     <Dialog onOpenChange={(open) => !open && setSourceBinding(null)} open={sourceBinding !== null} title={e('dialogs.sourceBinding.title')}><div className="extension-source-binding">{sourceBinding?.loading ? <div className="extension-state"><MdiIcon className="mdi-spin" name="mdi-loading" /></div> : !sourceBinding?.candidates.length ? <div className="extension-source-binding__empty">{e('dialogs.sourceBinding.noCandidates')}</div> : sourceBinding.candidates.map((candidate) => <label key={String(candidate.key)}><input checked={sourceBinding.selected === candidate.key} name="plugin-source" onChange={() => setSourceBinding({ ...sourceBinding, selected: String(candidate.key) })} type="radio" /><span><strong>{String(candidate.registry_name)}</strong>{Boolean(candidate.repo) && <small>{String(candidate.repo)}</small>}</span></label>)}</div><div className="dialog-actions"><button onClick={() => setSourceBinding(null)} type="button">{e('buttons.cancel')}</button><button className="button--primary" disabled={!sourceBinding?.selected || sourceBinding?.saving} onClick={() => void saveSourceBinding()} type="button">{e('dialogs.sourceBinding.confirm')}</button></div></Dialog>
     <Dialog onOpenChange={(open) => !open && setUninstalling(null)} open={uninstalling !== null} title={e('dialogs.uninstall.title')}><div className="extension-uninstall"><p>{e('dialogs.uninstall.message')}</p><label><input checked={deleteConfig} onChange={(event) => setDeleteConfig(event.target.checked)} type="checkbox" />{e('dialogs.uninstall.deleteConfig')}<small>{e('dialogs.uninstall.configHint')}</small></label><label><input checked={deleteData} onChange={(event) => setDeleteData(event.target.checked)} type="checkbox" />{e('dialogs.uninstall.deleteData')}<small>{e('dialogs.uninstall.dataHint')}</small></label></div><div className="dialog-actions"><button onClick={() => setUninstalling(null)} type="button">{e('buttons.cancel')}</button><button className="button--danger" onClick={() => void uninstall()} type="button">{e('buttons.uninstall')}</button></div></Dialog>
   </section>;
 }
 
-function InstallPluginDialog({ initial, onInstalled, onOpenChange, open, registryUrl = '' }: { initial?: JsonObject; onInstalled: () => void; onOpenChange: (open: boolean) => void; open: boolean; registryUrl?: string }) {
+function InstallPluginDialog({ initial, onInstalled, onOpenChange, open, registryUrl = '' }: { initial?: JsonObject; onInstalled: (plugin: JsonObject) => void | Promise<void>; onOpenChange: (open: boolean) => void; open: boolean; registryUrl?: string }) {
   const { t } = useTranslation(); const e = (key: string) => t(`features.extension.${key}`); const input = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<'file' | 'url'>(initial ? 'url' : 'file'); const [file, setFile] = useState<File | null>(null); const [url, setUrl] = useState(''); const [installing, setInstalling] = useState(false); const [compatibility, setCompatibility] = useState<{ checked: boolean; message: string; supported: boolean }>({ checked: false, message: '', supported: true }); const [versionWarning, setVersionWarning] = useState(false); const [validation, setValidation] = useState<{ message: string; status: 'idle' | 'loading' | 'valid' | 'error' }>({ message: '', status: 'idle' });
   useEffect(() => {
@@ -197,31 +280,40 @@ function InstallPluginDialog({ initial, onInstalled, onOpenChange, open, registr
     setInstalling(true);
     try {
       let response: unknown;
-      if (mode === 'file') response = await installPluginFromUpload({ body: { file: file! } });
+      const proxy = getSelectedGitHubProxy();
+      if (mode === 'file') {
+        const body = { file: file!, ignore_version_check: ignoreVersionCheck };
+        response = await installPluginFromUpload({ body });
+      }
       else {
         if (!initial?.download_url && !initial && /^https:\/\/github\.com\//i.test(url.trim())) {
           setValidation({ message: e('messages.validatingPlugin'), status: 'loading' });
           try {
-            const validationResponse = await validatePluginRepo({ body: { url: url.trim() } });
+            const validationResponse = await validatePluginRepo({ body: { proxy, url: url.trim() } });
             const envelope: JsonObject = isObject(validationResponse.data) ? validationResponse.data : {};
             if (envelope.status === 'error') throw new Error(String(envelope.message || e('messages.pluginValidateFailed')));
             setValidation({ message: String(envelope.message || e('messages.pluginValidateSuccess')), status: 'valid' });
           }
           catch (cause) { setValidation({ message: errorMessage(cause, e('messages.pluginValidateFailed')), status: 'error' }); throw cause; }
         }
-        response = await installPluginFromUrl({ body: { url: url.trim(), download_url: typeof initial?.download_url === 'string' ? initial.download_url : undefined, ignore_version_check: ignoreVersionCheck, install_method: initial ? 'market' : undefined, market_plugin_id: initial ? String(initial.market_plugin_id || '') || undefined : undefined, registry_url: initial ? registryUrl || null : undefined } });
+        const downloadUrl = typeof initial?.download_url === 'string' ? initial.download_url : undefined;
+        const source = { download_url: downloadUrl, ignore_version_check: ignoreVersionCheck, install_method: initial ? 'market' : undefined, market_plugin_id: initial ? String(initial.market_plugin_id || '') || undefined : undefined, proxy: downloadUrl ? '' : proxy, registry_url: initial ? registryUrl || null : undefined };
+        response = !downloadUrl && /^https:\/\/github\.com\//i.test(url.trim())
+          ? await installPluginFromGithub({ body: { ...source, repository: url.trim() } })
+          : await installPluginFromUrl({ body: { ...source, url: url.trim() } });
       }
       const envelope = isObject((response as { data?: unknown } | null)?.data) ? (response as { data: JsonObject }).data : {};
       if (envelope.status === 'warning' && isObject(envelope.data) && envelope.data.warning_type === 'astrbot_version_unsupported') {
         setCompatibility({ checked: true, message: String(envelope.message || e('dialogs.versionSupport.message')), supported: false });
-        setVersionWarning(true); onInstalled(); return;
+        setVersionWarning(true); await onInstalled({}); return;
       }
       if (envelope.status === 'error') throw new Error(String(envelope.message || e('messages.installFailed')));
-      toast.success(String(envelope.message || e('messages.addSuccess'))); onOpenChange(false); onInstalled();
+      toast.success(String(envelope.message || e('messages.addSuccess'))); onOpenChange(false); await onInstalled(isObject(envelope.data) ? envelope.data : {});
     } catch (cause) { toast.error(errorMessage(cause, e('messages.installFailed'))); } finally { setInstalling(false); }
   };
   const platforms = initial && Array.isArray(initial.support_platforms) ? initial.support_platforms.map(String) : [];
-  return <><Dialog onOpenChange={onOpenChange} open={open} title={e('dialogs.install.title')}>{initial ? <div className="market-install-confirm"><header>{Boolean(initial.logo) ? <img alt="" src={String(initial.logo)} /> : <MdiIcon name="mdi-puzzle" />}<div><h3>{pluginTitle(initial)}</h3>{Boolean(pluginAuthor(initial)) && <p>{e('detail.info.author')}: {pluginAuthor(initial)}</p>}</div></header>{Boolean(pluginDescription(initial)) && <section><strong>{e('table.headers.description')}</strong><p>{pluginDescription(initial)}</p></section>}<div className="market-install-confirm__chips">{Boolean(initial.astrbot_version) && <span>{e('card.status.astrbotVersion')}: {String(initial.astrbot_version)}</span>}{platforms.length > 0 && <span>{e('card.status.supportPlatform')}: {platforms.join(', ')}</span>}</div>{compatibility.checked && !compatibility.supported && <div className="extension-warning"><MdiIcon name="mdi-alert" />{compatibility.message || e('dialogs.versionSupport.message')}</div>}<section><strong>{e('dialogs.install.sectionTitle')}</strong><small>{e('dialogs.install.downloadSource')}</small><code>{String(initial.download_url || initial.repo || '')}</code></section>{!initial.download_url && <div className="extension-warning"><MdiIcon name="mdi-alert-outline" />{e('dialogs.install.githubSecurityWarning')}</div>}</div> : <><nav className="extension-subtabs"><button aria-pressed={mode === 'file'} onClick={() => setMode('file')} type="button">{e('dialogs.install.fromFile')}</button><button aria-pressed={mode === 'url'} onClick={() => setMode('url')} type="button">{e('dialogs.install.fromUrl')}</button></nav><div className="extension-install-form">{mode === 'file' ? <><input accept=".zip,application/zip" hidden onChange={(event: ChangeEvent<HTMLInputElement>) => setFile(event.target.files?.[0] ?? null)} ref={input} type="file" /><button onClick={() => input.current?.click()} type="button"><MdiIcon name="mdi-file-upload" />{file?.name || e('buttons.selectFile')}</button><small>{e('messages.supportedFormats')}</small></> : <label>{e('upload.enterUrl')}<input onChange={(event) => { setUrl(event.target.value); setValidation({ message: '', status: 'idle' }); }} placeholder="https://github.com/..." value={url} /></label>}</div>{mode === 'url' && <div className="extension-warning"><MdiIcon name="mdi-alert-outline" />{e('dialogs.install.githubSecurityWarning')}</div>}{validation.status !== 'idle' && <div className={`extension-validation is-${validation.status}`}><MdiIcon className={validation.status === 'loading' ? 'mdi-spin' : undefined} name={validation.status === 'loading' ? 'mdi-loading' : validation.status === 'valid' ? 'mdi-check-circle' : 'mdi-alert-circle'} />{validation.message}</div>}</>}<div className="dialog-actions"><button onClick={() => onOpenChange(false)} type="button">{e('buttons.cancel')}</button><button className="button--primary" disabled={installing} onClick={() => void install()} type="button">{installing ? e('messages.installing') : e('buttons.install')}</button></div></Dialog><Dialog onOpenChange={setVersionWarning} open={versionWarning} title={e('dialogs.versionSupport.title')}><div className="extension-warning"><MdiIcon name="mdi-alert" /><div><strong>{e('dialogs.versionSupport.message')}</strong><p>{compatibility.message}</p></div></div><div className="dialog-actions"><button onClick={() => setVersionWarning(false)} type="button">{e('dialogs.versionSupport.cancel')}</button><button className="button--warning" onClick={() => { setVersionWarning(false); void install(true); }} type="button">{e('dialogs.versionSupport.confirm')}</button></div></Dialog></>;
+  const usesGithub = mode === 'url' && !initial?.download_url && /^https:\/\/github\.com\//i.test(url.trim());
+  return <><Dialog onOpenChange={onOpenChange} open={open} title={e('dialogs.install.title')}>{initial ? <div className="market-install-confirm"><header>{Boolean(initial.logo) ? <img alt="" src={String(initial.logo)} /> : <MdiIcon name="mdi-puzzle" />}<div><h3>{pluginTitle(initial)}</h3>{Boolean(pluginAuthor(initial)) && <p>{e('detail.info.author')}: {pluginAuthor(initial)}</p>}</div></header>{Boolean(pluginDescription(initial)) && <section><strong>{e('table.headers.description')}</strong><p>{pluginDescription(initial)}</p></section>}<div className="market-install-confirm__chips">{Boolean(initial.astrbot_version) && <span>{e('card.status.astrbotVersion')}: {String(initial.astrbot_version)}</span>}{platforms.length > 0 && <span>{e('card.status.supportPlatform')}: {platforms.join(', ')}</span>}</div>{compatibility.checked && !compatibility.supported && <div className="extension-warning"><MdiIcon name="mdi-alert" />{compatibility.message || e('dialogs.versionSupport.message')}</div>}<section><strong>{e('dialogs.install.sectionTitle')}</strong><small>{e('dialogs.install.downloadSource')}</small><code>{String(initial.download_url || initial.repo || '')}</code></section>{!initial.download_url && <><div className="extension-warning"><MdiIcon name="mdi-alert-outline" />{e('dialogs.install.githubSecurityWarning')}</div><ProxySelector /></>}</div> : <><nav className="extension-subtabs"><button aria-pressed={mode === 'file'} onClick={() => setMode('file')} type="button">{e('dialogs.install.fromFile')}</button><button aria-pressed={mode === 'url'} onClick={() => setMode('url')} type="button">{e('dialogs.install.fromUrl')}</button></nav><div className="extension-install-form">{mode === 'file' ? <><input accept=".zip,application/zip" hidden onChange={(event: ChangeEvent<HTMLInputElement>) => setFile(event.target.files?.[0] ?? null)} ref={input} type="file" /><button onClick={() => input.current?.click()} type="button"><MdiIcon name="mdi-file-upload" />{file?.name || e('buttons.selectFile')}</button><small>{e('messages.supportedFormats')}</small></> : <label>{e('upload.enterUrl')}<input onChange={(event) => { setUrl(event.target.value); setValidation({ message: '', status: 'idle' }); }} placeholder="https://github.com/..." value={url} /></label>}</div>{usesGithub && <div className="extension-warning"><MdiIcon name="mdi-alert-outline" />{e('dialogs.install.githubSecurityWarning')}</div>}{mode === 'url' && <ProxySelector />}{validation.status !== 'idle' && <div className={`extension-validation is-${validation.status}`}><MdiIcon className={validation.status === 'loading' ? 'mdi-spin' : undefined} name={validation.status === 'loading' ? 'mdi-loading' : validation.status === 'valid' ? 'mdi-check-circle' : 'mdi-alert-circle'} />{validation.message}</div>}</>}<div className="dialog-actions"><button onClick={() => onOpenChange(false)} type="button">{e('buttons.cancel')}</button><button className="button--primary" disabled={installing} onClick={() => void install()} type="button">{installing ? e('messages.installing') : e('buttons.install')}</button></div></Dialog><Dialog onOpenChange={setVersionWarning} open={versionWarning} title={e('dialogs.versionSupport.title')}><div className="extension-warning"><MdiIcon name="mdi-alert" /><div><strong>{e('dialogs.versionSupport.message')}</strong><p>{compatibility.message}</p></div></div><div className="dialog-actions"><button onClick={() => setVersionWarning(false)} type="button">{e('dialogs.versionSupport.cancel')}</button><button className="button--warning" onClick={() => { setVersionWarning(false); void install(true); }} type="button">{e('dialogs.versionSupport.confirm')}</button></div></Dialog></>;
 }
 
 function PluginMarket() {
