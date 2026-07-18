@@ -8,7 +8,6 @@ const createContext = (calls) => ({
   projectRoot: '/tmp/project',
   sourceRepoRef: 'v4.19.2',
   isSourceRepoRefVersionTag: true,
-  isDesktopBridgeExpectationStrict: false,
   pythonBuildStandaloneRelease: '20260211',
   pythonBuildStandaloneVersion: '3.12.12',
 });

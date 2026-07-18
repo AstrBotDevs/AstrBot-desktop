@@ -47,7 +47,6 @@ WebUI 源码固定来自本仓库 `dashboard/`，`pnpm run prepare:webui` 不解
 | `ASTRBOT_SOURCE_FORCE_CHECKOUT` | 强制 `git checkout -f` 覆盖本地改动（CI 默认启用） | 默认关闭 |
 | `ASTRBOT_DESKTOP_VERSION` | 桌面版本号覆盖 | 默认读取源码 `pyproject.toml` |
 | `ASTRBOT_DESKTOP_RELEASE_BASE_URL` | dashboard release 跳转基地址 | 默认 `https://github.com/AstrBotDevs/AstrBot-desktop/releases` |
-| `ASTRBOT_DESKTOP_STRICT_BRIDGE_EXPECTATIONS` | bridge 产物校验严格模式 | 默认关闭 |
 | `ASTRBOT_PBS_RELEASE` | python-build-standalone release | 默认 `20260211` |
 | `ASTRBOT_PBS_VERSION` | python-build-standalone Python 版本 | 默认 `3.12.12` |
 | `ASTRBOT_DESKTOP_BACKEND_RUNTIME` | 外部后端 runtime 根目录 | 存在时优先使用 |

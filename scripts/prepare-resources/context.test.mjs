@@ -16,14 +16,13 @@ test('createPrepareResourcesContext applies defaults and normalizes empty env va
   assert.equal(context.sourceRepoRef, '');
   assert.equal(context.isSourceRepoRefCommitSha, false);
   assert.equal(context.isSourceRepoRefVersionTag, false);
-  assert.equal(context.isDesktopBridgeExpectationStrict, false);
   assert.equal(context.desktopVersionOverride, '');
   assert.equal(context.pythonBuildStandaloneRelease, '20260211');
   assert.equal(context.pythonBuildStandaloneVersion, '3.12.12');
   assert.equal(context.sourceDir, path.join('/project/root', 'vendor', 'AstrBot'));
 });
 
-test('createPrepareResourcesContext normalizes source config and strict bridge env', () => {
+test('createPrepareResourcesContext normalizes source and runtime config', () => {
   const context = createPrepareResourcesContext({
     argv: ['node', 'scripts/prepare-resources.mjs', 'backend'],
     env: {
@@ -32,7 +31,6 @@ test('createPrepareResourcesContext normalizes source config and strict bridge e
       ASTRBOT_SOURCE_GIT_REF_IS_COMMIT: 'yes',
       ASTRBOT_SOURCE_DIR: ' custom/source ',
       ASTRBOT_DESKTOP_VERSION: ' v9.9.9 ',
-      ASTRBOT_DESKTOP_STRICT_BRIDGE_EXPECTATIONS: 'On',
       ASTRBOT_PBS_RELEASE: '20250101',
       ASTRBOT_PBS_VERSION: '3.12.1',
     },
@@ -46,7 +44,6 @@ test('createPrepareResourcesContext normalizes source config and strict bridge e
   assert.equal(context.isSourceRepoRefCommitSha, true);
   assert.equal(context.isSourceRepoRefVersionTag, true);
   assert.equal(context.desktopVersionOverride, '9.9.9');
-  assert.equal(context.isDesktopBridgeExpectationStrict, true);
   assert.equal(context.pythonBuildStandaloneRelease, '20250101');
   assert.equal(context.pythonBuildStandaloneVersion, '3.12.1');
   assert.equal(context.sourceDir, path.resolve('/workspace', 'custom/source'));

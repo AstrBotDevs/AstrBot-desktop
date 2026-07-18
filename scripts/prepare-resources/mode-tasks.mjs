@@ -2,10 +2,7 @@ import { cp, mkdir, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import {
-  patchMonacoCssNestingWarnings,
-  verifyDesktopBridgeArtifacts,
-} from './desktop-bridge-checks.mjs';
+import { patchMonacoCssNestingWarnings } from './desktop-bridge-checks.mjs';
 import { ensureBundledRuntime } from './backend-runtime.mjs';
 
 const runChecked = (cmd, args, cwd, envExtra = {}, spawnExtra = {}) => {
@@ -56,18 +53,10 @@ const resolveDesktopReleaseBaseUrl = () => {
   return trimmed || 'https://github.com/AstrBotDevs/AstrBot-desktop/releases';
 };
 
-export const prepareWebui = async ({
-  projectRoot,
-  isDesktopBridgeExpectationStrict,
-}) => {
+export const prepareWebui = async ({ projectRoot }) => {
   const dashboardDir = path.join(projectRoot, 'dashboard');
   ensurePackageInstall(dashboardDir, 'AstrBot Desktop dashboard');
   await patchMonacoCssNestingWarnings({ dashboardDir, projectRoot });
-  await verifyDesktopBridgeArtifacts({
-    dashboardDir,
-    projectRoot,
-    isDesktopBridgeExpectationStrict,
-  });
   runPnpmChecked(['--dir', dashboardDir, 'build'], dashboardDir, {
     VITE_ASTRBOT_RELEASE_BASE_URL: resolveDesktopReleaseBaseUrl(),
   });

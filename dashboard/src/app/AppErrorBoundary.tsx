@@ -11,7 +11,7 @@ export class AppErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('[dashboard:new] Unhandled React error.', error, info);
+    console.error('[dashboard] Unhandled React error.', error, info);
   }
 
   render() {

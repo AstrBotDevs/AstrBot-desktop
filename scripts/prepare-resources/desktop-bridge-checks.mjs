@@ -1,10 +1,6 @@
 import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import {
-  getDesktopBridgeExpectations,
-  shouldEnforceDesktopBridgeExpectation,
-} from './desktop-bridge-expectations.mjs';
 
 export const patchMonacoCssNestingWarnings = async ({ dashboardDir, projectRoot }) => {
   const patchRules = [
@@ -57,47 +53,5 @@ export const patchMonacoCssNestingWarnings = async ({ dashboardDir, projectRoot 
         `[prepare-resources] Patched Monaco nested selector "${selector}" in ${path.relative(projectRoot, file)}`,
       );
     }
-  }
-};
-
-export const verifyDesktopBridgeArtifacts = async ({
-  dashboardDir,
-  projectRoot,
-  isDesktopBridgeExpectationStrict,
-}) => {
-  const issues = [];
-
-  for (const expectation of getDesktopBridgeExpectations()) {
-    const mustPass = shouldEnforceDesktopBridgeExpectation(expectation, {
-      isDesktopBridgeExpectationStrict,
-      isTaggedRelease: false,
-    });
-    const file = path.join(dashboardDir, ...expectation.filePath);
-    if (!existsSync(file)) {
-      const relativePath = path.relative(projectRoot, file);
-      const message = mustPass
-        ? `[prepare-resources] Missing required file for ${expectation.label}: ${relativePath}`
-        : `[prepare-resources] Missing optional (best-effort) file for ${expectation.label}: ${relativePath}`;
-      if (mustPass) {
-        issues.push(message);
-      } else {
-        console.warn(`${message} (compatibility check skipped)`);
-      }
-      continue;
-    }
-
-    const source = await readFile(file, 'utf8');
-    if (!expectation.pattern.test(source)) {
-      const message = `[prepare-resources] Expected ${expectation.label} in ${path.relative(projectRoot, file)}. ${expectation.hint || ''} Please update the repository-owned dashboard implementation.`;
-      if (mustPass) {
-        issues.push(message);
-      } else {
-        console.warn(`${message} (compatibility check skipped)`);
-      }
-    }
-  }
-
-  if (issues.length > 0) {
-    throw new Error(issues.join('\n'));
   }
 };

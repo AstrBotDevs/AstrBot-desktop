@@ -1,152 +1,61 @@
 # Dashboard React 迁移说明
 
-## 1. 目标与约束
+## 当前状态
 
-Dashboard 的启用路由已从 Vue 3 + Vuetify 迁移到 React。当前遵循以下约束：
+Dashboard 的启用路由已从 Vue 3 + Vuetify 迁移到 React。React 工程现位于
+`dashboard/`，并且是本地开发、桌面打包和 CI 的唯一默认 WebUI。
 
-- 新工程固定放在 `new-dashboard/`，旧工程 `dashboard/` 只读保留，便于行为对照和回退。
-- 当前迁移阶段以 Web 端功能完整、行为兼容为第一目标，沿用现有样式和静态资源，暂不进行 UI 重设计。
-- 新旧版共用 `/api` 接口、浏览器存储键、hash 路由地址和桌面桥接协议。
-- 新版开发、测试和构建流程只依赖 `new-dashboard/`，不再启动或打包 Vue 兼容服务。
+旧版 Vue 工程移动到 `legacy-dashboard/`，仅用于人工行为与视觉对照。它不参与：
 
-## 2. 已确认的技术决策
+- `pnpm run dev`、`pnpm run build` 或 `make` 默认命令；
+- `resources/webui` 资源准备；
+- Tauri 的 `beforeDevCommand`、`beforeBuildCommand`；
+- Dashboard 质量检查和桌面发布 CI。
 
-| 项目 | 决策 |
-| --- | --- |
-| 样式 | React + Sass/CSS；弹窗、菜单等使用无默认外观的 headless 组件 |
-| 状态管理 | Zustand |
-| 路由 | React Router hash router；全部启用路由由 React 提供 |
-| 国际化 | react-i18next；翻译 JSON 和翻译键已迁入新工程 |
-| 表单 | React Hook Form + Yup |
-| 迁移粒度 | 按完整路由逐页迁移，不拆分为 Vue/React 混合组件 |
-| 当前验收重点 | 优先保证 Web 端功能；框架和功能迁移完成后再统一重设计 UI |
-| 旧版策略 | 旧版只读保留为功能基准；新版运行时不依赖旧版 |
-
-## 3. 当前迁移阶段
-
-当前已进入“React 独立运行”阶段：
-
-```text
-Tauri / 浏览器
-  -> React + Vite（new-dashboard，端口 1420）
-       -> /api 代理到 AstrBot（端口 6185）
-```
-
-开发态只启动 1420 的 React Vite 服务；生产构建只生成 `new-dashboard/dist`。旧版 Vue Dashboard 不参与新版开发和构建流程，且本次收口未修改 `dashboard/`。
-
-## 4. 目录职责
+## 目录职责
 
 | 路径 | 职责 |
 | --- | --- |
-| `dashboard/` | 只读保留的旧版 Vue Dashboard；迁移期间也是视觉和行为基准 |
-| `new-dashboard/` | React + TypeScript + Vite 新工程 |
-| `new-dashboard/src/app/AppRouter.tsx` | React 路由入口和鉴权装配 |
-| `scripts/run-tauri-new.mjs` | 新版 Tauri 入口；通过配置覆盖选择新版开发与构建命令 |
-| `scripts/run-dashboard-new.mjs` | 启动独立 React 开发服务 |
-| `scripts/prepare-webui-new.mjs` | 构建新版 WebUI 并同步到 `resources/webui` |
+| `dashboard/` | React + TypeScript + Vite 当前工程 |
+| `dashboard/src/app/AppRouter.tsx` | React 路由入口和鉴权装配 |
+| `legacy-dashboard/` | 只读保留的旧版 Vue 工程，不参与自动化流程 |
+| `scripts/run-tauri.mjs` | 唯一 Tauri 开发和构建入口 |
+| `scripts/prepare-resources.mjs` | WebUI、后端和版本资源准备入口 |
 
-原有 `scripts/run-tauri.mjs`、`scripts/prepare-resources.mjs` 和 `scripts/prepare-resources/` 下的旧任务脚本保持不变。新版逻辑只存在于带 `-new` 后缀的增量脚本中。
-
-## 5. 安装依赖
-
-根目录和新版依赖分别安装：
+## 常用命令
 
 ```bash
 pnpm install
-pnpm run install:dashboard:new
-```
-
-现有 `make deps` 保持原行为，只安装根目录和旧版 Dashboard 依赖，不会隐式安装新版依赖。
-
-## 6. 启动命令
-
-只启动前端：
-
-```bash
-# 新版 React 入口
-pnpm run dev:dashboard:new
-
-# 旧版 Vue Dashboard
+pnpm run install:dashboard
 pnpm run dev:dashboard
-```
-
-启动完整 Tauri 桌面应用：
-
-```bash
-# 新版 Dashboard
-pnpm run dev:new
-
-# 旧版 Dashboard
 pnpm run dev
-```
-
-为保持现有开发习惯，原命令 `pnpm run dev` 和 `pnpm run dev:dashboard` 未被修改，仍启动旧版。新版必须使用带 `:new` 或 `new` 后缀的独立命令；当前没有通过环境变量切换版本的机制。
-
-## 7. 构建命令
-
-```bash
-# 使用 React 入口打包桌面应用
-pnpm run build:new
-
-# 使用旧版 Vue Dashboard 打包
+pnpm run typecheck:dashboard
+pnpm run prepare:webui
+pnpm run prepare:resources
 pnpm run build
 ```
 
-原有 `pnpm run build` 未被修改，继续构建旧版。新版 WebUI 构建流程为：
+生产构建会：
 
-1. 检查并安装 `new-dashboard/` 依赖。
-2. 类型检查并构建 `new-dashboard/`。
-3. 将 `new-dashboard/dist` 同步到 `resources/webui`。
-4. 继续准备后端资源并执行 Tauri 打包。
+1. 使用 `dashboard/pnpm-lock.yaml` 安装缺失依赖。
+2. 类型检查并构建 `dashboard/`。
+3. 将 `dashboard/dist` 同步到 `resources/webui`。
+4. 拉取或使用指定 AstrBot 后端源码并准备 `resources/backend`。
+5. 执行 Tauri 打包。
 
-只准备新版 WebUI 或新版完整资源时，可以分别运行：
+## CI
 
-```bash
-pnpm run prepare:webui:new
-pnpm run prepare:resources:new
-```
+`.github/workflows/check-dashboard.yml` 对 `dashboard/` 执行类型检查、TypeScript/React
+lint、样式 lint、格式检查、覆盖率测试和生产构建。
 
-单独检查新版类型：
+`.github/workflows/build-desktop-tauri.yml` 通过 Tauri 默认
+`beforeBuildCommand = pnpm run prepare:resources` 构建 React Dashboard；Linux、Windows
+和 macOS 产物均使用同步到 `resources/webui` 的 React bundle。
 
-```bash
-pnpm run typecheck:dashboard:new
-```
+## 维护约束
 
-## 8. 页面维护规范
-
-新增或调整路由时：
-
-1. 在 `new-dashboard/src` 中实现 React 页面，并保持原 hash 路径不变。
-2. 复用旧版主题 token、字体和静态资源，保持页面可用且不存在明显布局回归；像素级一致不作为当前功能迁移的阻塞条件。
-3. API 请求与旧版使用相同的 URL、请求体、错误处理和鉴权存储键。
-4. 优先在 Web 端对照旧版验证功能、路由和数据状态。
-5. 覆盖中文/英文、空数据、加载和错误状态；主题与多尺寸视觉精修安排在 UI 重设计阶段。
-6. 在集中路由清单中登记，并补充路由与业务测试。
-
-通用能力依次抽成 React 模块：Sass/CSS token、Zustand stores、react-i18next、HTTP 客户端、认证状态、React Hook Form/Yup、Toast/Confirm、桌面桥接和路由加载状态。业务页不应直接重新定义这些协议。
-
-## 9. 当前验收标准
-
-当前阶段以 Web 功能验收为主：
-
-- 路由、刷新、深链接和权限重定向与旧版一致。
-- API、鉴权、本地存储和错误处理与旧版兼容。
-- 页面主要操作、数据状态和业务流程可用。
-- 中文和英文内容正确，页面不存在阻断使用的布局问题。
-- headless 组件具备键盘操作、焦点管理和必要的无障碍语义。
-
-React 框架和全部功能完成迁移后，再启动独立的 UI 重设计阶段，届时重新制定视觉规范、响应式范围和截图基线。桌面端专项验证也安排在 Web 功能稳定之后。
-
-## 10. 回退方式
-
-如果新版入口出现问题，无需删除代码或回滚资源：开发时改回原命令 `pnpm run dev`，构建时改回 `pnpm run build` 即可。新旧工程使用各自的 `dist` 目录；资源准备时，最后执行的版本会覆盖 `resources/webui`。
-
-`dashboard/` 不会因为单个页面完成迁移而删除。只有全部路由、通用能力、Web 功能和后续桌面验证完成，并经过单独评审后，才能开始旧版下线工作。
-
-## 11. 实现提交
-
-当前迁移基线由三笔独立提交组成：
-
-1. `cb70c8e`：创建 `new-dashboard/` React + TypeScript + Vite 工程。
-2. `b0b8912`：增加新版命令入口，并从原 `run-tauri.mjs` 复制出隔离的 `run-tauri-new.mjs`。
-3. `241078b`：只在新版脚本中实现 React 开发服务、Tauri 配置覆盖和新版 WebUI 构建流程。
+1. 新功能和修复只进入 `dashboard/`。
+2. 不得在 CI、Makefile、Tauri 配置或默认 package scripts 中引用 `legacy-dashboard/`。
+3. 不再新增 `:new`、`-new` 等并行构建入口。
+4. 新增路由时保持既有 hash 路径、API、存储 key 和桌面桥协议兼容。
+5. `legacy-dashboard/` 删除应作为独立任务处理，不影响当前默认构建链路。

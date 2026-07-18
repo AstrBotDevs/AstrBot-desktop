@@ -55,7 +55,7 @@ make build
 
 常见含义：
 
-- `make deps`：安装根目录脚本依赖和旧版 `dashboard/` 前端依赖。
+- `make deps`：安装根目录脚本依赖和 React `dashboard/` 前端依赖。
 - `make prepare`：准备 WebUI 与后端运行时资源。
 - `make dev`：启动 Tauri 开发模式。
 - `make build`：执行正式构建。
@@ -75,18 +75,9 @@ pnpm --dir dashboard dev
 
 独立前端开发服务默认监听 `1420`，并把 `/api` 代理到本机 AstrBot 后端 `http://127.0.0.1:6185/`。
 
-Dashboard 正在迁移到 React，新旧版本的启动、构建命令和迁移边界见 [`dashboard-react-migration.md`](./dashboard-react-migration.md)。原有命令保持旧版行为；新版使用带 `new` 后缀的独立命令。
-
-新版 React Dashboard 依赖和开发入口使用独立命令，不改变上述旧版流程：
-
-```bash
-pnpm run install:dashboard:new
-pnpm run dev:dashboard:new
-pnpm run dev:new
-pnpm run build:new
-```
-
-`pnpm run dev:new` 和 `pnpm run build:new` 通过新增的 `scripts/run-tauri-new.mjs` 覆盖 Tauri 的前置命令。旧版 `scripts/run-tauri.mjs`、资源准备入口和任务脚本不做修改。
+React Dashboard 已成为唯一默认前端，目录位于 `dashboard/`。旧版 Vue 工程仅保留在
+`legacy-dashboard/` 供人工对照，不参与默认命令、资源准备或 CI。迁移边界见
+[`dashboard-react-migration.md`](./dashboard-react-migration.md)。
 
 本地执行 `pnpm run build` 时，如果未设置 `TAURI_SIGNING_PRIVATE_KEY`，启动脚本会保留 MSI/NSIS 安装包构建，但跳过需要发布私钥的 updater 签名产物。正式发布流水线提供该私钥，因此仍会按 `tauri.conf.json` 生成并签名 updater artifacts。
 

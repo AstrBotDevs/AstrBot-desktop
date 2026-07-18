@@ -1,25 +1,25 @@
-name: Check New Dashboard
+name: Check Dashboard
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'new-dashboard/**'
+      - 'dashboard/**'
       - '.github/actions/setup-toolchains/**'
-      - '.github/workflows/check-new-dashboard.yml'
+      - '.github/workflows/check-dashboard.yml'
   pull_request:
     paths:
-      - 'new-dashboard/**'
+      - 'dashboard/**'
       - '.github/actions/setup-toolchains/**'
-      - '.github/workflows/check-new-dashboard.yml'
+      - '.github/workflows/check-dashboard.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: new-dashboard-${{ github.workflow }}-${{ github.ref }}
+  group: dashboard-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: new-dashboard
+        working-directory: dashboard
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
@@ -43,7 +43,7 @@ jobs:
         with:
           node-version: '20'
           node-cache: 'pnpm'
-          node-cache-dependency-path: new-dashboard/pnpm-lock.yaml
+          node-cache-dependency-path: dashboard/pnpm-lock.yaml
           setup-python: 'false'
 
       - name: Install dependencies

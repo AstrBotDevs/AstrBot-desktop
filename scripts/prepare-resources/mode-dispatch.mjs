@@ -15,7 +15,6 @@ export const runModeTasks = async (
   const {
     sourceDir,
     projectRoot,
-    isDesktopBridgeExpectationStrict,
     pythonBuildStandaloneRelease,
     pythonBuildStandaloneVersion,
   } = context;
@@ -31,7 +30,6 @@ export const runModeTasks = async (
   if (mode === 'webui' || mode === 'all') {
     await taskRunner.prepareWebui({
       projectRoot,
-      isDesktopBridgeExpectationStrict,
     });
   }
 
