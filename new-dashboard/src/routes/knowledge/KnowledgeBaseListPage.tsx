@@ -13,6 +13,8 @@ import {
 import { decodeApiData } from '@/api/response';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { Button, DialogCancel } from '@/components/ui/Button';
+import { DialogActions } from '@/components/ui/DialogActions';
 import { confirmAction, toast } from '@/stores/feedback';
 import { errorMessage } from '@/routes/configuration/model';
 import { knowledgeBaseId, chunkCount, documentCount } from './knowledgeModel';
@@ -184,9 +186,9 @@ export default function KnowledgeBaseListPage() {
         <label>{k('create.descriptionLabel')}<textarea onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder={k('create.descriptionPlaceholder')} rows={3} value={form.description} /></label>
         <label>{k('create.embeddingModelLabel')}<ProviderSelect disabled={Boolean(knowledgeBaseId(editing ?? {}))} onChange={(embedding_provider_id) => setForm({ ...form, embedding_provider_id })} placeholder={k('create.embeddingModelPlaceholder')} providers={embeddingProviders} subtitle={(provider) => k('create.providerInfo', { id: String(provider.id), dimensions: provider.embedding_dimensions || 'N/A' })} title={(provider) => String(provider.embedding_model || provider.model || provider.id)} value={form.embedding_provider_id} /><small>{k('create.embeddingModelHint')}</small></label>
         <label>{k('create.rerankModelLabel')}<ProviderSelect emptyLabel={k('create.noRerankModel')} onChange={(rerank_provider_id) => setForm({ ...form, rerank_provider_id })} placeholder={k('create.noRerankModel')} providers={rerankProviders} subtitle={(provider) => k('create.rerankProviderInfo', { id: String(provider.id) })} title={(provider) => String(provider.rerank_model || provider.model || provider.id)} value={form.rerank_provider_id} /></label>
-        <div className="dialog-actions"><DialogClose asChild><button type="button">{k('create.cancel')}</button></DialogClose><button className="button--primary-soft" disabled={saving} onClick={() => void save()} type="button">{saving ? k('create.saving') : k(knowledgeBaseId(editing ?? {}) ? 'edit.submit' : 'create.submit')}</button></div>
+        <DialogActions><DialogCancel>{k('create.cancel')}</DialogCancel><Button disabled={saving} onClick={() => void save()} variant="primary">{saving ? k('create.saving') : k(knowledgeBaseId(editing ?? {}) ? 'edit.submit' : 'create.submit')}</Button></DialogActions>
       </div>
     </Dialog>
-    <Dialog onOpenChange={setEmojiOpen} open={emojiOpen} title={k('emoji.title')}><div className="knowledge-emoji-picker">{emojiGroups.map(([group, emojis]) => <section key={group}><h3>{k(`emoji.categories.${group}`)}</h3><div>{emojis.map((emoji) => <button key={emoji} onClick={() => { setForm({ ...form, emoji }); setEmojiOpen(false); }} type="button">{emoji}</button>)}</div></section>)}</div><div className="dialog-actions"><DialogClose asChild><button type="button">{k('emoji.close')}</button></DialogClose></div></Dialog>
+    <Dialog onOpenChange={setEmojiOpen} open={emojiOpen} title={k('emoji.title')}><div className="knowledge-emoji-picker">{emojiGroups.map(([group, emojis]) => <section key={group}><h3>{k(`emoji.categories.${group}`)}</h3><div>{emojis.map((emoji) => <button key={emoji} onClick={() => { setForm({ ...form, emoji }); setEmojiOpen(false); }} type="button">{emoji}</button>)}</div></section>)}</div><DialogActions><DialogCancel>{k('emoji.close')}</DialogCancel></DialogActions></Dialog>
   </div>;
 }

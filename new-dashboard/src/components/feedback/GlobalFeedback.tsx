@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
+import { Button, DialogCancel } from '@/components/ui/Button';
+import { DialogActions } from '@/components/ui/DialogActions';
 import { useFeedbackStore } from '@/stores/feedback';
 
 function LoadingIndicator() {
@@ -53,22 +55,19 @@ function ConfirmHost() {
       open
       title={current.title ?? t('core.common.confirm', 'Confirm')}
     >
-      <div className="global-confirm__actions">
+      <DialogActions className="global-confirm__actions">
+        <DialogCancel onClick={() => resolve(current.id, false)}>
+          {current.cancelLabel ?? t('core.common.cancel', 'Cancel')}
+        </DialogCancel>
         <DialogClose asChild>
-          <button onClick={() => resolve(current.id, false)} type="button">
-            {current.cancelLabel ?? t('core.common.cancel', 'Cancel')}
-          </button>
-        </DialogClose>
-        <DialogClose asChild>
-          <button
-            className={current.danger ? 'button--danger' : 'button--primary'}
+          <Button
             onClick={() => resolve(current.id, true)}
-            type="button"
+            variant={current.danger ? 'danger' : 'primary'}
           >
             {current.confirmLabel ?? t('core.common.confirm', 'Confirm')}
-          </button>
+          </Button>
         </DialogClose>
-      </div>
+      </DialogActions>
     </Dialog>
   );
 }

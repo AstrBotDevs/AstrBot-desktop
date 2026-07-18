@@ -1,0 +1,144 @@
+.welcome-page.route-page {
+  width: 100%;
+  max-width: none;
+  gap: 16px;
+  padding: 20px 24px 24px;
+}
+
+.route-page__heading h1,
+.route-card h2 {
+  margin: 0 0 8px;
+}
+
+.welcome-page .route-page__heading {
+  padding: 8px 0 14px;
+}
+
+.welcome-page .route-page__heading h1 {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 56px;
+}
+
+.welcome-page .route-page__heading p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.route-page__heading p,
+.route-card p {
+  color: color-mix(in srgb, var(--astrbot-text) 68%, transparent);
+}
+
+.route-card {
+  padding: 24px;
+  border: 1px solid var(--astrbot-border);
+  border-radius: var(--astrbot-radius-card);
+  background: var(--astrbot-surface);
+}
+
+.welcome-page .route-card {
+  padding: 24px;
+  border-radius: 16px;
+}
+
+.welcome-page .route-card > h2 {
+  margin-bottom: 16px;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 32px;
+}
+
+.onboarding-list {
+  display: grid;
+  margin: 0;
+  gap: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.onboarding-list > li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 116px;
+  padding-bottom: 20px;
+}
+
+.onboarding-list > li:not(:last-child)::after {
+  position: absolute;
+  top: 28px;
+  bottom: 0;
+  left: 13px;
+  width: 2px;
+  background: color-mix(in srgb, var(--astrbot-text) 18%, transparent);
+  content: '';
+}
+
+.onboarding-list__marker {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--astrbot-primary);
+  color: #fff;
+  font-size: 18px;
+  place-items: center;
+}
+
+.onboarding-list > li.is-complete .onboarding-list__marker {
+  background: #00c853;
+}
+
+.onboarding-list__content {
+  padding: 1px 0 0 4px;
+}
+
+.onboarding-list h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.onboarding-list p {
+  margin: 4px 0 12px;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.welcome-page .button--primary {
+  min-height: 36px;
+  padding: 7px 24px;
+  border-radius: 9999px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.onboarding-complete {
+  margin-left: 12px;
+  color: #2e9d58;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.onboarding-help {
+  margin-top: 10px;
+  color: color-mix(in srgb, var(--astrbot-text) 72%, transparent);
+  font-size: 14px;
+}
+
+.onboarding-help summary {
+  cursor: pointer;
+}
+
+.onboarding-list select {
+  width: min(240px, 100%);
+  min-height: 44px;
+}
+

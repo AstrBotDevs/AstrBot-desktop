@@ -13,6 +13,8 @@ import {
 import { responseData } from '@/api/response';
 import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { Button } from '@/components/ui/Button';
+import { DialogActions } from '@/components/ui/DialogActions';
 import { findFolderPath, normalizeFolderTree, type PersonaFolderNode } from '@/routes/configuration/personaModel';
 
 type Item = Record<string, unknown>;
@@ -324,7 +326,7 @@ function PluginSetSelector({ disabled, onChange, value }: Omit<SpecialControlPro
             {items.length > 0 && <small className="plugin-set-dialog__note">{text('note')}</small>}
           </div>}
         </>}
-        <div className="dialog-actions"><button onClick={close} type="button">{text('cancelSelection')}</button><button className="button--primary" onClick={confirm} type="button">{text('confirmSelection')}</button></div>
+        <DialogActions><Button onClick={close}>{text('cancelSelection')}</Button><Button onClick={confirm} variant="primary">{text('confirmSelection')}</Button></DialogActions>
       </div>
     </Dialog>
   </div>;
@@ -444,7 +446,7 @@ function GenericConfigSpecialSelector({ disabled, onChange, special, value }: Sp
           })}
           {!items.length && <div className="dynamic-editor-empty"><MdiIcon name="mdi-database-off-outline" /><p>{text(kind === 'provider' ? 'noProviders' : kind === 'knowledge' ? 'noKnowledgeBases' : 'noPlugins')}</p></div>}
         </div>}
-        <div className="dialog-actions"><button onClick={() => { setDraft(selected); setOpen(false); }} type="button">{text('cancelSelection')}</button><button className="button--primary" onClick={confirm} type="button">{text('confirmSelection')}</button></div>
+        <DialogActions><Button onClick={() => { setDraft(selected); setOpen(false); }}>{text('cancelSelection')}</Button><Button onClick={confirm} variant="primary">{text('confirmSelection')}</Button></DialogActions>
       </div>
     </Dialog>}
   </div>;

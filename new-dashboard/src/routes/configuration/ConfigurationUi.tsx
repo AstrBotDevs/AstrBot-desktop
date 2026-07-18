@@ -2,7 +2,9 @@ import { type ReactNode, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RecordConfigForm } from '@/components/config/DynamicConfigForm';
 import { MonacoEditor } from '@/components/editor/MonacoEditor';
-import { Dialog, DialogClose } from '@/components/headless/Dialog';
+import { Dialog } from '@/components/headless/Dialog';
+import { Button, DialogCancel } from '@/components/ui/Button';
+import { DialogActions } from '@/components/ui/DialogActions';
 import { isObject, prettyJson } from './model';
 
 export function ConfigPageShell({ actions, children, description, title }: { actions?: ReactNode; children: ReactNode; description: string; title: string }) {
@@ -25,7 +27,7 @@ export function JsonConfigDialog({ busy, initialMode = 'form', jsonOnly = false,
     {!jsonOnly && mode === 'form' && config && <div className="dynamic-config-dialog"><RecordConfigForm onChange={(next) => onChange(prettyJson(next))} value={config} /></div>}
     {!jsonOnly && mode === 'form' && !config && <div className="monitor-error">{t('features.config.messages.invalidJson')}</div>}
     {(jsonOnly || mode === 'json') && <div className="json-editor json-editor--dialog"><MonacoEditor ariaLabel={`${title} JSON`} language="json" onChange={onChange} value={value} /></div>}
-    <div className="dialog-actions"><DialogClose asChild><button type="button">{t('core.common.cancel')}</button></DialogClose><button className="button--primary" disabled={busy} onClick={onSave} type="button">{busy ? t('core.common.saving') : t('core.common.save')}</button></div>
+    <DialogActions><DialogCancel>{t('core.common.cancel')}</DialogCancel><Button disabled={busy} onClick={onSave} variant="primary">{busy ? t('core.common.saving') : t('core.common.save')}</Button></DialogActions>
   </Dialog>;
 }
 

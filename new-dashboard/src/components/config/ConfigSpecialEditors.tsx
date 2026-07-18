@@ -17,6 +17,8 @@ import { statsApi } from '@/api/compat';
 import { MonacoEditor } from '@/components/editor/MonacoEditor';
 import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { Button } from '@/components/ui/Button';
+import { DialogActions } from '@/components/ui/DialogActions';
 import { confirmAction, toast } from '@/stores/feedback';
 import { isConfigRecord, setConfigValue, type ConfigRecord } from './configFormModel';
 
@@ -399,14 +401,14 @@ export function DashboardTotpManager({ configRoot, onConfigRootChange, value }: 
           ? <><p>输入当前认证器应用中的验证码以验证身份。</p><label>当前验证码<input autoFocus inputMode="numeric" maxLength={6} onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))} value={code} /></label></>
           : <><p>{text('setupSubtitle', '使用认证器扫描二维码，然后输入验证码完成设置。')}</p>{newSecret && <><QrCodeImage value={provisioningUri(newSecret)} /><code>{newSecret}</code></>}<label>{text('rotateCode', '验证码')}<input inputMode="numeric" maxLength={6} onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))} value={code} /></label></>}
         {error && <div className="settings-alert settings-alert--error">{error}</div>}
-        <div className="dialog-actions"><button disabled={loading} onClick={close} type="button">{t('core.common.cancel')}</button><button className="button--primary" disabled={loading || code.length < 6 || (step === 'secret' && !newSecret)} onClick={() => void (step === 'identity' ? verifyIdentity() : confirmSetup())} type="button">{step === 'identity' ? '验证' : text('setupConfirm', '确认启用')}</button></div>
+        <DialogActions><Button disabled={loading} onClick={close}>{t('core.common.cancel')}</Button><Button disabled={loading || code.length < 6 || (step === 'secret' && !newSecret)} onClick={() => void (step === 'identity' ? verifyIdentity() : confirmSetup())} variant="primary">{step === 'identity' ? '验证' : text('setupConfirm', '确认启用')}</Button></DialogActions>
       </div>
     </Dialog>
     <Dialog onOpenChange={(next) => !next && close()} open={mode === 'manage'} title={text('configuration', 'TOTP 配置')}>
       <div className="totp-dialog"><p>{text('activeSubtitle', '双因素认证已启用。')}</p>{secret && <><QrCodeImage value={provisioningUri(secret)} /><code>{secret}</code></>}<div className="totp-dialog__manage"><button className="button--primary-soft" onClick={rotate} type="button"><MdiIcon name="mdi-shield-key" />{text('rotate', '轮换密钥')}</button><button onClick={() => void rotateRecovery()} type="button"><MdiIcon name="mdi-key-variant" />{text('rotateRecovery', '重新生成恢复码')}</button></div></div>
     </Dialog>
     <Dialog onOpenChange={() => undefined} open={mode === 'recovery'} title={text('recoveryTitle', '保存恢复码')}>
-      <div className="totp-dialog"><p>{text('recoverySubtitle', '请妥善保存此恢复码。')}</p><div className="settings-alert settings-alert--warning">{text('recoveryWarning', '恢复码只会显示一次。')}</div><code className="totp-dialog__recovery">{recoveryCode}</code><label className="totp-dialog__ack"><input checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} type="checkbox" />{text('recoveryAcknowledge', '我已保存恢复码')}</label><div className="dialog-actions"><span /><button className="button--primary" disabled={!acknowledged} onClick={finishRecovery} type="button">{text('recoveryClose', '完成')}</button></div></div>
+      <div className="totp-dialog"><p>{text('recoverySubtitle', '请妥善保存此恢复码。')}</p><div className="settings-alert settings-alert--warning">{text('recoveryWarning', '恢复码只会显示一次。')}</div><code className="totp-dialog__recovery">{recoveryCode}</code><label className="totp-dialog__ack"><input checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} type="checkbox" />{text('recoveryAcknowledge', '我已保存恢复码')}</label><DialogActions><Button disabled={!acknowledged} onClick={finishRecovery} variant="primary">{text('recoveryClose', '完成')}</Button></DialogActions></div>
     </Dialog>
   </div>;
 }

@@ -7,6 +7,8 @@ import { statsApi, updatesApi } from '@/api/compat';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { Menu, MenuItem } from '@/components/headless/Menu';
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { Button, DialogCancel } from '@/components/ui/Button';
+import { DialogActions } from '@/components/ui/DialogActions';
 import { errorMessage, JsonObject, responseData } from '@/routes/configuration/model';
 import { useAuthStore } from '@/stores/auth';
 import { toast } from '@/stores/feedback';
@@ -343,7 +345,7 @@ export function Header() {
         {Boolean(updateInfo.desktop) && <div className="header-update-status"><span>{t('core.header.updateDialog.desktopApp.latestVersion')}</span><strong>{String(updateInfo.latest_version || '—')}</strong></div>}
         {Boolean(updateInfo.dashboard_version) && <div className="header-update-status"><span>WebUI</span><strong>{String(updateInfo.dashboard_version)}</strong></div>}
         <p>{updateChecking ? t('core.header.updateDialog.status.checking') : updateInfo.has_new_version ? t('core.header.version.hasNewVersion') : t('core.header.updateDialog.dashboardUpdate.isLatest')}</p>
-        <div className="dialog-actions"><DialogClose asChild><button type="button">{t('core.header.accountDialog.actions.cancel')}</button></DialogClose><button disabled={updateChecking} onClick={() => void loadUpdate()} type="button">{t('core.header.buttons.update')}</button><button className="button--primary" disabled={updateChecking || updateInstalling || !updateInfo.has_new_version} onClick={() => void installUpdate()} type="button">{updateInstalling ? t('core.header.updateDialog.status.updating') : t('core.header.updateDialog.updateToLatest')}</button></div>
+        <DialogActions><DialogCancel>{t('core.header.accountDialog.actions.cancel')}</DialogCancel><Button disabled={updateChecking} onClick={() => void loadUpdate()}>{t('core.header.buttons.update')}</Button><Button disabled={updateChecking || updateInstalling || !updateInfo.has_new_version} onClick={() => void installUpdate()} variant="primary">{updateInstalling ? t('core.header.updateDialog.status.updating') : t('core.header.updateDialog.updateToLatest')}</Button></DialogActions>
       </div>
     </Dialog>
     <Dialog onOpenChange={setAccountOpen} open={accountOpen} title={t('core.header.accountDialog.title')}>
@@ -353,7 +355,7 @@ export function Header() {
         <label>{t('core.header.accountDialog.form.newPassword')}<input autoComplete="new-password" onChange={(event) => setAccount({ ...account, newPassword: event.target.value })} type="password" value={account.newPassword} /><small>{t('core.header.accountDialog.form.passwordHint')}</small></label>
         <label>{t('core.header.accountDialog.form.confirmPassword')}<input autoComplete="new-password" onChange={(event) => setAccount({ ...account, confirmPassword: event.target.value })} type="password" value={account.confirmPassword} /></label>
         <label>{t('core.header.accountDialog.form.newUsername')}<input autoComplete="username" onChange={(event) => setAccount({ ...account, username: event.target.value })} value={account.username} /></label>
-        <div className="dialog-actions"><DialogClose asChild><button type="button">{t('core.header.accountDialog.actions.cancel')}</button></DialogClose><button className="button--primary" disabled={accountSaving} onClick={() => void saveAccount()} type="button">{t('core.header.accountDialog.actions.save')}</button></div>
+        <DialogActions><DialogCancel>{t('core.header.accountDialog.actions.cancel')}</DialogCancel><Button disabled={accountSaving} onClick={() => void saveAccount()} variant="primary">{t('core.header.accountDialog.actions.save')}</Button></DialogActions>
       </div>
     </Dialog>
   </>;

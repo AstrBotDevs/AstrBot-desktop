@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { getFirstNotice } from '@/api/openapi';
 import { Markdown } from '@/components/content/Markdown';
 import { Dialog } from '@/components/headless/Dialog';
+import { Button } from '@/components/ui/Button';
+import { DialogActions } from '@/components/ui/DialogActions';
 import { responseData, type JsonObject } from '@/routes/configuration/model';
 
 export const FIRST_NOTICE_SEEN_KEY = 'astrbot:first_notice_seen:v1';
@@ -51,11 +53,11 @@ export function FirstNoticeDialog() {
         {content
           ? <Markdown content={content} />
           : <p>{t('core.common.firstNotice.empty.subtitle')}</p>}
-        <div className="dialog-actions">
-          <button className="button--primary" onClick={() => changeOpen(false)} type="button">
+        <DialogActions>
+          <Button onClick={() => changeOpen(false)} variant="primary">
             {t('core.common.confirm')}
-          </button>
-        </div>
+          </Button>
+        </DialogActions>
       </div>
     </Dialog>
   );

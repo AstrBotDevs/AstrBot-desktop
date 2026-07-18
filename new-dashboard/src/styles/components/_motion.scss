@@ -1,0 +1,31 @@
+/* Vue's expand transition equivalent: the content stays mounted so closing animates too. */
+.expand-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 0.24s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease, visibility 0s linear 0.24s;
+  visibility: hidden;
+}
+.expand-collapse[data-state='open'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition: grid-template-rows 0.24s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease 0.04s, visibility 0s;
+  visibility: visible;
+}
+.expand-collapse__inner { min-height: 0; overflow: hidden; }
+.sidebar-nav__children-motion[data-state='open'] { margin-top: 2px; }
+
+.dynamic-switch { position: relative; display: inline-flex; width: 44px; height: 24px; cursor: pointer; }
+.dynamic-switch input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.dynamic-switch__track { width: 100%; border-radius: 999px; background: color-mix(in srgb, var(--astrbot-text) 28%, transparent); transition: background .15s ease; }
+.dynamic-switch__track::after { display: block; width: 18px; height: 18px; margin: 3px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 25%); content: ''; transition: transform .15s ease; }
+.dynamic-switch input:checked + .dynamic-switch__track { background: var(--astrbot-primary); }
+.dynamic-switch input:checked + .dynamic-switch__track::after { transform: translateX(20px); }
+.dynamic-switch input:focus-visible + .dynamic-switch__track { outline: 2px solid var(--astrbot-primary); outline-offset: 2px; }
+.dynamic-switch input:disabled + .dynamic-switch__track { cursor: not-allowed; opacity: .55; }
+
+.config-tabs--dialog { margin-top: 12px; }
+.dynamic-config-dialog { max-height: 62vh; overflow: auto; }
+.dynamic-config-dialog .dynamic-config { border: 0; }
+.headless-dialog__content:has(.dynamic-config-dialog) { width: min(900px, calc(100vw - 32px)); }
+

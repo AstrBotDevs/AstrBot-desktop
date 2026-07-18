@@ -1,3 +1,13 @@
+$breakpoint-mobile-max: 767px;
+$breakpoint-compact-max: 900px;
+$breakpoint-content-max: 1080px;
+
+$z-content: 1;
+$z-sticky: 20;
+$z-dropdown: 50;
+$z-overlay: 1000;
+$z-toast: 9000;
+
 :root {
   --astrbot-primary: #3c96ca;
   --astrbot-secondary: #2f86bd;
@@ -7,6 +17,12 @@
   --astrbot-border: color-mix(in srgb, var(--astrbot-text) 10%, transparent);
   --astrbot-error: #f44336;
   --astrbot-radius-card: 16px;
+  --astrbot-radius-control: 8px;
+  --astrbot-space-1: 4px;
+  --astrbot-space-2: 8px;
+  --astrbot-space-3: 12px;
+  --astrbot-space-4: 16px;
+  --astrbot-space-6: 24px;
   --astrbot-breakpoint-mobile: 768px;
   --astrbot-font-family: "Outfit", "Noto Sans", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", sans-serif;

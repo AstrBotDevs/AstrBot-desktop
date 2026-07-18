@@ -6,6 +6,8 @@ import { isRecord, responseData } from '@/api/response';
 import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { ExpandCollapse } from '@/components/motion/ExpandCollapse';
+import { Button } from '@/components/ui/Button';
+import { DialogActions } from '@/components/ui/DialogActions';
 import { toast } from '@/stores/feedback';
 import { ConfigSpecialSelector, isConfigSelectorSpecial, PersonaQuickPreview } from './ConfigSpecialControls';
 import { DashboardTotpManager, T2ITemplateEditor } from './ConfigSpecialEditors';
@@ -104,13 +106,13 @@ function StringListControl({ disabled, onChange, value }: { disabled?: boolean; 
           </div>)}
           {!draft.length && <div className="dynamic-editor-empty"><MdiIcon name="mdi-format-list-bulleted" /><p>{t('core.common.list.noItemsHint')}</p></div>}
         </div>
-        <div className="dialog-actions"><button onClick={() => setOpen(false)} type="button">{t('core.common.cancel')}</button><button className="button--primary" onClick={save} type="button">{t('core.common.confirm')}</button></div>
+        <DialogActions><Button onClick={() => setOpen(false)}>{t('core.common.cancel')}</Button><Button onClick={save} variant="primary">{t('core.common.confirm')}</Button></DialogActions>
       </div>
     </Dialog>
     <Dialog description={t('core.common.list.batchImportHint')} onOpenChange={setBatchOpen} open={batchOpen} title={t('core.common.list.batchImportTitle')}>
       <div className="dynamic-batch-dialog">
         <label><span>{t('core.common.list.batchImportLabel')}</span><textarea onChange={(event) => setBatchText(event.target.value)} placeholder={t('core.common.list.batchImportPlaceholder')} rows={10} value={batchText} /></label>
-        <div className="dialog-actions"><button onClick={() => { setBatchText(''); setBatchOpen(false); }} type="button">{t('core.common.cancel')}</button><button className="button--primary" disabled={!batchCount} onClick={importBatch} type="button">{t('core.common.list.batchImportButton', { count: batchCount })}</button></div>
+        <DialogActions><Button onClick={() => { setBatchText(''); setBatchOpen(false); }}>{t('core.common.cancel')}</Button><Button disabled={!batchCount} onClick={importBatch} variant="primary">{t('core.common.list.batchImportButton', { count: batchCount })}</Button></DialogActions>
       </div>
     </Dialog>
   </div>;
@@ -215,7 +217,7 @@ function PluginFileConfigControl({ configKey, metadata, onChange, pluginName, va
         <button className="plugin-file-config__drop" disabled={busy} onClick={() => input.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void upload(Array.from(event.dataTransfer.files)); }} type="button"><MdiIcon className={busy ? 'mdi-spin' : ''} name={busy ? 'mdi-loading' : 'mdi-upload'} /><span>{t('features.config.fileUpload.dropzone')}</span>{fileTypes.length > 0 && <small>{t('features.config.fileUpload.allowedTypes', { types: fileTypes.join(', ') })}</small>}</button>
         <input accept={accept || undefined} hidden multiple onChange={(event) => { void upload(Array.from(event.target.files ?? [])); event.currentTarget.value = ''; }} ref={input} type="file" />
       </div>
-      <div className="dialog-actions"><button className="button--primary" onClick={() => setOpen(false)} type="button">{t('features.config.fileUpload.done')}</button></div>
+      <DialogActions><Button onClick={() => setOpen(false)} variant="primary">{t('features.config.fileUpload.done')}</Button></DialogActions>
     </Dialog>
   </div>;
 }

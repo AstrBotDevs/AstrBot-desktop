@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Dialog } from '@/components/headless/Dialog';
+import { Button } from '@/components/ui/Button';
+import { DialogActions } from '@/components/ui/DialogActions';
 
 export type ChatProjectForm = {
   description: string;
@@ -83,10 +85,10 @@ export function ChatProjectDialog({ error, onOpenChange, onSave, open, project, 
         <input aria-label={t('features.chat.project.workspace.path')} onChange={(event) => set('workspace_path', event.target.value)} value={form.workspace_path} />
       </label>}
       {error && <div className="chat-project-dialog__error" role="alert">{error}</div>}
-      <div className="dialog-actions">
-        <button disabled={saving} onClick={() => onOpenChange(false)} type="button">{t('core.common.cancel')}</button>
-        <button className="button--primary" disabled={!canSave || saving} type="submit">{t('core.common.save')}</button>
-      </div>
+      <DialogActions>
+        <Button disabled={saving} onClick={() => onOpenChange(false)}>{t('core.common.cancel')}</Button>
+        <Button disabled={!canSave || saving} type="submit" variant="primary">{t('core.common.save')}</Button>
+      </DialogActions>
     </form>
   </Dialog>;
 }

@@ -20,6 +20,8 @@ import { statsApi } from '@/api/compat';
 import { backupFilesApi } from '@/api/services';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { Button, DialogCancel } from '@/components/ui/Button';
+import { DialogActions } from '@/components/ui/DialogActions';
 import {
   defaultNavigationItems,
   MORE_GROUP_KEY,
@@ -105,7 +107,7 @@ export function SidebarCustomizer() {
           <SidebarItemList items={main} label={t('features.settings.sidebar.customize.mainItems')} list="main" move={move} onDragStart={(list, index) => { dragging.current = { list, index }; }} onDrop={drop} t={t} />
           <SidebarItemList items={more} label={t('features.settings.sidebar.customize.moreItems')} list="more" move={move} onDragStart={(list, index) => { dragging.current = { list, index }; }} onDrop={drop} t={t} />
         </div>
-        <div className="dialog-actions"><button className="button--danger-text" onClick={reset} type="button">{t('features.settings.sidebar.customize.reset')}</button><span /><DialogClose asChild><button type="button">{t('core.common.cancel')}</button></DialogClose><button className="button--primary" onClick={save} type="button">{t('core.actions.save')}</button></div>
+        <DialogActions leading={<Button onClick={reset} variant="danger">{t('features.settings.sidebar.customize.reset')}</Button>}><DialogCancel>{t('core.common.cancel')}</DialogCancel><Button onClick={save} variant="primary">{t('core.actions.save')}</Button></DialogActions>
       </div>
     </Dialog>
   </>;

@@ -1,0 +1,8 @@
+.config-page { min-height: 100%; }
+.config-page > .monitor-error, .config-page > .monitor-loading { margin-bottom: 12px; }
+.config-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.config-record { display: grid; gap: 14px; min-width: 0; padding: 16px; }
+.config-record h2 { margin: 0; overflow-wrap: anywhere; }
+.config-record p { margin: 5px 0 0; color: color-mix(in srgb, var(--astrbot-text) 65%, transparent); overflow-wrap: anywhere; }
+.config-record--persona p { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; white-space: pre-wrap; }
+.config-toggle { display: inline-flex; align-items: center; gap: 7px; width: fit-content; }

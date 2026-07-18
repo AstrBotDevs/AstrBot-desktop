@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 
 import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { Button } from '@/components/ui/Button';
+import { DialogActions } from '@/components/ui/DialogActions';
 import { toast } from '@/stores/feedback';
 import {
   isConfigRecord,
@@ -153,7 +155,7 @@ export function ObjectConfigControl({ disabled, metadata, onChange, value }: { d
           <label><span>{t('core.common.objectEditor.valueTypeLabel')}</span><select onChange={(event) => setNewType(event.target.value as ObjectValueType)} value={newType}><option value="string">string</option><option value="number">number</option><option value="boolean">boolean</option><option value="json">json</option></select></label>
           <button className="dynamic-editor-button--tonal" disabled={!newKey.trim()} onClick={addPair} type="button"><MdiIcon name="mdi-plus" />{t('core.common.add')}</button>
         </div>
-        <div className="dialog-actions"><button onClick={() => setOpen(false)} type="button">{t('core.common.cancel')}</button><button className="button--primary" onClick={save} type="button">{t('core.common.confirm')}</button></div>
+        <DialogActions><Button onClick={() => setOpen(false)}>{t('core.common.cancel')}</Button><Button onClick={save} variant="primary">{t('core.common.confirm')}</Button></DialogActions>
       </div>
     </Dialog>
   </div>;

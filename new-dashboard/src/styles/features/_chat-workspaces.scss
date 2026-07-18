@@ -1,0 +1,49 @@
+/* Chat workspace and composer variants. */
+
+.chat-shell.is-sidebar-collapsed .chat-toolbar {
+  left: 56px;
+}
+
+.chat-composer--v2 {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.chat-composer--v2 .chat-composer-v2 {
+  padding: 0;
+  border: 0;
+}
+
+.chat-composer--v2 .chat-composer-v2__surface {
+  width: 100%;
+  max-width: none;
+}
+
+.chat-project-composer {
+  margin: 30px 0;
+}
+
+.chat-project-composer .chat-composer-v2 {
+  padding: 0;
+}
+
+.chat-project-composer .chat-composer-v2__surface {
+  width: 100%;
+  max-width: none;
+}
+
+.chat-provider-workspace {
+  height: 100%;
+  overflow: auto;
+  padding: 20px;
+}
+
+.chat-session-progress {
+  flex: 0 0 auto;
+  color: var(--astrbot-primary);
+  animation: chat-spin .8s linear infinite;
+}
+

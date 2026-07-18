@@ -1,0 +1,52 @@
+/* Shared motion language ported from the Vue dashboard transitions. */
+.full-layout__page > :not(.chat-shell) { animation: motion-page-in 0.26s ease-out both; }
+.headless-menu__content,
+.headless-popover__content,
+.provider-source-add[open] > .provider-source-add__menu,
+.chat-settings-menu[open] > .chat-settings-menu__panel,
+.chat-model-menu[open] > .chat-model-menu__panel,
+.chat-composer-menu[open] > .chat-composer-menu__panel,
+.chat-regenerate-menu[open] > .chat-message-action-panel,
+.chat-message-stats[open] > .chat-stats-card {
+  transform-origin: top right;
+  animation: motion-menu-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.chat-settings-menu[open] > .chat-settings-menu__panel { transform-origin: bottom left; }
+.chat-model-menu[open] > .chat-model-menu__panel { transform-origin: top left; }
+.chat-settings-submenu { animation: motion-slide-left-in 0.18s ease-out both; }
+.onboarding-help[open] > :not(summary),
+.chat-message__body details[open] > :not(summary),
+.auth-version details[open] > :not(summary) { animation: motion-expand-content-in 0.2s ease-out both; }
+.sidebar { animation: motion-slide-right-in 0.22s ease-out both; }
+.sidebar-backdrop,
+.chat-sidebar-backdrop { animation: motion-fade-in 0.18s ease-out both; }
+.extension-section,
+.settings-section,
+.provider-type-panel,
+.extension-detail__info,
+.extension-config-editor--detail,
+.extension-markdown { animation: motion-content-in 0.22s ease-out both; }
+
+@keyframes motion-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes motion-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes motion-page-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes motion-content-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes motion-menu-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes motion-slide-left-in { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes motion-slide-right-in { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes motion-expand-content-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes motion-dialog-in { from { opacity: 0; transform: translate(-50%, calc(-50% + 12px)) scale(0.985); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes motion-dialog-out { from { opacity: 1; transform: translate(-50%, -50%) scale(1); } to { opacity: 0; transform: translate(-50%, calc(-50% + 8px)) scale(0.985); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+  }
+}
+

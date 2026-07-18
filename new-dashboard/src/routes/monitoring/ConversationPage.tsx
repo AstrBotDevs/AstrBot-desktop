@@ -14,6 +14,8 @@ import { conversationFilesApi } from '@/api/services';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MonacoEditor } from '@/components/editor/MonacoEditor';
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { Button, DialogCancel } from '@/components/ui/Button';
+import { DialogActions } from '@/components/ui/DialogActions';
 import { confirmAction, toast } from '@/stores/feedback';
 import {
   conversationKey,
@@ -141,10 +143,10 @@ export default function ConversationPage() {
     <footer className="conversation-pagination"><label>{t(`${prefix}.pagination.itemsPerPage`)}<select onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }} value={pageSize}>{[10, 20, 50, 100].map((size) => <option key={size}>{size}</option>)}</select></label><span>{t(`${prefix}.pagination.showingItems`, { start: rangeStart, end: rangeEnd, total })}</span><div><button disabled={page <= 1} onClick={() => setPage((value) => value - 1)} type="button">‹</button><span>{page}/{totalPages}</span><button disabled={page >= totalPages} onClick={() => setPage((value) => value + 1)} type="button">›</button></div></footer>
     </section>
     <Dialog onOpenChange={(open) => !open && setDetail(null)} open={Boolean(detail)} title={detail?.title || t(`${prefix}.status.noTitle`)}>
-      <div className="dialog-actions"><button onClick={() => setEditingHistory((value) => !value)} type="button">{t(`${prefix}.dialogs.view.${editingHistory ? 'previewMode' : 'editMode'}`)}</button>{editingHistory && <button className="button--primary" disabled={savingHistory} onClick={() => void saveHistory()} type="button">{t(`${prefix}.dialogs.view.saveChanges`)}</button>}</div>
+      <DialogActions><Button onClick={() => setEditingHistory((value) => !value)}>{t(`${prefix}.dialogs.view.${editingHistory ? 'previewMode' : 'editMode'}`)}</Button>{editingHistory && <Button disabled={savingHistory} onClick={() => void saveHistory()} variant="primary">{t(`${prefix}.dialogs.view.saveChanges`)}</Button>}</DialogActions>
       {editingHistory ? <div className="json-editor"><MonacoEditor language="json" onChange={setHistoryJson} value={historyJson} /></div> : history.length ? <div className="conversation-history">{history.map((message, index) => { const role = String(message.role ?? 'message'); return <article className={`conversation-history__message conversation-history__message--${role}`} key={index}><strong>{role}</strong><pre>{typeof message.content === 'string' ? message.content : JSON.stringify(message.content, null, 2)}</pre></article>; })}</div> : <div className="monitor-empty">{t(`${prefix}.status.emptyContent`)}</div>}
       <DialogClose asChild><button type="button">{t(`${prefix}.dialogs.view.close`)}</button></DialogClose>
     </Dialog>
-    <Dialog onOpenChange={(open) => !open && setEditing(null)} open={Boolean(editing)} title={t(`${prefix}.dialogs.edit.title`)}><div className="dialog-form"><label>{t(`${prefix}.dialogs.edit.titleLabel`)}<input onChange={(event) => setEditing((current) => current ? { ...current, title: event.target.value } : null)} value={editing?.title ?? ''} /></label><div className="dialog-actions"><DialogClose asChild><button type="button">{t(`${prefix}.dialogs.edit.cancel`)}</button></DialogClose><button className="button--primary" onClick={() => void saveTitle()} type="button">{t(`${prefix}.dialogs.edit.save`)}</button></div></div></Dialog>
+    <Dialog onOpenChange={(open) => !open && setEditing(null)} open={Boolean(editing)} title={t(`${prefix}.dialogs.edit.title`)}><div className="dialog-form"><label>{t(`${prefix}.dialogs.edit.titleLabel`)}<input onChange={(event) => setEditing((current) => current ? { ...current, title: event.target.value } : null)} value={editing?.title ?? ''} /></label><DialogActions><DialogCancel>{t(`${prefix}.dialogs.edit.cancel`)}</DialogCancel><Button onClick={() => void saveTitle()} variant="primary">{t(`${prefix}.dialogs.edit.save`)}</Button></DialogActions></div></Dialog>
   </div>;
 }

@@ -1,0 +1,47 @@
+@use '../tokens' as tokens;
+
+.about-page {
+  height: 100%;
+  place-content: center;
+}
+
+.about-hero {
+  max-width: 620px;
+  text-align: center;
+}
+
+.about-hero h1 {
+  margin: 0;
+  font-size: clamp(44px, 8vw, 76px);
+}
+
+.about-hero__actions {
+  justify-content: center;
+  margin-top: 24px;
+}
+
+.about-hero button + button {
+  background: transparent;
+  color: var(--astrbot-primary);
+}
+
+@media (max-width: tokens.$breakpoint-mobile-max) {
+  .auth-page { padding: 12px; }
+  .auth-card { padding: 20px; }
+  .route-page { padding: 10px; }
+  .route-card { padding: 18px; }
+  .component-panel__filters { grid-template-columns: 1fr; }
+  .component-panel__toolbar { align-items: stretch; flex-direction: column; }
+  .component-panel__toolbar > label { width: 100%; }
+  .component-panel__stats { align-items: flex-start; flex-wrap: wrap; gap: 10px; }
+  .component-panel__stats > span + span,
+  .component-panel__stats > label { padding-left: 0; border-left: 0; }
+  .component-panel__table > footer { justify-content: flex-start; flex-wrap: wrap; }
+}
+
+@media (min-width: 768px) and (max-width: 1100px) {
+  .component-panel__filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .component-panel__toolbar { align-items: stretch; flex-direction: column; }
+  .component-panel__stats { flex-wrap: wrap; }
+}
+

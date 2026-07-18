@@ -15,6 +15,8 @@ import {
 } from '@/auth/upgradeRecovery';
 import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { Button } from '@/components/ui/Button';
+import { DialogActions } from '@/components/ui/DialogActions';
 
 const MAX_RESTART_ATTEMPTS = 90;
 
@@ -129,12 +131,12 @@ export function UpgradeRecoveryDialog() {
         <div className="auth-warning"><MdiIcon name="mdi-alert" />{t('core.common.upgradeRecovery.hint')}</div>
         {restarting && <progress />}
         {status && <p aria-live="polite">{status}</p>}
-        <div className="dialog-actions">
-          {!detail?.blocking && <button disabled={restarting} onClick={dismiss} type="button">{t('core.common.upgradeRecovery.laterButton')}</button>}
-          <button className="button--primary" disabled={restarting} onClick={() => void restart()} type="button">
+        <DialogActions>
+          {!detail?.blocking && <Button disabled={restarting} onClick={dismiss}>{t('core.common.upgradeRecovery.laterButton')}</Button>}
+          <Button disabled={restarting} onClick={() => void restart()} variant="primary">
             <MdiIcon name="mdi-restart" />{t('core.common.upgradeRecovery.restartButton')}
-          </button>
-        </div>
+          </Button>
+        </DialogActions>
       </div>
     </Dialog>
   );
