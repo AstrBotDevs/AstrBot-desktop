@@ -1,13 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { jsonResponse } from '@/test/http';
 import { authApi } from './auth';
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    headers: { 'content-type': 'application/json' },
-    status,
-  });
-}
 
 describe('compatible authentication API', () => {
   afterEach(() => vi.unstubAllGlobals());

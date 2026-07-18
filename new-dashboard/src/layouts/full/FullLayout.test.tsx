@@ -1,11 +1,11 @@
-import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 
+import { renderStatic } from '@/test/render';
 import { FullLayout, getFullLayoutMode } from './FullLayout';
 
 function renderLayout(pathname: string) {
-  return renderToStaticMarkup(
+  return renderStatic(
     <MemoryRouter initialEntries={[pathname]}>
       <FullLayout header={<span>Header</span>} sidebar={<span>Sidebar</span>}>
         <p>Page content</p>

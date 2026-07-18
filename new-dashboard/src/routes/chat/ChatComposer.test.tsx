@@ -1,11 +1,11 @@
-import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
+import { renderStatic } from '@/test/render';
 import { ChatComposer } from './ChatComposer';
 
 describe('ChatComposer', () => {
   it('disables configuration changes while the composer is busy', () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderStatic(
       <ChatComposer
         commandSuggestionsLabel="Commands"
         configs={[
@@ -28,7 +28,7 @@ describe('ChatComposer', () => {
   });
 
   it('only disables draft input when the whole composer is unavailable', () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderStatic(
       <ChatComposer
         commandSuggestionsLabel="Commands"
         disabled

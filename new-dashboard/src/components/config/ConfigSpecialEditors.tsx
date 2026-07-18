@@ -20,6 +20,7 @@ import { MdiIcon } from '@/components/icons/MdiIcon';
 import { Button } from '@/components/ui/Button';
 import { DialogActions } from '@/components/ui/DialogActions';
 import { confirmAction, toast } from '@/stores/feedback';
+import { normalizeT2iPreview } from './configSpecialEditorsModel';
 import { isConfigRecord, setConfigValue, type ConfigRecord } from './configFormModel';
 
 type TemplateSummary = { name: string };
@@ -53,33 +54,6 @@ const newTemplateSource = `<!doctype html>
 </body>
 </html>
 `;
-
-export function normalizeT2iPreview(content: string, text: string, version: string) {
-  let normalized = content.replace(
-    /<script\s+id=["']markdown-source["']\s+type=["']text\/plain["']>\s*\{\{\s*text\s*\|\s*safe\s*\}\}\s*<\/script>/gi,
-    '<textarea id="markdown-source" hidden>{{ text | safe }}</textarea>',
-  );
-  normalized = normalized.replace(
-    /decodeBase64Utf8\("\{\{\s*text_base64\s*\}\}"\)/g,
-    'document.getElementById("markdown-source").value',
-  );
-  normalized = normalized.replace(
-    /document\.getElementById\(["']markdown-source["']\)\.textContent/g,
-    'document.getElementById("markdown-source").value',
-  );
-  normalized = normalized
-    .replace(/\{\{\s*text\s*\|\s*safe\s*\}\}/g, () => text)
-    .replace(/\{\{\s*version\s*\}\}/g, () => version);
-  const runtime = '<script id="astrbot-t2i-shiki-runtime" src="/t2i/shiki_runtime.iife.js"></script>';
-  if (normalized.includes('astrbot-t2i-shiki-runtime')) return normalized;
-  const placeholder =
-    /<script\b[^>]*>\s*\{\{\s*shiki_runtime\s*\|\s*safe\s*\}\}\s*<\/script>|\{\{\s*shiki_runtime\s*\|\s*safe\s*\}\}/gi;
-  if (placeholder.test(normalized)) return normalized.replace(placeholder, () => runtime);
-  const headClose = normalized.search(/<\/head\s*>/i);
-  return headClose >= 0
-    ? `${normalized.slice(0, headClose)}${runtime}\n${normalized.slice(headClose)}`
-    : `${runtime}\n${normalized}`;
-}
 
 export function T2ITemplateEditor() {
   const { t } = useTranslation();

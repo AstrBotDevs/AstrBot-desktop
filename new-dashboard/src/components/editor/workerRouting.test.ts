@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { resolveMonacoWorkerKind } from './workerRouting';
 
-describe('resolveMonacoWorkerKind', () => {
+describe('Monaco worker routing', () => {
   it('routes language services to their dedicated workers', () => {
     expect(resolveMonacoWorkerKind('json')).toBe('json');
     expect(resolveMonacoWorkerKind('scss')).toBe('css');

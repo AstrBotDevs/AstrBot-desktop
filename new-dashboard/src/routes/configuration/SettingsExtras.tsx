@@ -38,6 +38,7 @@ import {
 import { useBrowserCapabilities } from '@/platform/BrowserCapabilitiesProvider';
 import { confirmAction, toast } from '@/stores/feedback';
 import { errorMessage, isObject, objectList, responseData, type JsonObject } from './model';
+import { formatBackupDate, formatBytes } from './settingsExtrasModel';
 
 const GITHUB_PROXIES = githubProxyOptions;
 
@@ -305,27 +306,6 @@ type StorageStatus = {
   logs?: { file_count?: number; size_bytes?: number };
   total_bytes?: number;
 };
-
-export function formatBytes(bytes: number) {
-  if (!bytes) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let size = bytes;
-  let unit = 0;
-  while (size >= 1024 && unit < units.length - 1) {
-    size /= 1024;
-    unit += 1;
-  }
-  return `${size.toFixed(size >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
-}
-
-export function formatBackupDate(value: unknown) {
-  if (value == null || value === '') return '—';
-  const numeric = typeof value === 'number' ? value : Number(value);
-  const date = Number.isFinite(numeric)
-    ? new Date(numeric < 10_000_000_000 ? numeric * 1000 : numeric)
-    : new Date(String(value));
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
-}
 
 export function StorageCleanupPanel() {
   const { t } = useTranslation();

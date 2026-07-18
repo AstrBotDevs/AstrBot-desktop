@@ -5,6 +5,7 @@ import QRCode from 'qrcode';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { splitConsoleLog, type LogItem } from '@/routes/monitoring/model';
 import { useLogFeed } from '@/routes/monitoring/useLogFeed';
+import { qrCodeValueKind } from './platformRuntimeModel';
 
 export function PlatformLogConsole() {
   const { t } = useTranslation();
@@ -80,10 +81,4 @@ export function QrCodeImage({ alt, value }: { alt: string; value: string }) {
       <MdiIcon name="mdi-qrcode-remove" />
     </div>
   );
-}
-
-export function qrCodeValueKind(value: string) {
-  const normalized = value.trim();
-  if (!normalized) return 'empty';
-  return normalized.startsWith('data:image/') ? 'image' : 'content';
 }

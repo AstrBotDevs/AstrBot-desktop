@@ -5,7 +5,8 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { listFailedPlugins, listPlugins, setPluginEnabledById } from '@/api/openapi';
-import { apiResponse, renderRoute } from '@/test/render';
+import { deferred } from '@/test/async';
+import { mockApiResponse, renderRoute } from '@/test/render';
 import ExtensionPage from './ExtensionPage';
 
 vi.mock('@/api/openapi');
@@ -14,27 +15,22 @@ vi.mock('./ExtensionSections', () => ({
   McpSection: () => <div>mcp</div>,
   SkillsSection: () => <div>skills</div>,
 }));
-const translate = vi.hoisted(() => (key: string) => key);
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ i18n: { language: 'en-US' }, t: translate }),
-}));
-
-const plugins = (items: unknown[]) => apiResponse({ plugins: items });
+const plugins = (items: unknown[]) => mockApiResponse({ plugins: items });
 
 describe('ExtensionPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(listFailedPlugins).mockResolvedValue(plugins([]) as never);
+    vi.mocked(listFailedPlugins).mockResolvedValue(plugins([]));
   });
 
   it('renders loading and the installed plugin list', async () => {
     const user = userEvent.setup();
-    let resolve!: (value: unknown) => void;
-    vi.mocked(listPlugins).mockReturnValue(new Promise((done) => (resolve = done)) as never);
+    const request = deferred<Awaited<ReturnType<typeof listPlugins<false>>>>();
+    vi.mocked(listPlugins).mockReturnValue(request.promise);
 
     renderRoute(<ExtensionPage />, { route: '/extension' });
     expect(screen.getByRole('status', { name: 'features.extension.status.loading' })).toBeInTheDocument();
-    resolve(
+    request.resolve(
       plugins([
         { activated: true, display_name: 'Calendar', name: 'calendar', version: '1.0.0' },
         { activated: true, display_name: 'Weather', name: 'weather', version: '1.0.0' },
@@ -58,9 +54,9 @@ describe('ExtensionPage', () => {
   it('toggles an installed plugin and refreshes the list', async () => {
     const user = userEvent.setup();
     vi.mocked(listPlugins).mockResolvedValue(
-      plugins([{ activated: true, display_name: 'Calendar', name: 'calendar', version: '1.0.0' }]) as never,
+      plugins([{ activated: true, display_name: 'Calendar', name: 'calendar', version: '1.0.0' }]),
     );
-    vi.mocked(setPluginEnabledById).mockResolvedValue(apiResponse({}) as never);
+    vi.mocked(setPluginEnabledById).mockResolvedValue(mockApiResponse({}));
 
     renderRoute(<ExtensionPage />, { route: '/extension' });
     await user.click(await screen.findByRole('checkbox'));

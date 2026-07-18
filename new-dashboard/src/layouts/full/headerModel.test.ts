@@ -12,7 +12,7 @@ function storage(values: Record<string, string>): Pick<Storage, 'getItem'> {
   return { getItem: (key) => values[key] ?? null };
 }
 
-describe('Header mode switching', () => {
+describe('header mode switching', () => {
   it('returns to the last bot route from chat', () => {
     expect(getModeSwitchTarget('/chat/42', storage({ [LAST_BOT_ROUTE_KEY]: '/settings' }))).toBe('/settings');
   });

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatBackupDate, formatBytes } from './SettingsExtras';
+import { formatBackupDate, formatBytes } from './settingsExtrasModel';
 
-describe('settings extras', () => {
-  it('formats storage sizes like the original dashboard', () => {
+describe('settings extras model', () => {
+  it('formats storage sizes at readable unit boundaries', () => {
     expect(formatBytes(0)).toBe('0 B');
     expect(formatBytes(1536)).toBe('1.5 KB');
     expect(formatBytes(12 * 1024)).toBe('12 KB');

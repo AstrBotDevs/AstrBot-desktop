@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { createHashRouter, Navigate, RouterProvider } from 'react-router-dom';
 
 import { RequireAuth } from '@/auth/RequireAuth';
-import { routeLayout, routeMigrationManifest, type RouteLayout } from '@/routes/migrationManifest';
+import { routeLayout, routeManifest, type RouteLayout } from '@/routes/routeManifest';
 import { NotFoundPage } from '@/routes/NotFoundPage';
 import { BlankLayout } from '@/layouts/blank/BlankLayout';
 import { FullLayout } from '@/layouts/full/FullLayout';
@@ -91,7 +91,7 @@ function UnregisteredReactRoute({ path }: { path: string }): never {
 }
 
 function routesForLayout(layout: RouteLayout) {
-  return routeMigrationManifest
+  return routeManifest
     .filter((route) => routeLayout(route.path) === layout)
     .map((route) => ({ path: route.path, element: resolveReactRoute(route.path) }));
 }

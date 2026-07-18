@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { matchRoutes } from 'react-router-dom';
 
-import { migratedRoutePaths, routeLayout, routeMigrationManifest, routeRequiresAuth } from './migrationManifest';
+import { routeLayout, routeManifest, routePaths, routeRequiresAuth } from './routeManifest';
 
-describe('route migration manifest', () => {
-  it('contains each migrated route only once', () => {
-    const paths = routeMigrationManifest.map((route) => route.path);
+describe('route manifest contract', () => {
+  it('contains each route only once', () => {
+    const paths = routeManifest.map((route) => route.path);
 
     expect(new Set(paths).size).toBe(paths.length);
   });
 
   it('tracks every completed route batch', () => {
-    expect(routeMigrationManifest.length).toBeGreaterThan(0);
-    expect(migratedRoutePaths).toEqual([
+    expect(routeManifest.length).toBeGreaterThan(0);
+    expect(routePaths).toEqual([
       '/',
       '/main',
       '/auth/login',
@@ -49,7 +49,7 @@ describe('route migration manifest', () => {
   });
 
   it('tracks the routes required for the first migration batches', () => {
-    const paths = new Set(routeMigrationManifest.map((route) => route.path));
+    const paths = new Set(routeManifest.map((route) => route.path));
 
     const requiredPaths = [
       '/auth/login',
@@ -76,7 +76,7 @@ describe('route migration manifest', () => {
   });
 
   it('contains only React route metadata after migration completion', () => {
-    expect(routeMigrationManifest.every((route) => Object.keys(route).length === 1)).toBe(true);
+    expect(routeManifest.every((route) => Object.keys(route).length === 1)).toBe(true);
   });
 
   it.each([
@@ -91,7 +91,7 @@ describe('route migration manifest', () => {
     ['/chatbox/session-2', '/chatbox/:conversationId', { conversationId: 'session-2' }],
   ])('preserves dynamic parameters for %s', (url, pattern, params) => {
     const matches = matchRoutes(
-      routeMigrationManifest.map((route) => ({ path: route.path })),
+      routeManifest.map((route) => ({ path: route.path })),
       url,
     );
     expect(matches?.at(-1)?.route.path).toBe(pattern);

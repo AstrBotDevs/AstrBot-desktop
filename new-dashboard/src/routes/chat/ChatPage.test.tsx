@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
+import { Link, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -17,29 +17,26 @@ import {
   listProviders,
   updateChatSession,
 } from '@/api/openapi';
-import { apiResponse, renderRoute } from '@/test/render';
+import { deferred } from '@/test/async';
+import { mockApiResponse, renderRoute } from '@/test/render';
 import { runChatStream } from './chatTransport';
 import ChatPage from './ChatPage';
 
 vi.mock('@/api/openapi');
 vi.mock('./chatTransport', () => ({ runChatStream: vi.fn() }));
 vi.mock('@/routes/configuration/ProviderPage', () => ({ default: () => <div>provider workspace</div> }));
-const translate = vi.hoisted(() => (key: string) => key);
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ i18n: { language: 'en-US' }, t: translate }),
-}));
 
 describe('ChatPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(listChatSessions).mockResolvedValue(apiResponse({ sessions: [] }) as never);
-    vi.mocked(listChatProjects).mockResolvedValue(apiResponse({ projects: [] }) as never);
-    vi.mocked(listProviders).mockResolvedValue(apiResponse({ model_metadata: {}, providers: [] }) as never);
-    vi.mocked(listChatConfigs).mockResolvedValue(apiResponse({ info_list: [] }) as never);
-    vi.mocked(listConfigRoutes).mockResolvedValue(apiResponse({ routes: [] }) as never);
-    vi.mocked(listCommands).mockResolvedValue(apiResponse({ items: [] }) as never);
-    vi.mocked(getConfigProfile).mockResolvedValue(apiResponse({ config: {} }) as never);
-    vi.mocked(updateChatSession).mockResolvedValue(apiResponse({}) as never);
+    vi.mocked(listChatSessions).mockResolvedValue(mockApiResponse({ sessions: [] }));
+    vi.mocked(listChatProjects).mockResolvedValue(mockApiResponse({ projects: [] }));
+    vi.mocked(listProviders).mockResolvedValue(mockApiResponse({ model_metadata: {}, providers: [] }));
+    vi.mocked(listChatConfigs).mockResolvedValue(mockApiResponse({ info_list: [] }));
+    vi.mocked(listConfigRoutes).mockResolvedValue(mockApiResponse({ routes: [] }));
+    vi.mocked(listCommands).mockResolvedValue(mockApiResponse({ items: [] }));
+    vi.mocked(getConfigProfile).mockResolvedValue(mockApiResponse({ config: {} }));
+    vi.mocked(updateChatSession).mockResolvedValue(mockApiResponse({}));
     vi.mocked(runChatStream).mockResolvedValue(undefined);
   });
 
@@ -59,7 +56,7 @@ describe('ChatPage', () => {
 
   it('creates a session and sends a message through the stream layer', async () => {
     const user = userEvent.setup();
-    vi.mocked(createChatSession).mockResolvedValue(apiResponse({ session_id: 'session-new' }) as never);
+    vi.mocked(createChatSession).mockResolvedValue(mockApiResponse({ session_id: 'session-new' }));
 
     renderRoute(<ChatPage />, { route: '/chat' });
     const composer = await screen.findByPlaceholderText('features.chat.input.placeholder');
@@ -81,27 +78,28 @@ describe('ChatPage', () => {
 
   it('keeps the newest conversation when requests resolve out of order', async () => {
     const user = userEvent.setup();
-    let resolveFirst!: (value: unknown) => void;
+    const firstRequest = deferred<Awaited<ReturnType<typeof getChatSession<false>>>>();
     vi.mocked(getChatSession)
-      .mockReturnValueOnce(new Promise((resolve) => (resolveFirst = resolve)) as never)
+      .mockReturnValueOnce(firstRequest.promise)
       .mockResolvedValueOnce(
-        apiResponse({
+        mockApiResponse({
           history: [{ content: { message: [{ text: 'newest response', type: 'plain' }], type: 'bot' }, id: 'm2' }],
-        }) as never,
+        }),
       );
 
-    render(
-      <MemoryRouter initialEntries={['/chat/first']}>
+    renderRoute(
+      <>
         <Link to="/chat/second">Switch conversation</Link>
         <Routes>
           <Route element={<ChatPage />} path="/chat/:conversationId" />
         </Routes>
-      </MemoryRouter>,
+      </>,
+      { route: '/chat/first' },
     );
     await user.click(screen.getByRole('link', { name: 'Switch conversation' }));
     expect(await screen.findByText('newest response')).toBeInTheDocument();
-    resolveFirst(
-      apiResponse({
+    firstRequest.resolve(
+      mockApiResponse({
         history: [{ content: { message: [{ text: 'stale response', type: 'plain' }], type: 'bot' }, id: 'm1' }],
       }),
     );

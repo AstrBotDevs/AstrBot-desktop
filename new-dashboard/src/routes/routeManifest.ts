@@ -1,10 +1,10 @@
-export type RouteMigrationEntry = {
+export type RouteManifestEntry = {
   path: string;
 };
 
 export type RouteLayout = 'protected-full' | 'protected-blank' | 'public-blank';
 
-export const routeMigrationManifest: readonly RouteMigrationEntry[] = [
+export const routeManifest: readonly RouteManifestEntry[] = [
   { path: '/' },
   { path: '/main' },
   { path: '/auth/login' },
@@ -39,7 +39,7 @@ export const routeMigrationManifest: readonly RouteMigrationEntry[] = [
   { path: '/chatbox/:conversationId' },
 ] as const;
 
-export const migratedRoutePaths = routeMigrationManifest.map((route) => route.path);
+export const routePaths = routeManifest.map((route) => route.path);
 
 const publicRoutePaths = new Set(['/auth/login', '/auth/setup']);
 const protectedBlankRoutePaths = new Set(['/chatbox', '/chatbox/:conversationId']);

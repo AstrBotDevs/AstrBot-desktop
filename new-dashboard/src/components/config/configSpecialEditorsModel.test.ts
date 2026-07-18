@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizeT2iPreview } from './ConfigSpecialEditors';
+import { normalizeT2iPreview } from './configSpecialEditorsModel';
 
 describe('normalizeT2iPreview', () => {
   it('injects preview variables and the shiki runtime', () => {

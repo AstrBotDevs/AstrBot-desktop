@@ -5,18 +5,14 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getProviderSchema, listProviders, setProviderEnabledById } from '@/api/openapi';
-import { apiResponse, renderRoute } from '@/test/render';
+import { deferred } from '@/test/async';
+import { mockApiResponse, renderRoute } from '@/test/render';
 import ProviderPage from './ProviderPage';
 
 vi.mock('@/api/openapi');
 vi.mock('@/components/config/DynamicConfigForm', () => ({ ConfigGroup: () => <div data-testid="config-group" /> }));
-const translate = vi.hoisted(() => (key: string) => key);
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ i18n: { language: 'en-US' }, t: translate }),
-}));
-
 const schema = (providers: unknown[] = []) =>
-  apiResponse({
+  mockApiResponse({
     config_schema: { provider: { config_template: {} } },
     model_metadata: {},
     provider_sources: [],
@@ -26,16 +22,16 @@ const schema = (providers: unknown[] = []) =>
 describe('ProviderPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(listProviders).mockResolvedValue(apiResponse({ providers: [] }) as never);
+    vi.mocked(listProviders).mockResolvedValue(mockApiResponse({ providers: [] }));
   });
 
   it('renders loading, empty and successful provider states', async () => {
-    let resolve!: (value: unknown) => void;
-    vi.mocked(getProviderSchema).mockReturnValue(new Promise((done) => (resolve = done)) as never);
+    const request = deferred<Awaited<ReturnType<typeof getProviderSchema<false>>>>();
+    vi.mocked(getProviderSchema).mockReturnValue(request.promise);
 
     renderRoute(<ProviderPage />, { route: '/providers' });
     expect(screen.getByText('core.common.loading')).toBeInTheDocument();
-    resolve(schema([]));
+    request.resolve(schema([]));
 
     expect(await screen.findByText('features.provider.providerSources.empty')).toBeInTheDocument();
   });
@@ -52,9 +48,9 @@ describe('ProviderPage', () => {
   it('toggles a provider through the page control', async () => {
     const user = userEvent.setup();
     vi.mocked(getProviderSchema).mockResolvedValue(
-      schema([{ enabled: true, id: 'embed-provider', model: 'embed-v1', provider_type: 'embedding' }]) as never,
+      schema([{ enabled: true, id: 'embed-provider', model: 'embed-v1', provider_type: 'embedding' }]),
     );
-    vi.mocked(setProviderEnabledById).mockResolvedValue(apiResponse({}) as never);
+    vi.mocked(setProviderEnabledById).mockResolvedValue(mockApiResponse({}));
 
     renderRoute(<ProviderPage />, { route: '/providers' });
     await user.click(await screen.findByRole('button', { name: 'features.provider.providers.tabs.embedding' }));

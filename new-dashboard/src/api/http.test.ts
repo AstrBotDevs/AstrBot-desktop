@@ -1,31 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { jsonResponse } from '@/test/http';
+import { memoryStorage } from '@/test/storage';
 import { ApiError, apiRequest, fetchWithAuth } from './http';
-
-function createStorage(entries: Record<string, string> = {}): Storage {
-  const values = new Map(Object.entries(entries));
-  return {
-    get length() {
-      return values.size;
-    },
-    clear: () => values.clear(),
-    getItem: (key) => values.get(key) ?? null,
-    key: (index) => [...values.keys()][index] ?? null,
-    removeItem: (key) => {
-      values.delete(key);
-    },
-    setItem: (key, value) => {
-      values.set(key, value);
-    },
-  };
-}
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    headers: { 'content-type': 'application/json' },
-    status,
-  });
-}
 
 describe('apiRequest', () => {
   it('preserves token and locale headers used by the legacy dashboard', async () => {
@@ -41,7 +18,7 @@ describe('apiRequest', () => {
       {},
       {
         fetch: fetchMock,
-        storage: createStorage({ 'astrbot-locale': 'zh-CN', token: 'secret' }),
+        storage: memoryStorage({ 'astrbot-locale': 'zh-CN', token: 'secret' }),
       },
     );
 
@@ -51,7 +28,7 @@ describe('apiRequest', () => {
   });
 
   it('expires the stored session after a protected API returns 401', async () => {
-    const storage = createStorage({ token: 'expired', user: 'astrbot' });
+    const storage = memoryStorage({ token: 'expired', user: 'astrbot' });
     const onUnauthorized = vi.fn();
 
     await expect(
@@ -81,7 +58,7 @@ describe('apiRequest', () => {
         {
           fetch: vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ message: 'TOTP required' }, 401)),
           onUnauthorized,
-          storage: createStorage(),
+          storage: memoryStorage(),
         },
       ),
     ).rejects.toBeInstanceOf(ApiError);
@@ -96,7 +73,7 @@ describe('apiRequest', () => {
         {},
         {
           fetch: vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 })),
-          storage: createStorage(),
+          storage: memoryStorage(),
         },
       ),
     ).resolves.toBeNull();
@@ -118,7 +95,7 @@ describe('fetchWithAuth', () => {
         },
         {
           fetch: fetchMock,
-          storage: createStorage({ 'astrbot-locale': 'en-US', token: 'secret' }),
+          storage: memoryStorage({ 'astrbot-locale': 'en-US', token: 'secret' }),
         },
       ),
     ).resolves.toBe(response);
@@ -130,7 +107,7 @@ describe('fetchWithAuth', () => {
   });
 
   it('expires the session for unauthorized raw API responses', async () => {
-    const storage = createStorage({ token: 'expired', user: 'astrbot' });
+    const storage = memoryStorage({ token: 'expired', user: 'astrbot' });
     const onUnauthorized = vi.fn();
 
     await fetchWithAuth(

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { jsonResponse } from '@/test/http';
 import {
   compatibilityExitPlan,
   compatibleRequest,
@@ -9,13 +10,6 @@ import {
   updatesApi,
 } from './compat';
 import { ApiError } from './http';
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    headers: { 'content-type': 'application/json' },
-    status,
-  });
-}
 
 describe('legacy-compatible API groups', () => {
   afterEach(() => vi.unstubAllGlobals());

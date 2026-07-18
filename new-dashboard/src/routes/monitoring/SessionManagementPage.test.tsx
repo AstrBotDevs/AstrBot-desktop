@@ -11,27 +11,22 @@ import {
   listSessionGroups,
   listSessionRules,
 } from '@/api/openapi';
-import { apiResponse, renderRoute } from '@/test/render';
+import { mockApiResponse, renderRoute } from '@/test/render';
 import SessionManagementPage from './SessionManagementPage';
 
 vi.mock('@/api/openapi');
-const translate = vi.hoisted(() => (key: string) => key);
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: translate }),
-}));
-
-const rulesResponse = (rules: unknown[] = []) => apiResponse({ rules, total: rules.length });
+const rulesResponse = (rules: unknown[] = []) => mockApiResponse({ rules, total: rules.length });
 
 describe('SessionManagementPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(listSessionGroups).mockResolvedValue(apiResponse({ groups: [] }) as never);
-    vi.mocked(listActiveUmos).mockResolvedValue(apiResponse({ umo_infos: [], umos: [] }) as never);
+    vi.mocked(listSessionGroups).mockResolvedValue(mockApiResponse({ groups: [] }));
+    vi.mocked(listActiveUmos).mockResolvedValue(mockApiResponse({ umo_infos: [], umos: [] }));
   });
 
   it('renders loading and successful session rule data', async () => {
     vi.mocked(listSessionRules).mockResolvedValue(
-      rulesResponse([{ rules: { session_service_config: {} }, umo: 'webchat:friend:user-1' }]) as never,
+      rulesResponse([{ rules: { session_service_config: {} }, umo: 'webchat:friend:user-1' }]),
     );
 
     renderRoute(<SessionManagementPage />, { route: '/session-management' });
@@ -50,8 +45,8 @@ describe('SessionManagementPage', () => {
 
   it('creates a session group through the dialog', async () => {
     const user = userEvent.setup();
-    vi.mocked(listSessionRules).mockResolvedValue(rulesResponse() as never);
-    vi.mocked(createSessionGroup).mockResolvedValue(apiResponse({ id: 'group-new' }) as never);
+    vi.mocked(listSessionRules).mockResolvedValue(rulesResponse());
+    vi.mocked(createSessionGroup).mockResolvedValue(mockApiResponse({ id: 'group-new' }));
 
     renderRoute(<SessionManagementPage />, { route: '/session-management' });
     await screen.findByText('features.session-management.customRules.noRules');
@@ -69,10 +64,8 @@ describe('SessionManagementPage', () => {
 
   it('applies a batch rule update to selected sessions', async () => {
     const user = userEvent.setup();
-    vi.mocked(listSessionRules).mockResolvedValue(
-      rulesResponse([{ rules: {}, umo: 'webchat:friend:user-1' }]) as never,
-    );
-    vi.mocked(batchUpdateSessionService).mockResolvedValue(apiResponse({}) as never);
+    vi.mocked(listSessionRules).mockResolvedValue(rulesResponse([{ rules: {}, umo: 'webchat:friend:user-1' }]));
+    vi.mocked(batchUpdateSessionService).mockResolvedValue(mockApiResponse({}));
 
     renderRoute(<SessionManagementPage />, { route: '/session-management' });
     await screen.findByText('user-1');

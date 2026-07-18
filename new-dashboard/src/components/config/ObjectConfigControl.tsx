@@ -152,7 +152,10 @@ export function ObjectConfigControl({
             }
           }}
           onChange={(event) =>
-            updatePair(pair.id, { value: pair.type === 'number' ? event.target.valueAsNumber : event.target.value })
+            updatePair(pair.id, {
+              value:
+                pair.type === 'number' && event.target.value !== '' ? event.target.valueAsNumber : event.target.value,
+            })
           }
           placeholder={t(
             `core.common.objectEditor.placeholders.${pair.type === 'number' ? 'numberValue' : pair.type === 'json' ? 'jsonValue' : 'stringValue'}`,
