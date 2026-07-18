@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { updatesApi } from '@/api/compat';
+import { consoleAutoScrollPreference } from '@/config/preferences';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { toast } from '@/stores/feedback';
@@ -16,7 +17,7 @@ export default function ConsolePage() {
   const filter = useCallback((item: LogItem) => item.type !== 'trace', []);
   const { items } = useLogFeed(filter, 500);
   const [selected, setSelected] = useState(() => new Set<string>(levels));
-  const [autoScroll, setAutoScroll] = useState(() => localStorage.getItem('console_auto_scroll') !== 'false');
+  const [autoScroll, setAutoScroll] = useState(() => consoleAutoScrollPreference.read());
   const [fullscreen, setFullscreen] = useState(false);
   const [pipOpen, setPipOpen] = useState(false);
   const [pipPackage, setPipPackage] = useState('');
@@ -28,7 +29,7 @@ export default function ConsolePage() {
   const visible = useMemo(() => items.filter((item) => selected.has(item.level ?? 'INFO')), [items, selected]);
 
   useEffect(() => {
-    localStorage.setItem('console_auto_scroll', String(autoScroll));
+    consoleAutoScrollPreference.write(autoScroll);
   }, [autoScroll]);
   useEffect(() => {
     if (!autoScroll || !terminalRef.current) return;

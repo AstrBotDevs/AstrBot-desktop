@@ -6,13 +6,9 @@ import { Markdown } from '@/components/content/Markdown';
 import { Dialog } from '@/components/headless/Dialog';
 import { Button } from '@/components/ui/Button';
 import { DialogActions } from '@/components/ui/DialogActions';
+import { firstNoticeSeenPreference } from '@/config/preferences';
 import { responseData, type JsonObject } from '@/routes/configuration/model';
-
-export const FIRST_NOTICE_SEEN_KEY = 'astrbot:first_notice_seen:v1';
-
-export function firstNoticeContent(data: JsonObject | undefined) {
-  return typeof data?.content === 'string' ? data.content.trim() : '';
-}
+import { firstNoticeContent } from './firstNoticeModel';
 
 export function FirstNoticeDialog() {
   const { i18n, t } = useTranslation();
@@ -20,7 +16,7 @@ export function FirstNoticeDialog() {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (localStorage.getItem(FIRST_NOTICE_SEEN_KEY) === '1') return;
+    if (firstNoticeSeenPreference.read()) return;
     let active = true;
     void getFirstNotice({ query: { locale: i18n.resolvedLanguage } })
       .then((response) => {
@@ -28,7 +24,7 @@ export function FirstNoticeDialog() {
         const data = responseData<JsonObject>(response);
         const next = firstNoticeContent(data);
         if (!next) {
-          localStorage.setItem(FIRST_NOTICE_SEEN_KEY, '1');
+          firstNoticeSeenPreference.write(true);
           return;
         }
         setContent(next);
@@ -42,7 +38,7 @@ export function FirstNoticeDialog() {
 
   const changeOpen = (next: boolean) => {
     setOpen(next);
-    if (!next) localStorage.setItem(FIRST_NOTICE_SEEN_KEY, '1');
+    if (!next) firstNoticeSeenPreference.write(true);
   };
 
   return (

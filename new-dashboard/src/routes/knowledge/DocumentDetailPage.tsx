@@ -10,6 +10,7 @@ import {
   parseKnowledgeDocument,
 } from '@/api/domain';
 import { decodeApiData } from '@/api/response';
+import { paginationDefaults } from '@/config/defaults';
 import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { DialogCancel } from '@/components/ui/Button';
@@ -27,7 +28,7 @@ export default function DocumentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState<number>(paginationDefaults.compactPageSize);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<KnowledgeChunkDto | null>(null);

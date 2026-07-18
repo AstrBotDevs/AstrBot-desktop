@@ -14,6 +14,8 @@ import {
   upsertSessionRule,
 } from '@/api/openapi';
 import { decodeApiData } from '@/api/response';
+import { externalLinks } from '@/config/links';
+import { paginationDefaults } from '@/config/defaults';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { confirmAction, toast } from '@/stores/feedback';
@@ -48,7 +50,7 @@ export default function SessionManagementPage() {
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState<number>(paginationDefaults.compactPageSize);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState(() => new Set<string>());
@@ -453,12 +455,7 @@ export default function SessionManagementPage() {
         <header className="session-rules-toolbar">
           <div className="session-rules-toolbar__title">
             <h1>{text('customRules.title')}</h1>
-            <a
-              aria-label={text('title')}
-              href="https://docs.astrbot.app/use/custom-rules.html"
-              rel="noreferrer"
-              target="_blank"
-            >
+            <a aria-label={text('title')} href={externalLinks.docs.customRules} rel="noreferrer" target="_blank">
               <MdiIcon name="mdi-information-outline" />
             </a>
             <span>

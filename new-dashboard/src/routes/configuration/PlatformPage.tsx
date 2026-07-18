@@ -20,6 +20,8 @@ import { ConfigGroup, MetadataConfigEditor } from '@/components/config/DynamicCo
 import type { ConfigGroupMetadata, ConfigRecord } from '@/components/config/configFormModel';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { DEFAULT_CONFIG_ID } from '@/config/defaults';
+import { platformConsolePreference } from '@/config/preferences';
 import { i18n } from '@/i18n';
 import { confirmAction, toast } from '@/stores/feedback';
 import { acquireActionLock } from '@/utils/actionLock';
@@ -60,18 +62,20 @@ export default function PlatformPage() {
   const [error, setError] = useState('');
   const [editor, setEditor] = useState<EditorState>(null);
   const [selectedType, setSelectedType] = useState('');
-  const [configProfiles, setConfigProfiles] = useState<ConfigProfileOption[]>([{ id: 'default', name: 'default' }]);
+  const [configProfiles, setConfigProfiles] = useState<ConfigProfileOption[]>([
+    { id: DEFAULT_CONFIG_ID, name: DEFAULT_CONFIG_ID },
+  ]);
   const [newConfigData, setNewConfigData] = useState<JsonObject | null>(null);
   const [newConfigMetadata, setNewConfigMetadata] = useState<JsonObject>({});
   const [platformRouteDrafts, setPlatformRouteDrafts] = useState<PlatformRouteDraft[]>([emptyPlatformRoute()]);
   const [knownUmos, setKnownUmos] = useState<string[]>([]);
   const [routesLoading, setRoutesLoading] = useState(false);
   const [configMode, setConfigMode] = useState<'existing' | 'new'>('existing');
-  const [selectedConfigId, setSelectedConfigId] = useState('default');
+  const [selectedConfigId, setSelectedConfigId] = useState(DEFAULT_CONFIG_ID);
   const [creationMode, setCreationMode] = useState<'scan' | 'manual' | ''>('');
   const [saving, setSaving] = useState(false);
   const saveLockRef = useRef({ current: false });
-  const [showConsole, setShowConsole] = useState(() => localStorage.getItem('platformPage_showConsole') === 'true');
+  const [showConsole, setShowConsole] = useState(() => platformConsolePreference.read());
   const [details, setDetails] = useState<{
     kind: 'error' | 'qr' | 'webhook';
     item: JsonObject;
@@ -121,7 +125,7 @@ export default function PlatformPage() {
     };
   }, [loadConfig, loadStats]);
   useEffect(() => {
-    localStorage.setItem('platformPage_showConsole', String(showConsole));
+    platformConsolePreference.write(showConsole);
   }, [showConsole]);
 
   const items = objectList(config.platform, []);
@@ -136,9 +140,9 @@ export default function PlatformPage() {
         name: String(profile.name || recordId(profile, 'conf_id', 'id') || `profile-${index}`),
       }));
       setConfigProfiles(
-        profiles.some((profile) => profile.id === 'default')
+        profiles.some((profile) => profile.id === DEFAULT_CONFIG_ID)
           ? profiles
-          : [{ id: 'default', name: 'default' }, ...profiles],
+          : [{ id: DEFAULT_CONFIG_ID, name: DEFAULT_CONFIG_ID }, ...profiles],
       );
     } catch {
       /* The default profile remains available when the profile list cannot be loaded. */
@@ -187,7 +191,7 @@ export default function PlatformPage() {
   const openCreate = () => {
     setSelectedType('');
     setConfigMode('existing');
-    setSelectedConfigId('default');
+    setSelectedConfigId(DEFAULT_CONFIG_ID);
     setCreationMode('');
     setNewConfigData(null);
     setNewConfigMetadata({});
@@ -406,7 +410,7 @@ export default function PlatformPage() {
           setSelectedConfigId(id);
           if (!editor?.originalId)
             setPlatformRouteDrafts((current) =>
-              current.map((route, index) => (index === 0 ? { ...route, configId: id || 'default' } : route)),
+              current.map((route, index) => (index === 0 ? { ...route, configId: id || DEFAULT_CONFIG_ID } : route)),
             );
         }}
         onTypeChange={chooseType}
@@ -779,7 +783,7 @@ function PlatformEditor({
                           name="platform-config-mode"
                           onChange={() => {
                             onConfigModeChange('existing');
-                            if (!selectedConfigId) onSelectedConfigChange('default');
+                            if (!selectedConfigId) onSelectedConfigChange(DEFAULT_CONFIG_ID);
                           }}
                           type="radio"
                         />
@@ -1096,30 +1100,10 @@ function statusIcon(status: string): `mdi-${string}` {
 }
 
 function tutorialLink(type: string) {
-  const links: Record<string, string> = {
-    qq_official_webhook: 'qqofficial/webhook.html',
-    qq_official: 'qqofficial/websockets.html',
-    aiocqhttp: 'aiocqhttp.html',
-    wecom: 'wecom.html',
-    weixin_oc: 'weixin_oc.html',
-    wecom_ai_bot: 'wecom_ai_bot.html',
-    lark: 'lark.html',
-    telegram: 'telegram.html',
-    dingtalk: 'dingtalk.html',
-    weixin_official_account: 'weixin-official-account.html',
-    discord: 'discord.html',
-    slack: 'slack.html',
-    kook: 'kook.html',
-    vocechat: 'vocechat.html',
-    satori: 'satori/guide.html',
-    misskey: 'misskey.html',
-    line: 'line.html',
-    matrix: 'matrix.html',
-    mattermost: 'mattermost.html',
-  };
-  return `https://docs.astrbot.app/platform/${links[type] || ''}`;
+  return platformTutorialLink(type);
 }
 
 function findTemplateByType(templates: Record<string, JsonObject>, type: string) {
   return Object.values(templates).find((template) => String(template.type || '') === type);
 }
+import { platformTutorialLink } from '@/config/links';

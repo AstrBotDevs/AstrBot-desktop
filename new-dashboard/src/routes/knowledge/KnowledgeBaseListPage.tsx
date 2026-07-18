@@ -286,7 +286,7 @@ export default function KnowledgeBaseListPage() {
           <a
             aria-label={t('core.navigation.documentation')}
             className="knowledge-page-header__docs"
-            href="https://docs.astrbot.app/use/knowledge-base.html"
+            href={externalLinks.docs.knowledgeBase}
             rel="noreferrer"
             target="_blank"
             title={t('core.navigation.documentation')}
@@ -532,3 +532,4 @@ export default function KnowledgeBaseListPage() {
     </div>
   );
 }
+import { externalLinks } from '@/config/links';

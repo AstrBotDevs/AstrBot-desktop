@@ -1,11 +1,11 @@
 import i18next from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
+import { localePreference } from '@/config/preferences';
 import { defaultLocale, isSupportedLocale, supportedLocales } from './locales';
 import { translations } from './translations';
 
-const LOCALE_STORAGE_KEY = 'astrbot-locale';
-const storedLocale = localStorage.getItem(LOCALE_STORAGE_KEY);
+const storedLocale = localePreference.read();
 const initialLocale = storedLocale && isSupportedLocale(storedLocale) ? storedLocale : defaultLocale;
 
 const resources = Object.fromEntries(
@@ -27,7 +27,7 @@ void i18n.use(initReactI18next).init({
 });
 
 i18n.on('languageChanged', (locale) => {
-  localStorage.setItem(LOCALE_STORAGE_KEY, locale);
+  if (isSupportedLocale(locale)) localePreference.write(locale);
   window.dispatchEvent(
     new CustomEvent('astrbot-locale-changed', {
       detail: { locale },

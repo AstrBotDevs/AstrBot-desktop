@@ -1,9 +1,11 @@
+import { storageKeys } from '@/config/storageKeys';
+
 export const AUTH_STORAGE_KEYS = [
-  'user',
-  'token',
-  'change_pwd_hint',
-  'md5_pwd_hint',
-  'password_upgrade_required',
+  storageKeys.auth.username,
+  storageKeys.auth.token,
+  storageKeys.auth.changePasswordHint,
+  storageKeys.auth.md5PasswordHint,
+  storageKeys.auth.passwordUpgradeRequired,
 ] as const;
 
 export type AuthSession = {
@@ -19,11 +21,11 @@ function browserStorage(): Storage | null {
 }
 
 export function readAuthToken(storage = browserStorage()) {
-  return storage?.getItem('token') ?? null;
+  return storage?.getItem(storageKeys.auth.token) ?? null;
 }
 
 export function readStoredUsername(storage = browserStorage()) {
-  return storage?.getItem('user') ?? '';
+  return storage?.getItem(storageKeys.auth.username) ?? '';
 }
 
 export function persistAuthSession(session: AuthSession, storage = browserStorage()) {
@@ -33,11 +35,11 @@ export function persistAuthSession(session: AuthSession, storage = browserStorag
   const md5PwdHint = Boolean(session.md5PwdHint) && !passwordUpgradeRequired;
   const changePwdHint = Boolean(session.changePwdHint) || md5PwdHint;
 
-  storage.setItem('user', session.username);
-  storage.setItem('token', session.token);
-  setBooleanFlag(storage, 'change_pwd_hint', changePwdHint);
-  setBooleanFlag(storage, 'md5_pwd_hint', md5PwdHint);
-  setBooleanFlag(storage, 'password_upgrade_required', passwordUpgradeRequired);
+  storage.setItem(storageKeys.auth.username, session.username);
+  storage.setItem(storageKeys.auth.token, session.token);
+  setBooleanFlag(storage, storageKeys.auth.changePasswordHint, changePwdHint);
+  setBooleanFlag(storage, storageKeys.auth.md5PasswordHint, md5PwdHint);
+  setBooleanFlag(storage, storageKeys.auth.passwordUpgradeRequired, passwordUpgradeRequired);
 }
 
 export function clearAuthSession(storage = browserStorage()) {

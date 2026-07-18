@@ -1,5 +1,6 @@
 import { fetchWithAuth } from '@/api/http';
 import { readAuthToken } from '@/auth/storage';
+import { apiEndpoints } from '@/config/endpoints';
 import type { JsonObject } from '@/routes/configuration/model';
 
 import type { ChatPart } from './model';
@@ -183,7 +184,7 @@ function sseRequest(action: ChatStreamAction) {
   switch (action.kind) {
     case 'send':
       return {
-        endpoint: '/api/v1/chat',
+        endpoint: apiEndpoints.chat,
         body: {
           session_id: action.sessionId,
           message: action.message,
@@ -193,12 +194,12 @@ function sseRequest(action: ChatStreamAction) {
       };
     case 'regenerate':
       return {
-        endpoint: `/api/v1/chat/sessions/${encodeURIComponent(action.sessionId)}/messages/${encodeURIComponent(action.targetMessageId)}/regenerate`,
+        endpoint: apiEndpoints.regenerateChatMessage(action.sessionId, action.targetMessageId),
         body: selection,
       };
     case 'continue':
       return {
-        endpoint: '/api/v1/chat',
+        endpoint: apiEndpoints.chat,
         body: {
           session_id: action.sessionId,
           message: action.message,
@@ -210,7 +211,7 @@ function sseRequest(action: ChatStreamAction) {
       };
     case 'thread':
       return {
-        endpoint: `/api/v1/chat/threads/${encodeURIComponent(action.threadId)}/messages`,
+        endpoint: apiEndpoints.threadMessages(action.threadId),
         body: {
           message: action.message,
           ...selection,
@@ -234,7 +235,7 @@ async function readWebSocketStream(
   const location = dependencies.location ?? window.location;
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const token = readAuthToken(storage);
-  const url = `${protocol}//${location.host}/api/v1/unified-chat/ws?token=${encodeURIComponent(token || '')}`;
+  const url = `${protocol}//${location.host}${apiEndpoints.unifiedChatWebSocket}?token=${encodeURIComponent(token || '')}`;
   const createSocket = dependencies.webSocket ?? ((socketUrl: string) => new WebSocket(socketUrl));
   const socket = createSocket(url);
 

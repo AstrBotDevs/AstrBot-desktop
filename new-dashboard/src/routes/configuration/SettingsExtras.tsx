@@ -22,6 +22,13 @@ import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { Button, DialogCancel } from '@/components/ui/Button';
 import { DialogActions } from '@/components/ui/DialogActions';
+import { githubProxyOptions } from '@/config/defaults';
+import {
+  githubProxyControlPreference,
+  githubProxyEnabledPreference,
+  selectedGithubProxyPreference,
+  sidebarCustomizationPreference,
+} from '@/config/preferences';
 import {
   defaultNavigationItems,
   MORE_GROUP_KEY,
@@ -31,13 +38,7 @@ import {
 import { confirmAction, toast } from '@/stores/feedback';
 import { errorMessage, isObject, objectList, responseData, type JsonObject } from './model';
 
-const SIDEBAR_STORAGE_KEY = 'astrbot_sidebar_customization';
-const GITHUB_PROXIES = [
-  'https://edgeone.gh-proxy.com',
-  'https://hk.gh-proxy.com',
-  'https://gh-proxy.com',
-  'https://gh.dpik.top',
-];
+const GITHUB_PROXIES = githubProxyOptions;
 
 function flatNavigation() {
   const main = defaultNavigationItems.filter((item) => item.title !== MORE_GROUP_KEY);
@@ -83,18 +84,15 @@ export function SidebarCustomizer() {
     dragging.current = null;
   };
   const save = () => {
-    localStorage.setItem(
-      SIDEBAR_STORAGE_KEY,
-      JSON.stringify({
-        mainItems: main.map((item) => item.title),
-        moreItems: more.map((item) => item.title),
-      }),
-    );
+    sidebarCustomizationPreference.write({
+      mainItems: main.map((item) => item.title),
+      moreItems: more.map((item) => item.title),
+    });
     window.dispatchEvent(new CustomEvent('sidebar-customization-changed'));
     setOpen(false);
   };
   const reset = () => {
-    localStorage.removeItem(SIDEBAR_STORAGE_KEY);
+    sidebarCustomizationPreference.remove();
     const defaults = flatNavigation();
     setMain(defaults.main);
     setMore(defaults.more);
@@ -212,17 +210,17 @@ type ProxyStatus = { available: boolean; latency: number };
 export function ProxySelector() {
   const { t } = useTranslation();
   const prefix = 'features.settings.network.proxySelector';
-  const [enabled, setEnabled] = useState(() => localStorage.getItem('githubProxyRadioValue') === '1');
-  const [control, setControl] = useState(() => localStorage.getItem('githubProxyRadioControl') || '0');
-  const [custom, setCustom] = useState(() => localStorage.getItem('selectedGitHubProxy') || '');
+  const [enabled, setEnabled] = useState(() => githubProxyEnabledPreference.read());
+  const [control, setControl] = useState(() => githubProxyControlPreference.read());
+  const [custom, setCustom] = useState(() => selectedGithubProxyPreference.read());
   const [statuses, setStatuses] = useState<Record<number, ProxyStatus>>({});
   const [testing, setTesting] = useState(false);
 
   const persist = (nextEnabled: boolean, nextControl = control, nextCustom = custom) => {
     const selected = !nextEnabled ? '' : nextControl === '-1' ? nextCustom : GITHUB_PROXIES[Number(nextControl)] || '';
-    localStorage.setItem('githubProxyRadioValue', nextEnabled ? '1' : '0');
-    localStorage.setItem('githubProxyRadioControl', nextControl);
-    localStorage.setItem('selectedGitHubProxy', selected);
+    githubProxyEnabledPreference.write(nextEnabled);
+    githubProxyControlPreference.write(nextControl);
+    selectedGithubProxyPreference.write(selected);
   };
   const selectMode = (next: boolean) => {
     setEnabled(next);

@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react';
 
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { paginationDefaults } from '@/config/defaults';
 import { IconButton } from './IconButton';
 
 export type PaginationLabels = {
@@ -20,7 +21,7 @@ export function Pagination({
   onPageSizeChange,
   page,
   pageSize,
-  pageSizeOptions = [10, 20, 50, 100],
+  pageSizeOptions = paginationDefaults.options,
   totalItems,
   totalPages: providedTotalPages,
 }: {
@@ -31,7 +32,7 @@ export function Pagination({
   onPageSizeChange?: (pageSize: number) => void;
   page: number;
   pageSize: number;
-  pageSizeOptions?: number[];
+  pageSizeOptions?: readonly number[];
   totalItems: number;
   totalPages?: number;
 }) {

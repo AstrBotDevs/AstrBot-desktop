@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { firstNoticeContent } from './FirstNoticeDialog';
+import { firstNoticeContent } from './firstNoticeModel';
 
 describe('first notice model', () => {
   it('shows only non-empty Markdown content', () => {

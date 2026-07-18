@@ -26,6 +26,7 @@ import {
   parseProviders,
 } from '@/api/domain';
 import { decodeApiData, expectRecord } from '@/api/response';
+import { paginationDefaults } from '@/config/defaults';
 import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { Button, DialogCancel } from '@/components/ui/Button';
@@ -218,7 +219,7 @@ function Documents({
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState<number>(paginationDefaults.compactPageSize);
   const [total, setTotal] = useState(0);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [mode, setMode] = useState<'file' | 'url'>('file');

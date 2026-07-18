@@ -1,7 +1,7 @@
 import { ApiError, fetchWithAuth, readApiErrorMessage, type RequestDependencies } from './http';
 import { ApiPayloadError, isRecord, unwrapApiData, type UnknownRecord } from './response';
-
-const ANNOUNCEMENT_URL = 'https://cloud.astrbot.app/api/v1/announcement';
+import { apiEndpoints } from '@/config/endpoints';
+import { deploymentEndpoints } from '@/config/links';
 
 type PublicRequestDependencies = Pick<RequestDependencies, 'fetch'>;
 
@@ -20,7 +20,7 @@ export class SystemConfigTwoFactorRequired extends ApiError {
 export const announcementApi = {
   async welcomeNotice(dependencies: PublicRequestDependencies = {}) {
     const fetchImpl = dependencies.fetch ?? fetch;
-    const response = await fetchImpl(ANNOUNCEMENT_URL);
+    const response = await fetchImpl(deploymentEndpoints.announcement);
     const payload = await responsePayload(response);
     if (!response.ok) throw apiError(response, payload);
     const data = unwrapApiData(payload);
@@ -33,7 +33,7 @@ export const announcementApi = {
 export const conversationFilesApi = {
   export: (conversations: ConversationExportItem[], dependencies: RequestDependencies = {}) =>
     requestBlob(
-      '/api/v1/conversations/export',
+      apiEndpoints.conversationExport,
       {
         body: JSON.stringify({ conversations }),
         headers: { 'Content-Type': 'application/json' },
@@ -45,7 +45,7 @@ export const conversationFilesApi = {
 
 export const backupFilesApi = {
   download: (filename: string, dependencies: RequestDependencies = {}) =>
-    requestBlob(`/api/v1/backups/${encodeURIComponent(filename)}`, {}, dependencies),
+    requestBlob(apiEndpoints.backup(filename), {}, dependencies),
 };
 
 export const systemConfigApi = {
@@ -53,7 +53,7 @@ export const systemConfigApi = {
     const headers = new Headers({ 'Content-Type': 'application/json' });
     if (twoFactorCode) headers.set('X-2FA-Code', twoFactorCode);
     const response = await fetchWithAuth(
-      '/api/v1/system-config',
+      apiEndpoints.systemConfig,
       { body: JSON.stringify(config), headers, method: 'PUT' },
       { ...dependencies, skipUnauthorizedHandling: true },
     );
@@ -80,7 +80,7 @@ export const pluginExtensionApi = {
     const method = pluginExtensionMethod(action);
     const endpoint = validPluginEndpoint(endpointValue);
     const query = queryString(params);
-    const path = `/api/v1/plugins/extensions/${encodeURIComponent(pluginName)}/${endpoint}${query}`;
+    const path = apiEndpoints.pluginExtension(pluginName, endpoint, query);
     const init: RequestInit = { method: method.toUpperCase() };
     if (body !== undefined && method !== 'get') {
       init.body = JSON.stringify(body);

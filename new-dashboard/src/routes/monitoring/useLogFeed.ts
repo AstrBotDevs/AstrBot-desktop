@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { getLogHistory } from '@/api/openapi';
 import { responseData } from '@/api/response';
 import { fetchWithAuth } from '@/api/http';
+import { apiEndpoints } from '@/config/endpoints';
 import { logIdentity, parseSseChunk, type LogItem } from './model';
 
 const delay = (milliseconds: number, signal: AbortSignal) =>
@@ -69,7 +70,7 @@ export function useLogFeed(predicate: (log: LogItem) => boolean, maxItems = 300,
       while (!controller.signal.aborted && attempt < 10) {
         try {
           setStatus('connecting');
-          const response = await fetchWithAuth('/api/v1/logs/live', {
+          const response = await fetchWithAuth(apiEndpoints.liveLogs, {
             credentials: 'include',
             signal: controller.signal,
           });

@@ -23,6 +23,7 @@ import {
 } from '@/api/openapi';
 import { type PluginDto, parsePlugins } from '@/api/domain';
 import { decodeApiData } from '@/api/response';
+import { pinnedPluginsPreference, selectedPluginSourcePreference } from '@/config/preferences';
 import { Markdown } from '@/components/content/Markdown';
 import { ConfigGroup } from '@/components/config/DynamicConfigForm';
 import type { ConfigGroupMetadata } from '@/components/config/configFormModel';
@@ -72,7 +73,6 @@ import { PluginDetail } from './PluginDetail';
 
 type ExtensionTab = 'installed' | 'components' | 'mcp' | 'skills' | 'market';
 const validTabs: ExtensionTab[] = ['installed', 'market', 'components', 'mcp', 'skills'];
-const PINNED_KEY = 'astrbot-extension-pinned';
 
 export default function ExtensionPage() {
   const { pluginId: routePluginId } = useParams();
@@ -142,7 +142,7 @@ function InstalledPlugins() {
   const [search, setSearch] = useState('');
   const [pinned, setPinned] = useState<string[]>(() => {
     try {
-      return JSON.parse(localStorage.getItem(PINNED_KEY) || '[]');
+      return pinnedPluginsPreference.read();
     } catch {
       return [];
     }
@@ -350,7 +350,7 @@ function InstalledPlugins() {
   const togglePin = (id: string) => {
     const next = pinned.includes(id) ? pinned.filter((name) => name !== id) : [id, ...pinned];
     setPinned(next);
-    localStorage.setItem(PINNED_KEY, JSON.stringify(next));
+    pinnedPluginsPreference.write(next);
   };
   const visible = useMemo(
     () =>
@@ -977,7 +977,7 @@ function PluginMarket() {
   const e = (key: string, options?: Record<string, unknown>) => t(`features.extension.${key}`, options);
   const [items, setItems] = useState<PluginDto[]>([]);
   const [sources, setSources] = useState<JsonObject[]>([]);
-  const [selectedSource, setSelectedSource] = useState(() => localStorage.getItem('selectedPluginSource') || '');
+  const [selectedSource, setSelectedSource] = useState(() => selectedPluginSourcePreference.read());
   const [keyword, setKeyword] = useState('');
   const [debouncedKeyword, setDebouncedKeyword] = useState('');
   const [category, setCategory] = useState('all');
@@ -1109,8 +1109,8 @@ function PluginMarket() {
   const chooseSource = (url: string) => {
     setSelectedSource(url);
     setPage(1);
-    if (url) localStorage.setItem('selectedPluginSource', url);
-    else localStorage.removeItem('selectedPluginSource');
+    if (url) selectedPluginSourcePreference.write(url);
+    else selectedPluginSourcePreference.remove();
   };
   const persistSources = async (next: JsonObject[]) => {
     await replacePluginSources({

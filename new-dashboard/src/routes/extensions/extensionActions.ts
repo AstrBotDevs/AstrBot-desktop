@@ -1,10 +1,11 @@
 import { isObject, type JsonObject } from '@/routes/configuration/model';
+import { githubProxyEnabledPreference, selectedGithubProxyPreference } from '@/config/preferences';
 
 export function getSelectedGitHubProxy(
   storage: Storage | null = typeof window === 'undefined' ? null : window.localStorage,
 ) {
-  if (!storage || storage.getItem('githubProxyRadioValue') !== '1') return '';
-  return storage.getItem('selectedGitHubProxy') || '';
+  if (!storage || !githubProxyEnabledPreference.read(storage)) return '';
+  return selectedGithubProxyPreference.read(storage);
 }
 
 export function pluginUpdateTargets(items: JsonObject[]) {

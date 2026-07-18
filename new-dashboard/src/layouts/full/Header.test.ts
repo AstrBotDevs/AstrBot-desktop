@@ -3,10 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   getModeSwitchTarget,
   headerUpdateRuntime,
-  runHeaderUpdateAction,
   LAST_BOT_ROUTE_KEY,
   LAST_CHAT_ROUTE_KEY,
-} from './Header';
+  runHeaderUpdateAction,
+} from './headerModel';
 
 function storage(values: Record<string, string>): Pick<Storage, 'getItem'> {
   return { getItem: (key) => values[key] ?? null };

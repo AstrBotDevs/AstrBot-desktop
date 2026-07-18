@@ -1350,7 +1350,7 @@ export function McpSection() {
             <li>
               <strong>{m('dialogs.syncProvider.steps.selectProvider')}</strong>
               <p>
-                <a href="https://www.modelscope.cn/mcp" rel="noreferrer" target="_blank">
+                <a href={externalLinks.modelScope.mcp} rel="noreferrer" target="_blank">
                   ModelScope
                 </a>{' '}
                 — {m('dialogs.syncProvider.providers.description')}
@@ -1359,7 +1359,7 @@ export function McpSection() {
             <li>
               <strong>{m('dialogs.syncProvider.steps.configureAuth')}</strong>
               <p>
-                <a href="https://modelscope.cn/my/myaccesstoken" rel="noreferrer" target="_blank">
+                <a href={externalLinks.modelScope.accessToken} rel="noreferrer" target="_blank">
                   {m('dialogs.syncProvider.buttons.getToken')}
                 </a>
               </p>
@@ -2422,3 +2422,4 @@ function NeoTable({
     </section>
   );
 }
+import { externalLinks } from '@/config/links';

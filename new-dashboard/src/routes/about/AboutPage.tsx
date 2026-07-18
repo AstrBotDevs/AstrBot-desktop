@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 
+import { externalLinks } from '@/config/links';
 import { useDesktop } from '@/desktop/DesktopProvider';
 
 export default function AboutPage() {
@@ -14,12 +15,12 @@ export default function AboutPage() {
         <div className="about-hero__actions">
           <button
             className="button--primary"
-            onClick={() => void openExternalUrl('https://github.com/AstrBotDevs/AstrBot')}
+            onClick={() => void openExternalUrl(externalLinks.project.repository)}
             type="button"
           >
             {t(`${prefix}.starButton`)}
           </button>
-          <button onClick={() => void openExternalUrl('https://github.com/AstrBotDevs/AstrBot/issues')} type="button">
+          <button onClick={() => void openExternalUrl(externalLinks.project.issues)} type="button">
             {t(`${prefix}.issueButton`)}
           </button>
         </div>

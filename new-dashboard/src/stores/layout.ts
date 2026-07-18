@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 
-export const SIDEBAR_OPENED_ITEMS_KEY = 'sidebar_openedItems';
+import { legacyThemePreference, openedSidebarGroupsPreference, themeModePreference } from '@/config/preferences';
+import { storageKeys } from '@/config/storageKeys';
+
+export const SIDEBAR_OPENED_ITEMS_KEY = storageKeys.layout.openedSidebarGroups;
 export const SIDEBAR_MIN_WIDTH = 200;
 export const SIDEBAR_MAX_WIDTH = 300;
 export const SIDEBAR_DEFAULT_WIDTH = 235;
@@ -9,13 +12,7 @@ export const SIDEBAR_COLLAPSED_WIDTH = 80;
 export type ThemeMode = 'light' | 'dark' | 'system';
 
 function readOpenedGroups(): string[] {
-  if (typeof localStorage === 'undefined') return [];
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem(SIDEBAR_OPENED_ITEMS_KEY) ?? '[]');
-    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
-  } catch {
-    return [];
-  }
+  return openedSidebarGroupsPreference.read();
 }
 
 export function resolveInitialThemeMode(storedMode: string | null, legacyTheme: string | null): ThemeMode {
@@ -29,7 +26,7 @@ export function resolveInitialThemeMode(storedMode: string | null, legacyTheme: 
 
 function readThemeMode(): ThemeMode {
   if (typeof localStorage === 'undefined') return 'system';
-  return resolveInitialThemeMode(localStorage.getItem('themeMode'), localStorage.getItem('uiTheme'));
+  return resolveInitialThemeMode(themeModePreference.read(), legacyThemePreference.read());
 }
 
 export function clampSidebarWidth(width: number) {
@@ -69,15 +66,15 @@ export const useLayoutStore = create<LayoutState>()((set) => ({
   setDrawerOpen: (drawerOpen) => set({ drawerOpen }),
   setChatSidebarOpen: (chatSidebarOpen) => set({ chatSidebarOpen }),
   setOpenedGroups: (openedGroups) => {
-    localStorage.setItem(SIDEBAR_OPENED_ITEMS_KEY, JSON.stringify(openedGroups));
+    openedSidebarGroupsPreference.write(openedGroups);
     set({ openedGroups });
   },
   setSidebarWidth: (sidebarWidth) => set({ sidebarWidth: clampSidebarWidth(sidebarWidth) }),
   setThemeMode: (themeMode) => {
     const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
     const isDark = resolveDarkTheme(themeMode, prefersDark);
-    localStorage.setItem('themeMode', themeMode);
-    localStorage.setItem('uiTheme', isDark ? 'PurpleThemeDark' : 'PurpleTheme');
+    themeModePreference.write(themeMode);
+    legacyThemePreference.write(isDark ? 'PurpleThemeDark' : 'PurpleTheme');
     document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
     set({ themeMode });
   },

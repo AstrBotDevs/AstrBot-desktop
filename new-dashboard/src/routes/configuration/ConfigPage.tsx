@@ -13,6 +13,7 @@ import {
 } from '@/api/openapi';
 import { type ConfigProfileDto, parseConfigProfile, parseConfigProfiles } from '@/api/domain';
 import { decodeApiData } from '@/api/response';
+import { DEFAULT_CONFIG_ID } from '@/config/defaults';
 import { MetadataConfigEditor } from '@/components/config/DynamicConfigForm';
 import { isConfigRecord, type ConfigRecord } from '@/components/config/configFormModel';
 import { MdiIcon } from '@/components/icons/MdiIcon';
@@ -27,7 +28,7 @@ type ProfileOperation = { mode: 'copy' | 'rename'; profile: { id: string; name: 
 export default function ConfigPage() {
   const { t } = useTranslation();
   const [profiles, setProfiles] = useState<ConfigProfileDto[]>([]);
-  const [selected, setSelected] = useState('default');
+  const [selected, setSelected] = useState(DEFAULT_CONFIG_ID);
   const [config, setConfig] = useState<ConfigRecord>({});
   const [metadata, setMetadata] = useState<ConfigRecord>({});
   const [saved, setSaved] = useState('{}');
@@ -84,7 +85,9 @@ export default function ConfigPage() {
       id: recordId(profile, 'conf_id', 'id') || `profile-${index}`,
       name: String(profile.name || recordId(profile, 'conf_id', 'id') || `profile-${index}`),
     }));
-    return items.some((profile) => profile.id === 'default') ? items : [{ id: 'default', name: 'default' }, ...items];
+    return items.some((profile) => profile.id === DEFAULT_CONFIG_ID)
+      ? items
+      : [{ id: DEFAULT_CONFIG_ID, name: DEFAULT_CONFIG_ID }, ...items];
   }, [profiles]);
 
   const dirty = JSON.stringify(config) !== saved;
@@ -133,7 +136,7 @@ export default function ConfigPage() {
       );
       await loadProfiles();
       setNewName('');
-      setSelected(recordId(data, 'conf_id', 'id') || 'default');
+      setSelected(recordId(data, 'conf_id', 'id') || DEFAULT_CONFIG_ID);
       toast.success(t('features.config.messages.saveSuccess'));
     } catch (cause) {
       toast.error(errorMessage(cause, t('features.config.configManagement.createFailed')));
@@ -142,7 +145,7 @@ export default function ConfigPage() {
 
   const remove = async (id: string) => {
     if (
-      id === 'default' ||
+      id === DEFAULT_CONFIG_ID ||
       !(await confirmAction({
         danger: true,
         title: t('features.config.configManagement.title'),
@@ -152,7 +155,7 @@ export default function ConfigPage() {
       return;
     try {
       await deleteConfigProfile({ path: { config_id: id } });
-      if (selected === id) setSelected('default');
+      if (selected === id) setSelected(DEFAULT_CONFIG_ID);
       await loadProfiles();
       toast.success(t('features.config.messages.deleteSuccess'));
     } catch (cause) {
@@ -373,7 +376,7 @@ export default function ConfigPage() {
               >
                 <MdiIcon name="mdi-content-copy" />
               </button>
-              {profile.id !== 'default' && (
+              {profile.id !== DEFAULT_CONFIG_ID && (
                 <>
                   <button
                     aria-label={t('features.config.configManagement.editConfig')}

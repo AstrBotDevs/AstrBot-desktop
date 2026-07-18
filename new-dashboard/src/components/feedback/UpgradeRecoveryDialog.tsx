@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import { authApi } from '@/api/auth';
 import { statsApi } from '@/api/compat';
+import { sessionStorageKeys } from '@/config/storageKeys';
 import {
   getLegacyStartTime,
   normalizeVersion,
@@ -40,7 +41,10 @@ export function UpgradeRecoveryDialog() {
 
   const show = useCallback(async (next: UpgradeRecoveryDetail) => {
     if (!versionsMismatch(next.version, next.dashboard_version)) return;
-    const dismissKey = `astrbot-upgrade-recovery-dismissed:${displayVersion(next.version)}:${displayVersion(next.dashboard_version)}`;
+    const dismissKey = sessionStorageKeys.upgradeRecoveryDismissed(
+      displayVersion(next.version),
+      displayVersion(next.dashboard_version),
+    );
     if (!next.blocking && sessionStorage.getItem(dismissKey)) return;
     initialStartTime.current = await getLegacyStartTime().catch(() => null);
     setDetail(next);
@@ -68,7 +72,10 @@ export function UpgradeRecoveryDialog() {
   const dismiss = () => {
     if (!detail || detail.blocking || restarting) return;
     sessionStorage.setItem(
-      `astrbot-upgrade-recovery-dismissed:${displayVersion(detail.version)}:${displayVersion(detail.dashboard_version)}`,
+      sessionStorageKeys.upgradeRecoveryDismissed(
+        displayVersion(detail.version),
+        displayVersion(detail.dashboard_version),
+      ),
       '1',
     );
     sessionStorage.removeItem(UPGRADE_RECOVERY_TOKEN_KEY);

@@ -1,3 +1,5 @@
+import { sidebarCustomizationPreference } from '@/config/preferences';
+
 export type NavigationItem = {
   children?: NavigationItem[];
   icon: `mdi-${string}`;
@@ -122,11 +124,5 @@ export function resolveNavigationItems(items: NavigationItem[], customization: S
 }
 
 export function readNavigationItems() {
-  if (typeof localStorage === 'undefined') return defaultNavigationItems;
-  try {
-    const stored = localStorage.getItem('astrbot_sidebar_customization');
-    return resolveNavigationItems(defaultNavigationItems, stored ? JSON.parse(stored) : null);
-  } catch {
-    return defaultNavigationItems;
-  }
+  return resolveNavigationItems(defaultNavigationItems, sidebarCustomizationPreference.read());
 }

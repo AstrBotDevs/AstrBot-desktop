@@ -17,36 +17,19 @@ import { useDesktopStore } from '@/stores/desktop';
 import { useDesktop } from '@/desktop/DesktopProvider';
 import { localeMetadata, localeRegistry } from '@/i18n/locales';
 import {
+  getModeSwitchTarget,
+  headerUpdateRuntime,
+  LAST_BOT_ROUTE_KEY,
+  LAST_CHAT_ROUTE_KEY,
+  runHeaderUpdateAction,
+} from './headerModel';
+import {
   passwordWarningFromFlags,
   persistPasswordSecurityFlags,
   readPasswordWarning,
   type PasswordSecurityFlags,
   type PasswordWarning,
 } from './shellStartup';
-
-export const LAST_BOT_ROUTE_KEY = 'astrbot:last_bot_route';
-export const LAST_CHAT_ROUTE_KEY = 'astrbot:last_chat_route';
-
-export function headerUpdateRuntime(isDesktop: boolean) {
-  return isDesktop ? 'desktop' : 'web';
-}
-
-export async function runHeaderUpdateAction(
-  isDesktop: boolean,
-  desktopAction: () => Promise<unknown>,
-  webAction: () => Promise<unknown>,
-) {
-  return headerUpdateRuntime(isDesktop) === 'desktop' ? desktopAction() : webAction();
-}
-
-export function getModeSwitchTarget(pathname: string, storage: Pick<Storage, 'getItem'>) {
-  if (pathname === '/chat' || pathname.startsWith('/chat/')) {
-    const lastBotRoute = storage.getItem(LAST_BOT_ROUTE_KEY) || '/';
-    return lastBotRoute.startsWith('/chat') ? '/' : lastBotRoute;
-  }
-  const lastChatId = storage.getItem(LAST_CHAT_ROUTE_KEY);
-  return lastChatId ? `/chat/${lastChatId}` : '/chat';
-}
 
 const themeOptions: Array<{ icon: `mdi-${string}`; mode: ThemeMode; labelKey: string }> = [
   { icon: 'mdi-white-balance-sunny', mode: 'light', labelKey: 'core.header.buttons.theme.light' },

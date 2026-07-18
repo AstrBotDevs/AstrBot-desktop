@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 
 import { registerBotType } from '@/api/openapi';
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { DEFAULT_FEISHU_DOMAIN } from '@/config/defaults';
 import { errorMessage, type JsonObject, responseData } from './model';
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
@@ -57,7 +58,7 @@ export function PlatformRegistrationPanel({
     };
     const payload = (action: 'start' | 'poll', extra: JsonObject = {}) => ({
       action,
-      platform_config: { ...configRef.current, domain: configRef.current.domain || 'https://open.feishu.cn' },
+      platform_config: { ...configRef.current, domain: configRef.current.domain || DEFAULT_FEISHU_DOMAIN },
       ...extra,
     });
     const poll = async (current: RegistrationFlow) => {

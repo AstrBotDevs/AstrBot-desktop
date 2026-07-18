@@ -1,25 +1,25 @@
 import { useEffect, useState } from 'react';
 
+import { chatTransportPreference, selectedModelPreference, selectedProviderPreference } from '@/config/preferences';
+
 export type TransportMode = 'sse' | 'websocket';
 export type SettingsSubmenu = 'transport' | 'language' | null;
 
 export function useChatPreferences() {
-  const [provider, setProvider] = useState(() => localStorage.getItem('selectedProvider') || '');
-  const [model, setModel] = useState(() => localStorage.getItem('selectedProviderModel') || '');
+  const [provider, setProvider] = useState(() => selectedProviderPreference.read());
+  const [model, setModel] = useState(() => selectedModelPreference.read());
   const [streaming, setStreaming] = useState(true);
-  const [transportMode, setTransportMode] = useState<TransportMode>(() =>
-    localStorage.getItem('chat.transportMode') === 'websocket' ? 'websocket' : 'sse',
-  );
+  const [transportMode, setTransportMode] = useState<TransportMode>(() => chatTransportPreference.read());
   const [settingsSubmenu, setSettingsSubmenu] = useState<SettingsSubmenu>(null);
 
   useEffect(() => {
-    localStorage.setItem('selectedProvider', provider);
+    selectedProviderPreference.write(provider);
   }, [provider]);
   useEffect(() => {
-    localStorage.setItem('selectedProviderModel', model);
+    selectedModelPreference.write(model);
   }, [model]);
   useEffect(() => {
-    localStorage.setItem('chat.transportMode', transportMode);
+    chatTransportPreference.write(transportMode);
   }, [transportMode]);
 
   return {

@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import { getPluginById, getPluginPageById } from '@/api/openapi';
 import { isRecord } from '@/api/response';
 import { pluginExtensionApi } from '@/api/services';
+import { localePreference } from '@/config/preferences';
 import { errorMessage, JsonObject, responseData } from '@/routes/configuration/model';
 
 const CHANNEL = 'astrbot-plugin-page';
@@ -47,7 +48,7 @@ export default function PluginPage() {
           displayName: plugin.display_name || plugin.name || pluginName,
           pageName,
           pageTitle: page.title || page.display_name || pageName,
-          locale: localStorage.getItem('astrbot-locale') || 'zh-CN',
+          locale: localePreference.read(),
           i18n: plugin.i18n || {},
           isDark: document.documentElement.dataset.theme === 'dark',
         },

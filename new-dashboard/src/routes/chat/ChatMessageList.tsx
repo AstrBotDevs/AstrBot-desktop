@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import { Markdown } from '@/components/content/Markdown';
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { apiEndpoints } from '@/config/endpoints';
 import type { JsonObject } from '@/routes/configuration/model';
 import type { ChatPart, ChatRecord } from './model';
 import './ChatMessageList.scss';
@@ -694,8 +695,8 @@ function defaultPartUrl(part: ChatPart) {
   if (embedded && typeof embedded === 'object' && typeof (embedded as JsonObject).url === 'string')
     return String((embedded as JsonObject).url);
   if (typeof part.url === 'string') return part.url;
-  if (part.attachment_id) return `/api/chat/attachment/${encodeURIComponent(String(part.attachment_id))}`;
-  return `/api/chat/get_file?filename=${encodeURIComponent(String(part.stored_filename || part.filename || ''))}`;
+  if (part.attachment_id) return apiEndpoints.legacyChatAttachment(String(part.attachment_id));
+  return apiEndpoints.legacyChatFile(String(part.stored_filename || part.filename || ''));
 }
 
 function attachmentName(part: ChatPart) {

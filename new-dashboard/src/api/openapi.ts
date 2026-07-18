@@ -3,6 +3,7 @@ import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig 
 import { readAuthToken } from '@/auth/storage';
 import { ApiError, expireUnauthorizedSession, readApiErrorMessage } from '@/api/http';
 import { client } from '@/api/generated/openapi-v1/sdk.gen';
+import { localePreference } from '@/config/preferences';
 
 type OpenApiClientOptions = {
   onUnauthorized?: () => void;
@@ -21,7 +22,7 @@ export function createOpenApiAxiosClient({
   const instance = axios.create();
   instance.interceptors.request.use((config) => {
     const token = readAuthToken(storage);
-    const locale = storage?.getItem('astrbot-locale');
+    const locale = localePreference.read(storage);
     if (token && !config.headers.has('Authorization')) {
       setHeader(config.headers, 'Authorization', `Bearer ${token}`);
     }

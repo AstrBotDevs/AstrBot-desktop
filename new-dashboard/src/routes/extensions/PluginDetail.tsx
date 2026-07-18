@@ -19,6 +19,7 @@ import { decodeApiData } from '@/api/response';
 import { Markdown } from '@/components/content/Markdown';
 import { MonacoEditor } from '@/components/editor/MonacoEditor';
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { selectedPluginSourcePreference } from '@/config/preferences';
 import { confirmAction, toast } from '@/stores/feedback';
 import {
   errorMessage,
@@ -80,7 +81,7 @@ export function PluginDetail({ pluginId: id, source }: { pluginId: string; sourc
     setError('');
     try {
       if (source === 'market') {
-        const registry = localStorage.getItem('selectedPluginSource') || undefined;
+        const registry = selectedPluginSourcePreference.read() || undefined;
         const market = marketPluginList(
           responseData(
             await listPluginMarket({ query: { custom_registry: registry, keyword: id, page: 1, page_size: 1000 } }),
@@ -344,7 +345,7 @@ export function PluginDetail({ pluginId: id, source }: { pluginId: string; sourc
         onInstalled={() => navigate('/extension#installed')}
         onOpenChange={setInstalling}
         open={installing}
-        registryUrl={source === 'market' ? localStorage.getItem('selectedPluginSource') || '' : ''}
+        registryUrl={source === 'market' ? selectedPluginSourcePreference.read() : ''}
       />
     </div>
   );

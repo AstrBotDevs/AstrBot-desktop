@@ -1,8 +1,9 @@
 import type { CompatibleApiResponse, AuthSessionResponse } from '@/api/auth';
 import { recoveryApi } from '@/api/compat';
+import { sessionStorageKeys, storageKeys } from '@/config/storageKeys';
 
 export const UPGRADE_RECOVERY_EVENT = 'astrbot-upgrade-recovery';
-export const UPGRADE_RECOVERY_TOKEN_KEY = 'astrbot-upgrade-recovery-token';
+export const UPGRADE_RECOVERY_TOKEN_KEY = sessionStorageKeys.upgradeRecoveryToken;
 
 export type LegacyVersionData = {
   dashboard_version?: string;
@@ -63,5 +64,5 @@ export async function restartLegacyCore(token = recoveryToken(), fetchImpl: type
 }
 
 export function recoveryToken() {
-  return localStorage.getItem('token') || sessionStorage.getItem(UPGRADE_RECOVERY_TOKEN_KEY) || '';
+  return localStorage.getItem(storageKeys.auth.token) || sessionStorage.getItem(UPGRADE_RECOVERY_TOKEN_KEY) || '';
 }

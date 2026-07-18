@@ -5,6 +5,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { ExpandCollapse } from '@/components/motion/ExpandCollapse';
 import { listPlugins } from '@/api/openapi';
+import { storageKeys } from '@/config/storageKeys';
 import { objectList, responseData } from '@/routes/configuration/model';
 import { SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, useLayoutStore } from '@/stores/layout';
 import {
@@ -94,7 +95,7 @@ export function Sidebar() {
   useEffect(() => {
     const refresh = () => setBaseItems(readNavigationItems());
     const onStorage = (event: StorageEvent) => {
-      if (event.key === 'astrbot_sidebar_customization') refresh();
+      if (event.key === storageKeys.layout.sidebarCustomization) refresh();
     };
     window.addEventListener('storage', onStorage);
     window.addEventListener('sidebar-customization-changed', refresh);

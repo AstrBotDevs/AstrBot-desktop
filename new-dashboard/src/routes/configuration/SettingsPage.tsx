@@ -14,6 +14,9 @@ import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { Button, DialogCancel } from '@/components/ui/Button';
 import { DialogActions } from '@/components/ui/DialogActions';
+import { themeDefaults } from '@/config/defaults';
+import { externalLinks } from '@/config/links';
+import { themePrimaryPreference, themeSecondaryPreference } from '@/config/preferences';
 import { useDesktop } from '@/desktop/DesktopProvider';
 import { useDesktopStore } from '@/stores/desktop';
 import { confirmAction, toast } from '@/stores/feedback';
@@ -120,8 +123,8 @@ export default function SettingsPage() {
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [twoFactorError, setTwoFactorError] = useState('');
   const [pendingConfig, setPendingConfig] = useState<{ config: ConfigRecord; snapshot: string } | null>(null);
-  const [primary, setPrimary] = useState(() => localStorage.getItem('themePrimary') || '#3c96ca');
-  const [secondary, setSecondary] = useState(() => localStorage.getItem('themeSecondary') || '#2f86bd');
+  const [primary, setPrimary] = useState(() => themePrimaryPreference.read() || themeDefaults.primary);
+  const [secondary, setSecondary] = useState(() => themeSecondaryPreference.read() || themeDefaults.secondary);
   const createKeyLockRef = useRef({ current: false });
   const restartLockRef = useRef({ current: false });
 
@@ -242,20 +245,20 @@ export default function SettingsPage() {
   };
 
   const applyColor = (name: 'primary' | 'secondary', value: string) => {
-    const storageKey = name === 'primary' ? 'themePrimary' : 'themeSecondary';
-    localStorage.setItem(storageKey, value);
+    const preference = name === 'primary' ? themePrimaryPreference : themeSecondaryPreference;
+    preference.write(value);
     document.documentElement.style.setProperty(`--astrbot-${name}`, value);
     if (name === 'primary') setPrimary(value);
     else setSecondary(value);
   };
 
   const resetColors = () => {
-    localStorage.removeItem('themePrimary');
-    localStorage.removeItem('themeSecondary');
+    themePrimaryPreference.remove();
+    themeSecondaryPreference.remove();
     document.documentElement.style.removeProperty('--astrbot-primary');
     document.documentElement.style.removeProperty('--astrbot-secondary');
-    setPrimary('#3c96ca');
-    setSecondary('#2f86bd');
+    setPrimary(themeDefaults.primary);
+    setSecondary(themeDefaults.secondary);
   };
 
   const addKey = async () => {
@@ -389,31 +392,31 @@ export default function SettingsPage() {
       description: t('features.settings.about.resources.changelog'),
       icon: 'mdi-file-document-outline' as const,
       label: t('core.navigation.changelog'),
-      url: 'https://github.com/AstrBotDevs/AstrBot/releases',
+      url: externalLinks.project.releases,
     },
     {
       description: t('features.settings.about.resources.documentation'),
       icon: 'mdi-book-open-variant' as const,
       label: t('core.navigation.documentation'),
-      url: 'https://docs.astrbot.app/',
+      url: externalLinks.docs.home,
     },
     {
       description: t('features.settings.about.resources.troubleshooting'),
       icon: 'mdi-frequently-asked-questions' as const,
       label: t('core.navigation.faq'),
-      url: 'https://docs.astrbot.app/faq.html',
+      url: externalLinks.docs.faq,
     },
     {
       description: t('features.settings.about.resources.github'),
       icon: 'mdi-github' as const,
       label: t('core.navigation.github'),
-      url: 'https://github.com/AstrBotDevs/AstrBot',
+      url: externalLinks.project.repository,
     },
     {
       description: t('features.welcome.resources.afdianDesc'),
       icon: 'mdi-hand-heart' as const,
       label: t('features.welcome.resources.afdianTitle'),
-      url: 'https://afdian.com/a/astrbot_team',
+      url: externalLinks.afdian,
     },
   ];
   const pendingDashboard =
@@ -597,7 +600,7 @@ export default function SettingsPage() {
                             {t(`${prefix}.apiKey.manageTitle`)}{' '}
                             <a
                               aria-label={t(`${prefix}.apiKey.docsLink`)}
-                              href="https://docs.astrbot.app/dev/openapi.html"
+                              href={externalLinks.docs.openApi}
                               rel="noreferrer"
                               target="_blank"
                             >

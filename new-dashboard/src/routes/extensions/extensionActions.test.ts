@@ -22,9 +22,22 @@ describe('extension actions', () => {
       ['githubProxyRadioValue', '1'],
       ['selectedGitHubProxy', 'https://proxy.example'],
     ]);
-    const storage = { getItem: (key: string) => values.get(key) ?? null } as Storage;
+    const storage = {
+      get length() {
+        return values.size;
+      },
+      clear: () => values.clear(),
+      getItem: (key: string) => values.get(key) ?? null,
+      key: (index: number) => [...values.keys()][index] ?? null,
+      removeItem: (key: string) => {
+        values.delete(key);
+      },
+      setItem: (key: string, value: string) => {
+        values.set(key, value);
+      },
+    };
     expect(getSelectedGitHubProxy(storage)).toBe('https://proxy.example');
-    values.set('githubProxyRadioValue', '0');
+    values.set('githubProxyRadioValue', '{"data":false,"version":1}');
     expect(getSelectedGitHubProxy(storage)).toBe('');
   });
 

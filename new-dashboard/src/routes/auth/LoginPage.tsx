@@ -6,6 +6,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { authApi } from '@/api/auth';
 import { publicApi, type PublicVersionData } from '@/api/compat';
+import { externalLinks } from '@/config/links';
 import {
   formatRecoveryCode,
   isRecoveryCodeComplete,
@@ -225,7 +226,7 @@ function VersionStatus({ versions }: { versions: PublicVersionData }) {
           <summary>{t('features.auth.versions.mismatchTooltip')}</summary>
           {webMismatch && <p>{t('features.auth.versions.webuiMismatchMessage')}</p>}
           {runtimeMismatch && <p>{t('features.auth.versions.runtimeMismatchMessage')}</p>}
-          <a href="https://docs.astrbot.app/faq.html" rel="noreferrer" target="_blank">
+          <a href={externalLinks.docs.faq} rel="noreferrer" target="_blank">
             {t('features.auth.versions.faq')}
           </a>
         </details>

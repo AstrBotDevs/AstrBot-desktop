@@ -1,4 +1,5 @@
 import { clearAuthSession, readAuthToken } from '@/auth/storage';
+import { localePreference } from '@/config/preferences';
 
 const AUTH_CHALLENGE_PATHS = new Set([
   '/api/auth/login',
@@ -48,7 +49,7 @@ function authenticatedHeaders(input: RequestInfo | URL, init: RequestInit, stora
   const inputHeaders = typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined;
   const headers = new Headers(init.headers ?? inputHeaders);
   const token = readAuthToken(storage);
-  const locale = storage?.getItem('astrbot-locale');
+  const locale = localePreference.read(storage);
 
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`);

@@ -33,6 +33,9 @@ import { type ProviderDto, parseChatSessions, parseProviders } from '@/api/domai
 import { decodeApiData, expectRecord } from '@/api/response';
 import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { apiEndpoints } from '@/config/endpoints';
+import { expandedChatProjectsPreference } from '@/config/preferences';
+import { DEFAULT_CONFIG_ID } from '@/config/defaults';
 import { errorMessage, isObject, JsonObject, objectList, recordId, responseData } from '@/routes/configuration/model';
 import { providerTestResult } from '@/routes/configuration/providerPageModel';
 import { confirmAction, toast } from '@/stores/feedback';
@@ -97,16 +100,9 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const [messages, setMessages] = useState<ChatRecord[]>([]);
   const [configs, setConfigs] = useState<JsonObject[]>([]);
   const [projects, setProjects] = useState<JsonObject[]>([]);
-  const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => {
-    try {
-      const value = JSON.parse(localStorage.getItem('chat.projectExpandedIds') || '[]');
-      return new Set(
-        Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && Boolean(item)) : [],
-      );
-    } catch {
-      return new Set();
-    }
-  });
+  const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(
+    () => new Set(expandedChatProjectsPreference.read()),
+  );
   const [projectSessions, setProjectSessions] = useState<Record<string, ChatSession[]>>({});
   const [loadingProjectIds, setLoadingProjectIds] = useState<Set<string>>(new Set());
   const [selectedProjectId, setSelectedProjectId] = useState('');
@@ -276,7 +272,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   );
 
   const resolveAgentRunnerType = useCallback((nextConfigId: string) => {
-    const normalized = nextConfigId || 'default';
+    const normalized = nextConfigId || DEFAULT_CONFIG_ID;
     const cached = agentRunnerCacheRef.current.get(normalized);
     if (cached) return Promise.resolve(cached);
     const pending = agentRunnerRequestsRef.current.get(normalized);
@@ -315,7 +311,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     async (nextConfigId: string, sessionId = conversationId) => {
       const releaseLock = acquireActionLock(configSaveLockRef.current);
       if (!releaseLock) return false;
-      const normalized = nextConfigId || 'default';
+      const normalized = nextConfigId || DEFAULT_CONFIG_ID;
       const previous = configIdRef.current;
       configIdRef.current = normalized;
       setConfigId(normalized);
@@ -333,7 +329,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
           await Promise.all([upsertConfigRoute({ path: { umo }, body: { config_id: normalized } }), runnerTypeRequest]);
           setConfigRoutes((entries) => [
             ...entries.filter((entry) => entry.pattern !== umo),
-            ...(normalized === 'default' ? [] : [{ pattern: umo, configId: normalized }]),
+            ...(normalized === DEFAULT_CONFIG_ID ? [] : [{ pattern: umo, configId: normalized }]),
           ]);
         }
         await runnerTypeRequest;
@@ -501,7 +497,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     void loadAgentRunnerType(configId);
   }, [configId, loadAgentRunnerType]);
   useEffect(() => {
-    void listCommands({ query: { config_id: configId === 'default' ? undefined : configId } })
+    void listCommands({ query: { config_id: configId === DEFAULT_CONFIG_ID ? undefined : configId } })
       .then((response) => {
         const payload = unwrap<JsonObject>(response);
         setWakePrefixes(
@@ -552,9 +548,9 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
         const key = mediaPartKey(part);
         if (!key || mediaUrlsRef.current[key]) return;
         const url = part.attachment_id
-          ? `/api/v1/files/${encodeURIComponent(part.attachment_id)}/content`
+          ? apiEndpoints.fileById(part.attachment_id)
           : part.stored_filename
-            ? `/api/v1/files/content?filename=${encodeURIComponent(part.stored_filename)}`
+            ? apiEndpoints.fileByName(part.stored_filename)
             : '';
         if (!url) return;
         mediaUrlsRef.current[key] = '';
@@ -604,7 +600,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     const id = recordId(data, 'session_id', 'id');
     if (!id) throw new Error('The server did not return a session ID.');
     const selectedConfig = storedChatConfigId();
-    if (selectedConfig !== 'default') {
+    if (selectedConfig !== DEFAULT_CONFIG_ID) {
       const umo = sessionUmo(id);
       await upsertConfigRoute({ path: { umo }, body: { config_id: selectedConfig } });
       setConfigRoutes((entries) => [
@@ -748,7 +744,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       setExpandedProjectIds((current) => {
         const next = new Set(current);
         next.delete(projectId);
-        localStorage.setItem('chat.projectExpandedIds', JSON.stringify([...next]));
+        expandedChatProjectsPreference.write([...next]);
         return next;
       });
       if (selectedProjectId === projectId) newChat();
@@ -777,7 +773,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       const next = new Set(current);
       if (next.has(projectId)) next.delete(projectId);
       else next.add(projectId);
-      localStorage.setItem('chat.projectExpandedIds', JSON.stringify([...next]));
+      expandedChatProjectsPreference.write([...next]);
       return next;
     });
   };
@@ -1314,9 +1310,9 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     let temporaryUrl = false;
     if (!url) {
       const endpoint = part.attachment_id
-        ? `/api/v1/files/${encodeURIComponent(String(part.attachment_id))}/content`
+        ? apiEndpoints.fileById(String(part.attachment_id))
         : part.stored_filename
-          ? `/api/v1/files/content?filename=${encodeURIComponent(String(part.stored_filename))}`
+          ? apiEndpoints.fileByName(String(part.stored_filename))
           : '';
       if (!endpoint) return;
       const response = await fetchWithAuth(endpoint).catch(() => null);
@@ -1364,10 +1360,10 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     previewUrl: file.preview_url,
   }));
   const composerConfigs: ChatComposerConfig[] = [
-    { id: 'default', name: 'Default' },
+    { id: DEFAULT_CONFIG_ID, name: 'Default' },
     ...configs.flatMap((config, index) => {
       const id = recordId(config, 'id', 'conf_id') || `config-${index}`;
-      return id === 'default'
+      return id === DEFAULT_CONFIG_ID
         ? []
         : [{ id, name: String(config.name || id), description: String(config.description || '') }];
     }),

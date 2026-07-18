@@ -11,6 +11,7 @@ import {
 } from '@/api/openapi';
 import { decodeApiData, isRecord } from '@/api/response';
 import { conversationFilesApi } from '@/api/services';
+import { paginationDefaults } from '@/config/defaults';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MonacoEditor } from '@/components/editor/MonacoEditor';
 import { MdiIcon } from '@/components/icons/MdiIcon';
@@ -39,7 +40,7 @@ export default function ConversationPage() {
   const [messageType, setMessageType] = useState('');
   const [platform, setPlatform] = useState('');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState<number>(paginationDefaults.pageSize);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
