@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { authApi } from '@/api/auth';
+import { statsApi } from '@/api/compat';
 import {
   getLegacyStartTime,
   normalizeVersion,
@@ -51,13 +52,8 @@ export function UpgradeRecoveryDialog() {
     void authApi.setupStatus()
       .then(async (response) => {
         if (!response.legacyFallback) return;
-        const token = localStorage.getItem('token') || '';
-        const versionResponse = await fetch('/api/stat/version', {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        });
-        if (!versionResponse.ok) return;
-        const envelope = await versionResponse.json() as { data?: UpgradeRecoveryDetail };
-        await show(envelope.data ?? {});
+        const versionResponse = await statsApi.version();
+        await show(versionResponse.data.data ?? {});
       })
       .catch(() => undefined);
     return () => {

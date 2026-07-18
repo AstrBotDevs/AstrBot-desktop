@@ -7,6 +7,7 @@ import {
   compatibleRequest,
   type CompatibleApiResponse,
 } from './auth';
+import { apiRequest } from './http';
 
 export type VersionData = {
   change_pwd_hint?: boolean;
@@ -87,6 +88,27 @@ export const updatesApi = {
   ),
 };
 
+export const recoveryApi = {
+  version: (token: string, fetchImpl?: typeof fetch) => legacyRecoveryRequest<VersionData>(
+    '/api/stat/version',
+    token,
+    {},
+    fetchImpl,
+  ),
+  startTime: (token: string, fetchImpl?: typeof fetch) => legacyRecoveryRequest<StartTimeData>(
+    '/api/stat/start-time',
+    token,
+    {},
+    fetchImpl,
+  ),
+  restart: (token: string, fetchImpl?: typeof fetch) => legacyRecoveryRequest<Record<string, unknown>>(
+    '/api/stat/restart-core',
+    token,
+    { method: 'POST' },
+    fetchImpl,
+  ),
+};
+
 function jsonRequest(payload: object): RequestInit {
   return { body: JSON.stringify(payload), method: 'POST' };
 }
@@ -101,4 +123,21 @@ async function legacyCompatibleRequest<T>(
     throw new Error(response.data.message || 'Request failed');
   }
   return response;
+}
+
+async function legacyRecoveryRequest<T>(
+  path: string,
+  token: string,
+  init: RequestInit,
+  fetchImpl?: typeof fetch,
+) {
+  const headers = new Headers(init.headers);
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const response = await apiRequest<T>(
+    path,
+    { ...init, headers },
+    fetchImpl ? { fetch: fetchImpl } : {},
+  );
+  if (response.status === 'error') throw new Error(response.message || 'Legacy recovery request failed.');
+  return response.data;
 }

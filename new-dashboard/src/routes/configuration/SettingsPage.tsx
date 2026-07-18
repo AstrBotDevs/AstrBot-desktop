@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { createApiKey, deleteApiKey, getSystemConfig, listApiKeys, openApiAxiosClient, revokeApiKey } from '@/api/openapi';
+import { createApiKey, deleteApiKey, getSystemConfig, listApiKeys, revokeApiKey } from '@/api/openapi';
+import { SystemConfigTwoFactorRequired, systemConfigApi } from '@/api/services';
 import { ConfigGroup } from '@/components/config/DynamicConfigForm';
 import { isConfigRecord, type ConfigGroupMetadata, type ConfigItemMetadata, type ConfigRecord } from '@/components/config/configFormModel';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
@@ -131,21 +132,21 @@ export default function SettingsPage() {
     const nextConfig = config;
     const timeout = window.setTimeout(() => {
       setSaving(true);
-      void openApiAxiosClient.put('/api/v1/system-config', nextConfig, { validateStatus: (status) => (status >= 200 && status < 300) || status === 401 })
-        .then((response) => {
-          if (response.status === 401 && Boolean(response.data?.data?.totp_required)) {
-            setPendingConfig({ config: nextConfig, snapshot: configSnapshot });
-            setTwoFactorCode('');
-            setTwoFactorError('');
-            setTwoFactorOpen(true);
-            return;
-          }
+      void systemConfigApi.update(nextConfig)
+        .then(() => {
           setSaved(configSnapshot);
           setFailedSave('');
           setRestartRequired(true);
           toast.success(t(`${prefix}.systemConfig.messages.saveSuccess`));
         })
         .catch((cause) => {
+          if (cause instanceof SystemConfigTwoFactorRequired) {
+            setPendingConfig({ config: nextConfig, snapshot: configSnapshot });
+            setTwoFactorCode('');
+            setTwoFactorError('');
+            setTwoFactorOpen(true);
+            return;
+          }
           setFailedSave(configSnapshot);
           toast.error(errorMessage(cause, t(`${prefix}.systemConfig.messages.saveFailed`)));
         })
@@ -159,14 +160,7 @@ export default function SettingsPage() {
     setSaving(true);
     setTwoFactorError('');
     try {
-      const response = await openApiAxiosClient.put('/api/v1/system-config', pendingConfig.config, {
-        headers: { 'X-2FA-Code': twoFactorCode.trim() },
-        validateStatus: (status) => (status >= 200 && status < 300) || status === 401,
-      });
-      if (response.status === 401) {
-        setTwoFactorError(twoFactorText('configSaveError'));
-        return;
-      }
+      await systemConfigApi.update(pendingConfig.config, twoFactorCode.trim());
       setSaved(pendingConfig.snapshot);
       setFailedSave('');
       setPendingConfig(null);
@@ -174,7 +168,11 @@ export default function SettingsPage() {
       setRestartRequired(true);
       toast.success(t(`${prefix}.systemConfig.messages.saveSuccess`));
     } catch (cause) {
-      setTwoFactorError(errorMessage(cause, twoFactorText('configSaveError')));
+      setTwoFactorError(
+        cause instanceof SystemConfigTwoFactorRequired
+          ? twoFactorText('configSaveError')
+          : errorMessage(cause, twoFactorText('configSaveError')),
+      );
     } finally {
       setSaving(false);
     }

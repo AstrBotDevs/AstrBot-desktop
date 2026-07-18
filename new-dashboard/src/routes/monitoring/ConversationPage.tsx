@@ -6,11 +6,11 @@ import {
   deleteConversation,
   getConversation,
   listConversations,
-  openApiAxiosClient,
   replaceConversationMessages,
   updateConversation,
 } from '@/api/openapi';
 import { decodeApiData, isRecord } from '@/api/response';
+import { conversationFilesApi } from '@/api/services';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MonacoEditor } from '@/components/editor/MonacoEditor';
 import { MdiIcon } from '@/components/icons/MdiIcon';
@@ -114,9 +114,8 @@ export default function ConversationPage() {
   };
   const exportSelected = async () => {
     try {
-      const response = await openApiAxiosClient.post('/api/v1/conversations/export', { conversations: selectedItems.map(({ cid, user_id }) => ({ cid, user_id })) }, { responseType: 'blob' });
-      if (!(response.data instanceof Blob)) throw new Error(t(`${prefix}.messages.exportError`));
-      const url = URL.createObjectURL(response.data);
+      const blob = await conversationFilesApi.export(selectedItems.map(({ cid, user_id }) => ({ cid, user_id })));
+      const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a'); anchor.href = url; anchor.download = `conversations-${new Date().toISOString().slice(0, 10)}.jsonl`; anchor.click(); URL.revokeObjectURL(url);
       toast.success(t(`${prefix}.messages.exportSuccess`));
     } catch (cause) { toast.error(cause instanceof Error ? cause.message : t(`${prefix}.messages.exportError`)); }

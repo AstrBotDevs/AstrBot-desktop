@@ -13,11 +13,11 @@ import {
   importBackup,
   initBackupUpload,
   listBackups,
-  openApiAxiosClient,
   renameBackup,
   uploadBackupChunk,
 } from '@/api/openapi';
 import { statsApi } from '@/api/compat';
+import { backupFilesApi } from '@/api/services';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import {
@@ -379,8 +379,8 @@ export function BackupDialog({ onRestart, open, restarting = false, setOpen }: {
   };
   const download = async (filename: string) => {
     try {
-      const response = await openApiAxiosClient.get(`/api/v1/backups/${encodeURIComponent(filename)}`, { responseType: 'blob' });
-      const url = URL.createObjectURL(response.data);
+      const blob = await backupFilesApi.download(filename);
+      const url = URL.createObjectURL(blob);
       const link = document.createElement('a'); link.href = url; link.download = filename; link.click();
       URL.revokeObjectURL(url);
     } catch (cause) { toast.error(errorMessage(cause, filename)); }

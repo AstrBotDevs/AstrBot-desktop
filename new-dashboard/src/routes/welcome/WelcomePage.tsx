@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { parseConfigProfile, parseProviderSchema } from '@/api/domain';
 import { getConfigProfile, getProviderSchema, getSystemConfig, updateConfigProfileContent } from '@/api/openapi';
 import { decodeApiData, expectRecord, isRecord } from '@/api/response';
+import { announcementApi } from '@/api/services';
 import { Markdown } from '@/components/content/Markdown';
 import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
@@ -67,9 +68,8 @@ export default function WelcomePage() {
   useEffect(() => {
     let active = true;
     void refreshOnboarding();
-    void fetch('https://cloud.astrbot.app/api/v1/announcement')
-      .then((response) => response.ok ? response.json() : null)
-      .then((payload) => active && setAnnouncementRaw(payload?.data?.notice?.welcome_page ?? null))
+    void announcementApi.welcomeNotice()
+      .then((notice) => active && setAnnouncementRaw(notice))
       .catch(() => undefined);
     return () => { active = false; };
   }, [refreshOnboarding]);

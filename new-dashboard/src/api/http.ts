@@ -29,9 +29,10 @@ export class ApiError extends Error {
   }
 }
 
-type RequestDependencies = {
+export type RequestDependencies = {
   fetch?: typeof fetch;
   onUnauthorized?: () => void;
+  skipUnauthorizedHandling?: boolean;
   storage?: Storage | null;
 };
 
@@ -83,12 +84,14 @@ export async function fetchWithAuth(
     ...init,
     headers: authenticatedHeaders(input, init, storage),
   });
-  expireUnauthorizedSession(
-    requestPath(input),
-    response.status,
-    storage,
-    dependencies.onUnauthorized,
-  );
+  if (!dependencies.skipUnauthorizedHandling) {
+    expireUnauthorizedSession(
+      requestPath(input),
+      response.status,
+      storage,
+      dependencies.onUnauthorized,
+    );
+  }
   return response;
 }
 

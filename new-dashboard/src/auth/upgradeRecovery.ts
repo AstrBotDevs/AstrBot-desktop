@@ -1,4 +1,5 @@
 import type { CompatibleApiResponse, AuthSessionResponse } from '@/api/auth';
+import { recoveryApi } from '@/api/compat';
 
 export const UPGRADE_RECOVERY_EVENT = 'astrbot-upgrade-recovery';
 export const UPGRADE_RECOVERY_TOKEN_KEY = 'astrbot-upgrade-recovery-token';
@@ -13,12 +14,6 @@ export type UpgradeRecoveryDetail = LegacyVersionData & {
 };
 
 export type RestartPollDecision = 'continue' | 'reloaded' | 'timeout';
-
-type LegacyEnvelope<T> = {
-  data?: T;
-  message?: string | null;
-  status?: 'ok' | 'error';
-};
 
 export function normalizeVersion(version?: string | null) {
   return String(version ?? '').trim().replace(/^v/i, '');
@@ -54,12 +49,7 @@ export async function legacyUpgradeDetail(
 ): Promise<UpgradeRecoveryDetail | null> {
   const token = String(response.data.data?.token ?? '');
   if (!response.legacyFallback || !token) return null;
-  const version = await legacyRequest<LegacyVersionData>(
-    '/api/stat/version',
-    token,
-    {},
-    fetchImpl,
-  );
+  const version = await recoveryApi.version(token, fetchImpl);
   return versionsMismatch(version.version, version.dashboard_version)
     ? { ...version, blocking: true }
     : null;
@@ -80,12 +70,7 @@ export async function getLegacyStartTime(
   token = recoveryToken(),
   fetchImpl: typeof fetch = fetch,
 ) {
-  const data = await legacyRequest<{ start_time?: number | string | null }>(
-    '/api/stat/start-time',
-    token,
-    {},
-    fetchImpl,
-  );
+  const data = await recoveryApi.startTime(token, fetchImpl);
   return data.start_time ?? null;
 }
 
@@ -93,35 +78,11 @@ export async function restartLegacyCore(
   token = recoveryToken(),
   fetchImpl: typeof fetch = fetch,
 ) {
-  await legacyRequest(
-    '/api/stat/restart-core',
-    token,
-    { method: 'POST' },
-    fetchImpl,
-  );
+  await recoveryApi.restart(token, fetchImpl);
 }
 
 export function recoveryToken() {
   return localStorage.getItem('token')
     || sessionStorage.getItem(UPGRADE_RECOVERY_TOKEN_KEY)
     || '';
-}
-
-async function legacyRequest<T>(
-  path: string,
-  token: string,
-  init: RequestInit,
-  fetchImpl: typeof fetch,
-): Promise<T> {
-  const headers = new Headers(init.headers);
-  if (token) headers.set('Authorization', `Bearer ${token}`);
-  const locale = globalThis.localStorage?.getItem('astrbot-locale');
-  if (locale) headers.set('Accept-Language', locale);
-  const response = await fetchImpl(path, { ...init, headers });
-  const text = await response.text();
-  const payload = text ? JSON.parse(text) as LegacyEnvelope<T> : {};
-  if (!response.ok || payload.status === 'error') {
-    throw new Error(payload.message || response.statusText || 'Legacy recovery request failed.');
-  }
-  return (payload.data ?? {}) as T;
 }
