@@ -11,12 +11,6 @@ export type LogItem = {
   umo?: string;
 };
 
-export function unwrapData<T>(response: unknown): T | undefined {
-  const data = (response as { data?: unknown } | null)?.data;
-  if (!data || typeof data !== 'object') return data as T | undefined;
-  return ((data as { data?: unknown }).data ?? data) as T;
-}
-
 export function parseSseChunk(buffer: string) {
   const normalized = buffer.replace(/\r\n/g, '\n');
   const boundary = normalized.lastIndexOf('\n\n');

@@ -10,6 +10,7 @@ import {
   listSkills,
   listTools,
 } from '@/api/openapi';
+import { responseData } from '@/api/response';
 import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { findFolderPath, normalizeFolderTree, type PersonaFolderNode } from '@/routes/configuration/personaModel';
@@ -33,12 +34,6 @@ export function pluginSelectionValue(mode: PluginSelectionMode, selected: string
   if (mode === 'all') return ['*'];
   if (mode === 'none') return [];
   return [...selected];
-}
-
-function responseData(response: unknown): unknown {
-  const outer = (response as { data?: unknown } | null)?.data;
-  if (outer && typeof outer === 'object' && 'data' in outer) return (outer as { data: unknown }).data;
-  return outer;
 }
 
 function records(data: unknown, keys: string[]) {

@@ -5,7 +5,6 @@ import {
   contextTokenCount,
   normalizeRecord,
   serializeChatParts,
-  sessionList,
   stagedAttachmentType,
   usesLocalProviderOverride,
 } from './model';
@@ -123,8 +122,4 @@ describe('chat model', () => {
     expect(usesLocalProviderOverride('dify')).toBe(false);
   });
 
-  it('accepts list and envelope session shapes', () => {
-    expect(sessionList([{ session_id: 'a' }])).toHaveLength(1);
-    expect(sessionList({ sessions: [{ session_id: 'b' }] })[0].session_id).toBe('b');
-  });
 });

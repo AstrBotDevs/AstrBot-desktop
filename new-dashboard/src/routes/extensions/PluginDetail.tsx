@@ -14,6 +14,8 @@ import {
   updatePluginConfigById,
   updatePlugins,
 } from '@/api/openapi';
+import { type PluginDto, parsePlugin } from '@/api/domain';
+import { decodeApiData } from '@/api/response';
 import { Markdown } from '@/components/content/Markdown';
 import { MonacoEditor } from '@/components/editor/MonacoEditor';
 import { MdiIcon } from '@/components/icons/MdiIcon';
@@ -40,7 +42,7 @@ import {
 } from './extensionModel';
 import { InstallPluginDialog } from './PluginInstallDialog';
 
-function pluginComponents(plugin: JsonObject): JsonObject[] {
+function pluginComponents(plugin: PluginDto): JsonObject[] {
   const components = plugin.components;
   if (Array.isArray(components)) return components.filter(isObject);
   if (isObject(components)) return ['page', 'skill', 'command', 'llm_tool', 'listener', 'hook'].flatMap((key) => {
@@ -57,7 +59,7 @@ function pluginComponents(plugin: JsonObject): JsonObject[] {
 
 export function PluginDetail({ pluginId: id, source }: { pluginId: string; source: 'installed' | 'market' }) {
   const { t } = useTranslation(); const e = (key: string) => t(`features.extension.${key}`); const navigate = useNavigate(); const location = useLocation();
-  const [plugin, setPlugin] = useState<JsonObject>({}); const [pages, setPages] = useState<JsonObject[]>([]); const [config, setConfig] = useState('{}'); const [savedConfig, setSavedConfig] = useState('{}'); const [readme, setReadme] = useState(''); const [changelog, setChangelog] = useState(''); const [tab, setTab] = useState<'overview' | 'config' | 'readme' | 'changelog'>('overview'); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [error, setError] = useState(''); const [installing, setInstalling] = useState(false);
+  const [plugin, setPlugin] = useState<PluginDto>({}); const [pages, setPages] = useState<JsonObject[]>([]); const [config, setConfig] = useState('{}'); const [savedConfig, setSavedConfig] = useState('{}'); const [readme, setReadme] = useState(''); const [changelog, setChangelog] = useState(''); const [tab, setTab] = useState<'overview' | 'config' | 'readme' | 'changelog'>('overview'); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [error, setError] = useState(''); const [installing, setInstalling] = useState(false);
   const components = useMemo(() => pluginComponents(plugin), [plugin]);
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -70,7 +72,7 @@ export function PluginDetail({ pluginId: id, source }: { pluginId: string; sourc
         setPlugin(found); return;
       }
       const [detailResponse, configResponse, pageResponse] = await Promise.all([getPluginById({ query: { plugin_id: id } }), getPluginConfigById({ query: { plugin_id: id } }).catch(() => null), listPluginPagesById({ query: { plugin_id: id } }).catch(() => null)]);
-      setPlugin(responseData<JsonObject>(detailResponse) ?? {});
+      setPlugin(decodeApiData(detailResponse, parsePlugin, 'plugin detail'));
       const configData = responseData<JsonObject>(configResponse);
       const text = prettyJson(isObject(configData?.config) ? configData.config : {});
       setConfig(text); setSavedConfig(text); setPages(objectList(responseData(pageResponse), ['pages', 'items']));

@@ -1,3 +1,4 @@
+import type { ChatSessionDto } from '@/api/domain';
 import type { JsonObject } from '@/routes/configuration/model';
 
 export type ChatPart = JsonObject & {
@@ -11,7 +12,7 @@ export type ChatPart = JsonObject & {
   stored_filename?: string;
 };
 export type ChatRecord = JsonObject & { id?: string | number; content: { type: string; message: ChatPart[]; reasoning?: string; isLoading?: boolean; agentStats?: JsonObject; refs?: unknown } };
-export type ChatSession = JsonObject & { session_id: string; display_name?: string; updated_at?: string };
+export type ChatSession = ChatSessionDto;
 export type StagedAttachmentType = 'image' | 'record' | 'file';
 
 export function contextTokenCount(stats?: JsonObject) {
@@ -171,12 +172,6 @@ function finishToolCall(record: ChatRecord, result: JsonObject) {
     }
   }
   record.content.message.push({ type: 'tool_call', tool_calls: [{ ...result, status: result.status || 'completed' }] });
-}
-
-export function sessionList(value: unknown): ChatSession[] {
-  const data = value && typeof value === 'object' ? value as JsonObject : {};
-  const list = Array.isArray(value) ? value : Array.isArray(data.items) ? data.items : Array.isArray(data.sessions) ? data.sessions : [];
-  return list.filter((item): item is ChatSession => Boolean(item && typeof item === 'object' && typeof (item as JsonObject).session_id === 'string'));
 }
 
 function readTokenCount(value: unknown) {

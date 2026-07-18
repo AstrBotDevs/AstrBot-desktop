@@ -16,20 +16,27 @@ import {
   updateProviderById,
   upsertProviderSourceById,
 } from '@/api/openapi';
+import {
+  type ProviderDto,
+  type ProviderSourceDto,
+  parseProviderSchema,
+  parseProviderSources,
+  parseProviders,
+} from '@/api/domain';
+import { decodeApiData } from '@/api/response';
 import { ConfigGroup } from '@/components/config/DynamicConfigForm';
 import type { ConfigGroupMetadata } from '@/components/config/configFormModel';
 import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { confirmAction, toast } from '@/stores/feedback';
 import { LoadingState } from './ConfigurationUi';
-import { errorMessage, isObject, JsonObject, objectList, prettyJson, recordId, responseData } from './model';
+import { errorMessage, isObject, JsonObject, prettyJson, recordId, responseData } from './model';
 import {
   buildModelProvider,
   mergeProviderSourceSection,
   mergeProviderWithTemplate,
   PROVIDER_TABS,
   providerFromTemplate,
-  providerSchemaData,
   providerSourceSections,
   providerTestAction,
   providerTestResult,
@@ -52,8 +59,8 @@ import { useProviderModelEditorState } from './useProviderModelEditorState';
 
 export default function ProviderPage() {
   const { t } = useTranslation();
-  const [providers, setProviders] = useState<JsonObject[]>([]);
-  const [providerSources, setProviderSources] = useState<JsonObject[]>([]);
+  const [providers, setProviders] = useState<ProviderDto[]>([]);
+  const [providerSources, setProviderSources] = useState<ProviderSourceDto[]>([]);
   const [providerTemplates, setProviderTemplates] = useState<JsonObject>({});
   const [providerSourceSchema, setProviderSourceSchema] = useState<JsonObject>({});
   const [modelMetadata, setModelMetadata] = useState<JsonObject>({});
@@ -98,13 +105,11 @@ export default function ProviderPage() {
     setLoading(true);
     setError('');
     try {
-      const payload = responseData<JsonObject>(await getProviderSchema());
-      if (!isObject(payload)) throw new Error('Invalid provider schema response.');
-      const data = providerSchemaData(payload);
+      const data = decodeApiData(await getProviderSchema(), parseProviderSchema, 'provider schema');
       setProviders(data.providers);
       setProviderSources(data.providerSources);
-      setProviderTemplates(data.templates);
-      setProviderSourceSchema(data.sourceSchema);
+      setProviderTemplates(data.providerTemplates);
+      setProviderSourceSchema(data.providerSourceSchema);
       setModelMetadata(data.modelMetadata);
       setNewSourceId('');
       setSelectedSourceId((current) => {
@@ -113,7 +118,7 @@ export default function ProviderPage() {
       });
     } catch (schemaError) {
       try {
-        const fallback = objectList(responseData(await listProviders()), ['providers', 'data']);
+        const fallback = decodeApiData(await listProviders(), parseProviders, 'provider list');
         setProviders(fallback);
         setProviderSources([]);
         setProviderTemplates({});
@@ -220,7 +225,7 @@ export default function ProviderPage() {
   const selectSource = (source: JsonObject) => setSelectedSourceId(recordId(source, 'id'));
 
   const startSource = (template: JsonObject) => {
-    const next = sourceFromTemplate(template, providerSources);
+    const next = parseProviderSources([sourceFromTemplate(template, providerSources)])[0];
     const id = recordId(next, 'id');
     setProviderSources((current) => [...current, next]);
     setNewSourceId(id);

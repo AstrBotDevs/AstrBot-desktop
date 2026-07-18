@@ -1,12 +1,8 @@
-export type JsonObject = Record<string, unknown>;
+import { isRecord, type UnknownRecord } from '@/api/response';
 
-export function responseData<T>(response: unknown): T {
-  const outer = (response as { data?: unknown } | null)?.data;
-  if (outer && typeof outer === 'object' && 'data' in outer) {
-    return (outer as { data: T }).data;
-  }
-  return outer as T;
-}
+export type JsonObject = UnknownRecord;
+
+export { responseData } from '@/api/response';
 
 export function objectList(data: unknown, keys: string[]): JsonObject[] {
   if (Array.isArray(data)) return data.filter(isObject);
@@ -19,7 +15,7 @@ export function objectList(data: unknown, keys: string[]): JsonObject[] {
 }
 
 export function isObject(value: unknown): value is JsonObject {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+  return isRecord(value);
 }
 
 export function parseJsonObject(source: string): JsonObject {

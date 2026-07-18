@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { deletePluginConfigFile, listPluginConfigFiles, uploadPluginConfigFiles } from '@/api/openapi';
+import { isRecord, responseData } from '@/api/response';
 import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { ExpandCollapse } from '@/components/motion/ExpandCollapse';
@@ -118,9 +119,8 @@ function StringListControl({ disabled, onChange, value }: { disabled?: boolean; 
 type PluginFileItem = { path: string; status: 'missing' | 'ok' | 'unconfigured' };
 
 function pluginFileResponseData(response: unknown) {
-  const outer = (response as { data?: unknown } | null)?.data;
-  if (!outer || typeof outer !== 'object') return outer as Record<string, unknown> | undefined;
-  return (((outer as { data?: unknown }).data ?? outer) as Record<string, unknown>);
+  const payload = responseData(response);
+  return isRecord(payload) ? payload : undefined;
 }
 
 function PluginFileConfigControl({ configKey, metadata, onChange, pluginName, value }: {

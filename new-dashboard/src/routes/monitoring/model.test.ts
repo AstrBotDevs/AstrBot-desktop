@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { responseData } from '@/api/response';
 
-import { cleanConsoleLog, formatTimestamp, logIdentity, parseSseChunk, splitConsoleLog, unwrapData } from './model';
+import { cleanConsoleLog, formatTimestamp, logIdentity, parseSseChunk, splitConsoleLog } from './model';
 
 describe('monitoring data helpers', () => {
   it('unwraps generated API envelopes', () => {
-    expect(unwrapData({ data: { data: { value: 1 }, status: 'ok' } })).toEqual({ value: 1 });
+    expect(responseData({ data: { data: { value: 1 }, status: 'ok' } })).toEqual({ value: 1 });
   });
 
   it('parses complete SSE frames and preserves the remainder', () => {

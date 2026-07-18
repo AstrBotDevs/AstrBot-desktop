@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useTranslation } from 'react-i18next';
 
 import { getProviderTokenStats, getStats } from '@/api/openapi';
+import { responseData } from '@/api/response';
 import { MdiIcon } from '@/components/icons/MdiIcon';
-import { unwrapData } from './model';
 import {
   aggregateProviderSeries,
   formatRunningTime,
@@ -36,8 +36,8 @@ export default function StatsPage() {
         getStats({ query: { offset_sec: selectedRange * 86_400 } }),
         getProviderTokenStats({ query: { days: selectedRange } }),
       ]);
-      setBase(unwrapData<BaseStats>(baseResponse) ?? null);
-      setProviders(unwrapData<ProviderStats>(providerResponse) ?? null);
+      setBase(responseData<BaseStats>(baseResponse) ?? null);
+      setProviders(responseData<ProviderStats>(providerResponse) ?? null);
       setUpdatedAt(new Date());
     } catch {
       setError(text(rangeChange ? 'errors.rangeFailed' : 'errors.loadFailed'));

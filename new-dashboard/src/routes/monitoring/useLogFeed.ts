@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 
 import { getLogHistory } from '@/api/openapi';
+import { responseData } from '@/api/response';
 import { fetchWithAuth } from '@/api/http';
-import { logIdentity, parseSseChunk, unwrapData, type LogItem } from './model';
+import { logIdentity, parseSseChunk, type LogItem } from './model';
 
 const delay = (milliseconds: number, signal: AbortSignal) => new Promise<void>((resolve) => {
   const timer = window.setTimeout(resolve, milliseconds);
@@ -50,7 +51,7 @@ export function useLogFeed(predicate: (log: LogItem) => boolean, maxItems = 300,
     };
 
     const loadHistory = async () => {
-      const payload = unwrapData<{ logs?: LogItem[] }>(await getLogHistory());
+      const payload = responseData<{ logs?: LogItem[] }>(await getLogHistory());
       append(payload?.logs ?? []);
     };
 

@@ -4,6 +4,12 @@ import { useTranslation } from 'react-i18next';
 import { useBlocker } from 'react-router-dom';
 
 import { createConfigProfile, deleteConfigProfile, getConfigProfile, listConfigProfiles, renameConfigProfile, updateConfigProfileContent } from '@/api/openapi';
+import {
+  type ConfigProfileDto,
+  parseConfigProfile,
+  parseConfigProfiles,
+} from '@/api/domain';
+import { decodeApiData } from '@/api/response';
 import { MetadataConfigEditor } from '@/components/config/DynamicConfigForm';
 import { isConfigRecord, type ConfigRecord } from '@/components/config/configFormModel';
 import { MdiIcon } from '@/components/icons/MdiIcon';
@@ -11,14 +17,13 @@ import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { confirmAction, toast } from '@/stores/feedback';
 import { JsonConfigDialog, LoadingState } from './ConfigurationUi';
 import { copiedConfigPayload, hasDuplicateConfigProfileName, normalizeConfigProfileName } from './configProfileModel';
-import { errorMessage, JsonObject, objectList, parseJsonObject, prettyJson, recordId, responseData } from './model';
+import { errorMessage, parseJsonObject, prettyJson, recordId } from './model';
 
-type Profile = JsonObject & { conf_id?: string; id?: string; name?: string };
 type ProfileOperation = { mode: 'copy' | 'rename'; profile: { id: string; name: string } };
 
 export default function ConfigPage() {
   const { t } = useTranslation();
-  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [profiles, setProfiles] = useState<ConfigProfileDto[]>([]);
   const [selected, setSelected] = useState('default');
   const [config, setConfig] = useState<ConfigRecord>({});
   const [metadata, setMetadata] = useState<ConfigRecord>({});
@@ -38,15 +43,18 @@ export default function ConfigPage() {
   const [leaveOpen, setLeaveOpen] = useState(false);
 
   const loadProfiles = useCallback(async () => {
-    const data = responseData(await listConfigProfiles());
-    setProfiles(objectList(data, ['info_list', 'configs', 'profiles']) as Profile[]);
+    setProfiles(decodeApiData(await listConfigProfiles(), parseConfigProfiles, 'config profile list'));
   }, []);
 
   const loadContent = useCallback(async (id: string) => {
     setLoading(true);
     setError('');
     try {
-      const data = responseData<JsonObject>(await getConfigProfile({ path: { config_id: id } })) ?? {};
+      const data = decodeApiData(
+        await getConfigProfile({ path: { config_id: id } }),
+        parseConfigProfile,
+        'config profile',
+      );
       const next = isConfigRecord(data.config) ? data.config : data;
       setConfig(next);
       setMetadata(isConfigRecord(data.metadata) ? data.metadata : {});
@@ -108,7 +116,11 @@ export default function ConfigPage() {
       return;
     }
     try {
-      const data = responseData<JsonObject>(await createConfigProfile({ body: { name, config: {} } }));
+      const data = decodeApiData(
+        await createConfigProfile({ body: { name, config: {} } }),
+        parseConfigProfile,
+        'created config profile',
+      );
       await loadProfiles();
       setNewName('');
       setSelected(recordId(data, 'conf_id', 'id') || 'default');
@@ -166,9 +178,17 @@ export default function ConfigPage() {
       if (profileOperation.mode === 'rename') {
         await renameConfigProfile({ path: { config_id: profileOperation.profile.id }, body: { name } });
       } else {
-        const source = responseData<JsonObject>(await getConfigProfile({ path: { config_id: profileOperation.profile.id } })) ?? {};
+        const source = decodeApiData(
+          await getConfigProfile({ path: { config_id: profileOperation.profile.id } }),
+          parseConfigProfile,
+          'source config profile',
+        );
         const sourceConfig = copiedConfigPayload(source);
-        const created = responseData<JsonObject>(await createConfigProfile({ body: { name, config: sourceConfig } }));
+        const created = decodeApiData(
+          await createConfigProfile({ body: { name, config: sourceConfig } }),
+          parseConfigProfile,
+          'copied config profile',
+        );
         const createdId = recordId(created, 'conf_id', 'id');
         if (createdId) setSelected(createdId);
       }

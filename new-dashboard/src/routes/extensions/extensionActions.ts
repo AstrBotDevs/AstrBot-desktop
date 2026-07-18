@@ -26,7 +26,7 @@ function compareVersions(left: unknown, right: unknown) {
   return 0;
 }
 
-export function annotatePluginUpdates(items: JsonObject[], markets: Map<string, JsonObject[]>) {
+export function annotatePluginUpdates<T extends JsonObject>(items: T[], markets: Map<string, JsonObject[]>) {
   return items.map((item) => {
     const next = { ...item, has_update: false, online_version: '' };
     const source = isObject(item.install_source) ? item.install_source : {};

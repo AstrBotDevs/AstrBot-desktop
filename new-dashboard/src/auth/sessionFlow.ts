@@ -1,13 +1,6 @@
 import type { AuthSession } from '@/auth/storage';
-
-type Envelope = { data?: unknown; status?: string };
-
-function responseData(response: unknown): unknown {
-  if (!response || typeof response !== 'object') return undefined;
-  const axiosData = (response as { data?: unknown }).data;
-  if (!axiosData || typeof axiosData !== 'object') return axiosData;
-  return (axiosData as Envelope).data ?? axiosData;
-}
+import { parseProviderSchema } from '@/api/domain';
+import { decodeApiData, expectRecord, optionalRecord } from '@/api/response';
 
 export function sessionNeedsPasswordSetup(session: AuthSession) {
   return Boolean(
@@ -27,27 +20,20 @@ export async function checkOnboardingCompleted(): Promise<boolean> {
   try {
     const { getProviderSchema, getSystemConfig } = await import('@/api/openapi');
     const configResponse = await getSystemConfig();
-    const configData = responseData(configResponse) as { config?: { platform?: unknown[] } } | undefined;
-    const platforms = configData?.config?.platform;
+    const configData = decodeApiData(configResponse, (value) => expectRecord(value, 'system config'), 'system config');
+    const platforms = optionalRecord(configData.config)?.platform;
     if (!Array.isArray(platforms) || platforms.length === 0) {
       return false;
     }
 
     const providerResponse = await getProviderSchema();
-    const providerData = responseData(providerResponse) as {
-      provider_sources?: Array<{ id?: string; provider_type?: string }>;
-      providers?: Array<{
-        provider_source_id?: string;
-        provider_type?: string;
-        type?: string;
-      }>;
-    } | undefined;
+    const providerData = decodeApiData(providerResponse, parseProviderSchema, 'provider schema');
     const sourceTypes = new Map(
-      (providerData?.provider_sources ?? []).map((source) => [source.id, source.provider_type]),
+      providerData.providerSources.map((source) => [source.id, source.provider_type]),
     );
-    return (providerData?.providers ?? []).some((provider) => (
+    return providerData.providers.some((provider) => (
       provider.provider_type === 'chat_completion'
-      || sourceTypes.get(provider.provider_source_id) === 'chat_completion'
+      || sourceTypes.get(provider.provider_source_id || '') === 'chat_completion'
       || String(provider.type ?? '').includes('chat_completion')
     ));
   } catch {

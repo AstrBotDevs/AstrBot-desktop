@@ -3,10 +3,20 @@ import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 
 import { deleteKnowledgeDocument, getConfigProfile, getKnowledgeBase, getKnowledgeBaseStats, getKnowledgeTask, importKnowledgeDocumentFromUrl, listKnowledgeDocuments, listProviders, retrieveKnowledgeBase, updateConfigProfileContent, updateKnowledgeBase, uploadKnowledgeDocument } from '@/api/openapi';
+import {
+  type KnowledgeBaseDto,
+  type KnowledgeDocumentDto,
+  type ProviderDto,
+  parseConfigProfile,
+  parseKnowledgeBase,
+  parseKnowledgeDocumentPage,
+  parseProviders,
+} from '@/api/domain';
+import { decodeApiData, expectRecord } from '@/api/response';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { confirmAction, toast } from '@/stores/feedback';
-import { errorMessage, isObject, JsonObject, objectList, responseData } from '@/routes/configuration/model';
+import { errorMessage, isObject, JsonObject, responseData } from '@/routes/configuration/model';
 import { chunkCount, documentCount, documentId, documentName, formatFileSize, formatKnowledgeDate, knowledgeFileUploadBody, knowledgeUrlImportBody, retrievalPayload, scoreTone, taskIds, validKnowledgeImportSettings, type KnowledgeImportSettings } from './knowledgeModel';
 
 type DetailTab = 'overview' | 'documents' | 'retrieval' | 'settings';
@@ -17,7 +27,7 @@ export default function KnowledgeBaseDetailPage() {
   const { kbId = '' } = useParams();
   const { t, i18n } = useTranslation();
   const k = (key: string, options?: Record<string, unknown>) => t(`features.knowledge-base.detail.${key}`, options);
-  const [kb, setKb] = useState<JsonObject>({});
+  const [kb, setKb] = useState<KnowledgeBaseDto>({});
   const [stats, setStats] = useState<JsonObject>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -27,8 +37,8 @@ export default function KnowledgeBaseDetailPage() {
     setLoading(true); setError('');
     try {
       const [baseResponse, statsResponse] = await Promise.all([getKnowledgeBase({ path: { kb_id: kbId } }), getKnowledgeBaseStats({ path: { kb_id: kbId } }).catch(() => null)]);
-      setKb(responseData<JsonObject>(baseResponse) ?? {});
-      setStats(responseData<JsonObject>(statsResponse) ?? {});
+      setKb(decodeApiData(baseResponse, parseKnowledgeBase, 'knowledge base'));
+      setStats(decodeApiData(statsResponse, (value) => expectRecord(value, 'knowledge base stats'), 'knowledge base stats'));
     } catch (cause) { setError(errorMessage(cause, k('title'))); }
     finally { setLoading(false); }
   }, [kbId, t]);
@@ -53,7 +63,7 @@ export default function KnowledgeBaseDetailPage() {
   </div>;
 }
 
-function Overview({ kb, locale, stats, t }: { kb: JsonObject; locale: string; stats: JsonObject; t: (key: string, options?: Record<string, unknown>) => string }) {
+function Overview({ kb, locale, stats, t }: { kb: KnowledgeBaseDto; locale: string; stats: JsonObject; t: (key: string, options?: Record<string, unknown>) => string }) {
   const docTotal = documentCount(stats) || documentCount(kb);
   const chunks = chunkCount(stats) || chunkCount(kb);
   return <div className="knowledge-overview">
@@ -62,8 +72,8 @@ function Overview({ kb, locale, stats, t }: { kb: JsonObject; locale: string; st
   </div>;
 }
 
-function Documents({ kb, kbId, onBaseRefresh, t }: { kb: JsonObject; kbId: string; onBaseRefresh: () => Promise<void>; t: (key: string, options?: Record<string, unknown>) => string }) {
-  const [items, setItems] = useState<JsonObject[]>([]);
+function Documents({ kb, kbId, onBaseRefresh, t }: { kb: KnowledgeBaseDto; kbId: string; onBaseRefresh: () => Promise<void>; t: (key: string, options?: Record<string, unknown>) => string }) {
+  const [items, setItems] = useState<KnowledgeDocumentDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -77,7 +87,7 @@ function Documents({ kb, kbId, onBaseRefresh, t }: { kb: JsonObject; kbId: strin
   const [progress, setProgress] = useState('');
   const [dragging, setDragging] = useState(false);
   const [uploadSettings, setUploadSettings] = useState<KnowledgeImportSettings>({ batch_size: 32, chunk_overlap: Number(kb.chunk_overlap || 50), chunk_size: Number(kb.chunk_size || 512), cleaning_provider_id: '', enable_cleaning: false, max_retries: 3, tasks_limit: 3 });
-  const [llmProviders, setLlmProviders] = useState<JsonObject[]>([]);
+  const [llmProviders, setLlmProviders] = useState<ProviderDto[]>([]);
   const [tavilyStatus, setTavilyStatus] = useState<'configured' | 'error' | 'loading' | 'not_configured'>('loading');
   const [tavilyOpen, setTavilyOpen] = useState(false);
   const [tavilyKey, setTavilyKey] = useState('');
@@ -85,7 +95,7 @@ function Documents({ kb, kbId, onBaseRefresh, t }: { kb: JsonObject; kbId: strin
   const checkTavily = useCallback(async () => {
     setTavilyStatus('loading');
     try {
-      const data = responseData<JsonObject>(await getConfigProfile({ path: { config_id: 'default' } })) ?? {};
+      const data = decodeApiData(await getConfigProfile({ path: { config_id: 'default' } }), parseConfigProfile, 'default config profile');
       const config = isObject(data.config) ? data.config : data;
       const settings = isObject(config.provider_settings) ? config.provider_settings : {};
       const keys = settings.websearch_tavily_key;
@@ -95,7 +105,7 @@ function Documents({ kb, kbId, onBaseRefresh, t }: { kb: JsonObject; kbId: strin
     }
   }, []);
   useEffect(() => {
-    void listProviders({ query: { capability: 'chat', enabled: true } }).then((response) => setLlmProviders(objectList(responseData(response), ['providers', 'items', 'data']))).catch(() => undefined);
+    void listProviders({ query: { capability: 'chat', enabled: true } }).then((response) => setLlmProviders(decodeApiData(response, parseProviders, 'chat provider list'))).catch(() => undefined);
     void checkTavily();
   }, [checkTavily]);
   useEffect(() => {
@@ -105,8 +115,12 @@ function Documents({ kb, kbId, onBaseRefresh, t }: { kb: JsonObject; kbId: strin
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = responseData<JsonObject>(await listKnowledgeDocuments({ path: { kb_id: kbId }, query: { page, page_size: pageSize, search: search.trim() || undefined } })) ?? {};
-      const rows = objectList(data, ['items', 'documents']); setItems(rows); setTotal(typeof data.total === 'number' ? data.total : rows.length);
+      const data = decodeApiData(
+        await listKnowledgeDocuments({ path: { kb_id: kbId }, query: { page, page_size: pageSize, search: search.trim() || undefined } }),
+        parseKnowledgeDocumentPage,
+        'knowledge document list',
+      );
+      setItems(data.items); setTotal(data.total);
     } catch (cause) { toast.error(errorMessage(cause, t('documents.uploadFailed'))); }
     finally { setLoading(false); }
   }, [kbId, page, pageSize, search, t]);
@@ -123,7 +137,11 @@ function Documents({ kb, kbId, onBaseRefresh, t }: { kb: JsonObject; kbId: strin
       await new Promise((resolve) => window.setTimeout(resolve, 500));
       await Promise.all([...remaining].map(async (id) => {
         try {
-          const data = responseData<JsonObject>(await getKnowledgeTask({ path: { task_id: id } })) ?? {};
+          const data = decodeApiData(
+            await getKnowledgeTask({ path: { task_id: id } }),
+            (value) => expectRecord(value, 'knowledge task'),
+            'knowledge task',
+          );
           const status = String(data.status || 'processing'); const taskProgress = isObject(data.progress) ? data.progress : {};
           setProgress(`${String(taskProgress.stage || status)}${taskProgress.current ? ` · ${taskProgress.current}/${taskProgress.total || '?'}` : ''}`);
           if (status === 'completed') remaining.delete(id);
@@ -152,14 +170,18 @@ function Documents({ kb, kbId, onBaseRefresh, t }: { kb: JsonObject; kbId: strin
   const saveTavily = async () => {
     if (!tavilyKey.trim()) return;
     try {
-      const data = responseData<JsonObject>(await getConfigProfile({ path: { config_id: 'default' } })) ?? {};
+      const data = decodeApiData(
+        await getConfigProfile({ path: { config_id: 'default' } }),
+        parseConfigProfile,
+        'default config profile',
+      );
       const config = isObject(data.config) ? data.config : data;
       const providerSettings = { ...(isObject(config.provider_settings) ? config.provider_settings : {}), websearch_tavily_key: [tavilyKey.trim()] };
       await updateConfigProfileContent({ path: { config_id: 'default' }, body: { ...config, provider_settings: providerSettings } });
       setTavilyOpen(false); setTavilyKey(''); setTavilyStatus('configured'); toast.success(t('upload.tavilySaved'));
     } catch (cause) { toast.error(errorMessage(cause, t('upload.tavilySaveFailed'))); }
   };
-  const remove = async (item: JsonObject) => {
+  const remove = async (item: KnowledgeDocumentDto) => {
     const id = documentId(item); const name = documentName(item);
     if (!id || !await confirmAction({ danger: true, title: t('documents.delete'), message: `${t('documents.deleteConfirm', { name })}\n${t('documents.deleteWarning')}` })) return;
     try { await deleteKnowledgeDocument({ path: { kb_id: kbId, document_id: id } }); toast.success(t('documents.deleteSuccess')); await Promise.all([load(), onBaseRefresh()]); }
@@ -192,11 +214,11 @@ function Retrieval({ kbId, t }: { kbId: string; t: (key: string, options?: Recor
   return <section className="knowledge-retrieval-panel"><header><h2>{t('retrieval.title')}</h2><p>{t('retrieval.subtitle')}</p></header><div className="knowledge-retrieval-form"><label>{t('retrieval.query')}<textarea onChange={(event) => setQuery(event.target.value)} placeholder={t('retrieval.queryPlaceholder')} rows={4} value={query} /></label><aside><label>{t('retrieval.topK')}<input min={1} onChange={(event) => setTopK(Number(event.target.value))} type="number" value={topK} /></label><label>{t('retrieval.scoreThreshold')}<input max={1} min={0} onChange={(event) => setThreshold(Number(event.target.value))} step="0.05" type="number" value={threshold} /></label></aside></div><button className="button--primary knowledge-retrieve-button" disabled={loading || !query.trim()} onClick={() => void retrieve()} type="button"><MdiIcon className={loading ? 'mdi-spin' : ''} name={loading ? 'mdi-loading' : 'mdi-magnify'} />{loading ? t('retrieval.searching') : t('retrieval.search')}</button>{visualization && <img alt="t-SNE" className="knowledge-retrieval-visualization" src={`data:image/png;base64,${visualization}`} />}{searched && <div className="knowledge-results"><h3>{t('retrieval.results')} <span>{results.length}</span></h3>{results.map((result, index) => <article key={String(result.chunk_id || index)}><header><span>#{index + 1}</span><strong>{t('retrieval.chunk', { index: Number(result.chunk_index ?? index) + 1 })}</strong><small>{String(result.doc_name || result.document_name || '')}</small><b className={`is-${scoreTone(result.score)}`}>{t('retrieval.score')}: {Number(result.score || 0).toFixed(4)}</b></header><p>{String(result.content || result.text || '')}</p></article>)}{!results.length && <div className="knowledge-empty knowledge-empty--compact"><MdiIcon name="mdi-text-box-search-outline" /><h3>{t('retrieval.noResults')}</h3><p>{t('retrieval.tryDifferentQuery')}</p></div>}</div>}</section>;
 }
 
-function KnowledgeSettings({ kb, kbId, onSaved, t }: { kb: JsonObject; kbId: string; onSaved: () => Promise<void>; t: (key: string, options?: Record<string, unknown>) => string }) {
+function KnowledgeSettings({ kb, kbId, onSaved, t }: { kb: KnowledgeBaseDto; kbId: string; onSaved: () => Promise<void>; t: (key: string, options?: Record<string, unknown>) => string }) {
   const initial = useMemo<Settings>(() => ({ chunk_size: Number(kb.chunk_size || 512), chunk_overlap: Number(kb.chunk_overlap || 50), top_k_dense: Number(kb.top_k_dense || 50), top_k_sparse: Number(kb.top_k_sparse || 50), top_m_final: Number(kb.top_m_final || 5), rerank_provider_id: String(kb.rerank_provider_id || '') }), [kb]);
-  const [form, setForm] = useState(initial); const [providers, setProviders] = useState<JsonObject[]>([]); const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState(initial); const [providers, setProviders] = useState<ProviderDto[]>([]); const [saving, setSaving] = useState(false);
   useEffect(() => setForm(initial), [initial]);
-  useEffect(() => { void listProviders({ query: { capability: 'rerank', enabled: true } }).then((response) => setProviders(objectList(responseData(response), ['providers', 'items', 'data']))).catch(() => undefined); }, []);
+  useEffect(() => { void listProviders({ query: { capability: 'rerank', enabled: true } }).then((response) => setProviders(decodeApiData(response, parseProviders, 'rerank provider list'))).catch(() => undefined); }, []);
   const save = async () => { setSaving(true); try { await updateKnowledgeBase({ path: { kb_id: kbId }, body: { ...form, rerank_provider_id: form.rerank_provider_id || null } }); toast.success(t('settings.saveSuccess')); await onSaved(); } catch (cause) { toast.error(errorMessage(cause, t('settings.saveFailed'))); } finally { setSaving(false); } };
   return <section className="knowledge-settings"><header><h2>{t('settings.title')}</h2><p>{t('settings.tips')}</p></header><div className="knowledge-settings__group"><h3>{t('settings.basic')}</h3><div><NumberField field="chunk_size" form={form} label={t('settings.chunkSize')} setForm={setForm} /><NumberField field="chunk_overlap" form={form} label={t('settings.chunkOverlap')} setForm={setForm} /></div></div><div className="knowledge-settings__group"><h3>{t('settings.retrieval')}</h3><div><NumberField field="top_k_dense" form={form} label={t('settings.topKDense')} setForm={setForm} /><NumberField field="top_k_sparse" form={form} label={t('settings.topKSparse')} setForm={setForm} /><NumberField field="top_m_final" form={form} label={t('settings.topMFinal')} setForm={setForm} /><label>{t('settings.rerankProvider')}<select onChange={(event) => setForm({ ...form, rerank_provider_id: event.target.value })} value={form.rerank_provider_id}><option value="">{t('overview.notSet')}</option>{providers.map((provider) => <option key={String(provider.id)} value={String(provider.id)}>{String(provider.rerank_model || provider.model || provider.id)}</option>)}</select></label></div></div><div className="knowledge-settings__embedding"><MdiIcon name="mdi-vector-point" /><span><strong>{t('settings.embeddingProvider')}</strong><small>{String(kb.embedding_provider_id || t('overview.notSet'))}</small></span></div><button className="button--primary knowledge-settings__save" disabled={saving} onClick={() => void save()} type="button"><MdiIcon name="mdi-content-save" />{t('settings.save')}</button></section>;
 }

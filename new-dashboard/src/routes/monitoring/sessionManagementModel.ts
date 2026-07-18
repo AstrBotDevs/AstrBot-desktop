@@ -1,3 +1,5 @@
+import { ApiPayloadError, expectRecord, isRecord } from '@/api/response';
+
 export const FOLLOW_CONFIG_VALUE = '__astrbot_follow_config__';
 
 export type ProviderOption = { id: string; model?: string; name?: string };
@@ -48,13 +50,128 @@ export type EditorState = {
 };
 
 export function sessionRecordValue(value: unknown) {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
+  return isRecord(value) ? value : {};
+}
+
+export function parseSessionRulesData(value: unknown): SessionRulesData {
+  const payload = expectRecord(value, 'session rules');
+  return {
+    available_chat_providers: parseProviderOptions(payload.available_chat_providers),
+    available_kbs: parseKnowledgeOptions(payload.available_kbs),
+    available_personas: parsePersonaOptions(payload.available_personas),
+    available_plugins: parsePluginOptions(payload.available_plugins),
+    available_stt_providers: parseProviderOptions(payload.available_stt_providers),
+    available_tts_providers: parseProviderOptions(payload.available_tts_providers),
+    rules: arrayValue(payload.rules, 'session rules').map((item, index) => {
+      const rule = expectRecord(item, `session rules[${index}]`);
+      const umo = requiredText(rule.umo, `session rules[${index}].umo`);
+      return {
+        ...rule,
+        ...parseUmo(umo),
+        rules: isRecord(rule.rules) ? rule.rules : {},
+        umo,
+      };
+    }),
+    total: numberValue(payload.total) ?? 0,
+  };
+}
+
+export function parseSessionGroups(value: unknown): SessionGroup[] {
+  const payload = Array.isArray(value) ? value : expectRecord(value, 'session groups').groups;
+  return arrayValue(payload, 'session groups').map((item, index) => {
+    const group = expectRecord(item, `session groups[${index}]`);
+    return {
+      id: requiredText(group.id, `session groups[${index}].id`),
+      name: typeof group.name === 'string' ? group.name : undefined,
+      umo_count: numberValue(group.umo_count),
+      umos: stringList(group.umos),
+    };
+  });
+}
+
+export function parseActiveUmos(value: unknown): ActiveUmoData {
+  const payload = expectRecord(value, 'active UMO data');
+  return {
+    umos: stringList(payload.umos),
+    umo_infos: arrayValue(payload.umo_infos, 'active UMO infos').map((item, index) => {
+      const info = expectRecord(item, `active UMO infos[${index}]`);
+      const umo = requiredText(info.umo, `active UMO infos[${index}].umo`);
+      const parsed = parseUmo(umo);
+      return {
+        ...parsed,
+        auto_name: textValue(info.auto_name),
+        display_name: textValue(info.display_name) ?? parsed.display_name,
+        message_type: textValue(info.message_type) ?? parsed.message_type,
+        platform: textValue(info.platform) ?? parsed.platform,
+        session_id: textValue(info.session_id) ?? parsed.session_id,
+        umo,
+        user_alias: textValue(info.user_alias),
+      };
+    }),
+  };
 }
 
 function stringList(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function arrayValue(value: unknown, field: string) {
+  if (value == null) return [];
+  if (!Array.isArray(value)) throw new ApiPayloadError(`Expected ${field} to be an array.`, value);
+  return value;
+}
+
+function requiredText(value: unknown, field: string) {
+  if (typeof value !== 'string' || !value) throw new ApiPayloadError(`Expected ${field} to be a non-empty string.`, value);
+  return value;
+}
+
+function textValue(value: unknown) {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function numberValue(value: unknown) {
+  const number = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(number) ? number : undefined;
+}
+
+function parseProviderOptions(value: unknown): ProviderOption[] {
+  return arrayValue(value, 'provider options').map((item, index) => {
+    const provider = expectRecord(item, `provider options[${index}]`);
+    return {
+      id: requiredText(provider.id, `provider options[${index}].id`),
+      model: textValue(provider.model),
+      name: textValue(provider.name),
+    };
+  });
+}
+
+function parsePersonaOptions(value: unknown): PersonaOption[] {
+  return arrayValue(value, 'persona options').map((item, index) => {
+    const persona = expectRecord(item, `persona options[${index}]`);
+    return { id: textValue(persona.id), name: requiredText(persona.name, `persona options[${index}].name`) };
+  });
+}
+
+function parsePluginOptions(value: unknown): PluginOption[] {
+  return arrayValue(value, 'plugin options').map((item, index) => {
+    const plugin = expectRecord(item, `plugin options[${index}]`);
+    return {
+      display_name: textValue(plugin.display_name),
+      name: requiredText(plugin.name, `plugin options[${index}].name`),
+    };
+  });
+}
+
+function parseKnowledgeOptions(value: unknown): KnowledgeOption[] {
+  return arrayValue(value, 'knowledge options').map((item, index) => {
+    const knowledge = expectRecord(item, `knowledge options[${index}]`);
+    return {
+      emoji: textValue(knowledge.emoji),
+      kb_id: requiredText(knowledge.kb_id, `knowledge options[${index}].kb_id`),
+      kb_name: requiredText(knowledge.kb_name, `knowledge options[${index}].kb_name`),
+    };
+  });
 }
 
 export function parseUmo(umo: string): UmoInfo {

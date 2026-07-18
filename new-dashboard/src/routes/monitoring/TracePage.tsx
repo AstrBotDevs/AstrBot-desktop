@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { getTraceSettings, updateTraceSettings } from '@/api/openapi';
+import { responseData } from '@/api/response';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { ExpandCollapse } from '@/components/motion/ExpandCollapse';
 import { toast } from '@/stores/feedback';
-import { unwrapData, type LogItem } from './model';
+import { type LogItem } from './model';
 import { groupTraceEvents, type TraceEvent } from './traceModel';
 import { useLogFeed } from './useLogFeed';
 
@@ -27,7 +28,7 @@ export default function TracePage() {
 
   useEffect(() => {
     void getTraceSettings().then((response) => {
-      const settings = unwrapData<{ enabled?: boolean; trace_enable?: boolean }>(response);
+      const settings = responseData<{ enabled?: boolean; trace_enable?: boolean }>(response);
       setEnabled(settings?.trace_enable ?? settings?.enabled ?? true);
     }).catch(() => undefined);
   }, []);

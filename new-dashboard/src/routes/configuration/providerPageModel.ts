@@ -1,7 +1,8 @@
 import type { JsonObject } from './model';
+import type { ProviderCapability as ApiProviderCapability } from '@/api/generated/openapi-v1/types.gen';
 
 export type ProviderType = 'chat_completion' | 'agent_runner' | 'speech_to_text' | 'text_to_speech' | 'embedding' | 'rerank';
-export type ProviderCapability = 'chat' | 'agent' | 'stt' | 'tts' | 'embedding' | 'rerank';
+export type ProviderCapability = ApiProviderCapability;
 export type ProviderTestStatus = {
   error: string | null;
   status: 'available' | 'pending' | 'unavailable';
@@ -65,7 +66,7 @@ export function providerTypeOf(item: JsonObject): ProviderType | undefined {
     ?? PROVIDER_TABS.find((tab) => legacy.includes(tab.type))?.type;
 }
 
-export function recordsForType(items: JsonObject[], type: ProviderType) {
+export function recordsForType<T extends JsonObject>(items: T[], type: ProviderType): T[] {
   return items.filter((item) => providerTypeOf(item) === type);
 }
 

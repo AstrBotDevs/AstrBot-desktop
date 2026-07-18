@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { parseConfigProfile, parseProviderSchema } from '@/api/domain';
 import { getConfigProfile, getProviderSchema, getSystemConfig, updateConfigProfileContent } from '@/api/openapi';
+import { decodeApiData, expectRecord, isRecord } from '@/api/response';
 import { Markdown } from '@/components/content/Markdown';
 import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
@@ -15,11 +17,8 @@ import {
   normalizeComputerAccessRuntime,
   pickDefaultProviderId,
   resolveWelcomeAnnouncement,
-  unwrapApiData,
   type ComputerAccessRuntime,
 } from './welcomeModel';
-
-type ConfigPayload = { config?: Record<string, unknown> };
 
 export default function WelcomePage() {
   const { i18n, t } = useTranslation();
@@ -38,15 +37,19 @@ export default function WelcomePage() {
     await Promise.allSettled([getSystemConfig(), getProviderSchema(), getConfigProfile({ path: { config_id: 'default' } })])
       .then(([system, providers, profile]) => {
         if (system.status === 'fulfilled') {
-          const data = unwrapApiData<ConfigPayload>(system.value);
-          const platforms = data?.config?.platform;
+          const data = decodeApiData(system.value, (value) => expectRecord(value, 'system config'), 'system config');
+          const config = isRecord(data.config) ? data.config : data;
+          const platforms = config.platform;
           setHasPlatform(Array.isArray(platforms) && platforms.length > 0);
         }
-        const providerPayload = providers.status === 'fulfilled' ? unwrapApiData(providers.value) : undefined;
+        const providerPayload = providers.status === 'fulfilled'
+          ? decodeApiData(providers.value, parseProviderSchema, 'provider schema')
+          : undefined;
         if (providerPayload) setHasProvider(hasChatProvider(providerPayload));
         if (profile.status === 'fulfilled') {
-          const data = unwrapApiData<ConfigPayload>(profile.value)?.config ?? unwrapApiData<Record<string, unknown>>(profile.value) ?? {};
-          const settings = data.provider_settings as Record<string, unknown> | undefined;
+          const profileData = decodeApiData(profile.value, parseConfigProfile, 'default config profile');
+          const data = isRecord(profileData.config) ? profileData.config : profileData;
+          const settings = isRecord(data.provider_settings) ? data.provider_settings : {};
           const configuredRuntime = settings?.computer_use_runtime;
           setRuntime(normalizeComputerAccessRuntime(configuredRuntime));
           setHasConfiguredRuntime(isComputerAccessRuntimeConfigured(configuredRuntime));
@@ -78,9 +81,12 @@ export default function WelcomePage() {
     setSavingRuntime(true);
     try {
       const response = await getConfigProfile({ path: { config_id: 'default' } });
-      const wrapper = unwrapApiData<ConfigPayload>(response);
-      const config = (wrapper?.config ?? wrapper ?? {}) as Record<string, unknown>;
-      const providerSettings = { ...(config.provider_settings as Record<string, unknown> | undefined), computer_use_runtime: next };
+      const wrapper = decodeApiData(response, parseConfigProfile, 'default config profile');
+      const config = isRecord(wrapper.config) ? wrapper.config : wrapper;
+      const providerSettings = {
+        ...(isRecord(config.provider_settings) ? config.provider_settings : {}),
+        computer_use_runtime: next,
+      };
       await updateConfigProfileContent({ body: { ...config, provider_settings: providerSettings }, path: { config_id: 'default' } });
       setHasConfiguredRuntime(true);
       toast.success(t(`${prefix}.onboard.${next === 'local' ? 'computerAccessAllowed' : 'computerAccessDenied'}`));

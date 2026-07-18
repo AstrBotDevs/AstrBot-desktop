@@ -9,6 +9,8 @@ import {
   listPluginSources, listPlugins, reloadFailedPlugin, reloadPluginById, setPluginEnabledById,
   replacePluginSources, uninstallFailedPlugin, uninstallPluginById, updatePluginConfigById, updatePlugins,
 } from '@/api/openapi';
+import { type PluginDto, parsePlugins } from '@/api/domain';
+import { decodeApiData } from '@/api/response';
 import { Markdown } from '@/components/content/Markdown';
 import { ConfigGroup } from '@/components/config/DynamicConfigForm';
 import type { ConfigGroupMetadata } from '@/components/config/configFormModel';
@@ -49,25 +51,25 @@ function ExtensionHome({ marketplaceRoute }: { marketplaceRoute: boolean }) {
 
 function InstalledPlugins() {
   const { t, i18n } = useTranslation(); const e = (key: string, options?: Record<string, unknown>) => t(`features.extension.${key}`, options); const navigate = useNavigate();
-  const [items, setItems] = useState<JsonObject[]>([]); const [failed, setFailed] = useState<JsonObject[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [search, setSearch] = useState('');
+  const [items, setItems] = useState<PluginDto[]>([]); const [failed, setFailed] = useState<PluginDto[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [search, setSearch] = useState('');
   const [pinned, setPinned] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem(PINNED_KEY) || '[]'); } catch { return []; } });
-  const [configPlugin, setConfigPlugin] = useState<JsonObject | null>(null); const [config, setConfig] = useState<JsonObject>({}); const [configMetadata, setConfigMetadata] = useState<JsonObject | null>(null); const [configI18n, setConfigI18n] = useState<unknown>({}); const [configLoading, setConfigLoading] = useState(false); const [saving, setSaving] = useState(false);
-  const [installOpen, setInstallOpen] = useState(false); const [uninstalling, setUninstalling] = useState<JsonObject | null>(null); const [deleteConfig, setDeleteConfig] = useState(false); const [deleteData, setDeleteData] = useState(false);
+  const [configPlugin, setConfigPlugin] = useState<PluginDto | null>(null); const [config, setConfig] = useState<JsonObject>({}); const [configMetadata, setConfigMetadata] = useState<JsonObject | null>(null); const [configI18n, setConfigI18n] = useState<unknown>({}); const [configLoading, setConfigLoading] = useState(false); const [saving, setSaving] = useState(false);
+  const [installOpen, setInstallOpen] = useState(false); const [uninstalling, setUninstalling] = useState<PluginDto | null>(null); const [deleteConfig, setDeleteConfig] = useState(false); const [deleteData, setDeleteData] = useState(false);
   const [updatingAll, setUpdatingAll] = useState(false); const [updateResult, setUpdateResult] = useState<{ message: string; status: 'loading' | 'success' | 'error' } | null>(null);
-  const [documentDialog, setDocumentDialog] = useState<{ item: JsonObject; content: string; error: string; loading: boolean } | null>(null);
-  const [sourceBinding, setSourceBinding] = useState<{ candidates: JsonObject[]; item: JsonObject; loading: boolean; saving: boolean; selected: string } | null>(null);
+  const [documentDialog, setDocumentDialog] = useState<{ item: PluginDto; content: string; error: string; loading: boolean } | null>(null);
+  const [sourceBinding, setSourceBinding] = useState<{ candidates: JsonObject[]; item: PluginDto; loading: boolean; saving: boolean; selected: string } | null>(null);
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
       const [pluginResponse, failedResponse] = await Promise.all([listPlugins({ query: { include_reserved: true } }), listFailedPlugins().catch(() => null)]);
-      const installed = pluginList(responseData(pluginResponse));
+      const installed = decodeApiData(pluginResponse, parsePlugins, 'installed plugin list');
       const registries = Array.from(new Set(installed.flatMap((item) => {
         const source = isObject(item.install_source) ? item.install_source : {};
         return item.updates_enabled && source.implicit !== true && source.install_method === 'market'
           ? [normalizePluginUrl(source.registry_url)]
           : [];
       })));
-      const markets = new Map<string, JsonObject[]>();
+      const markets = new Map<string, PluginDto[]>();
       await Promise.all(registries.map(async (registry) => {
         try {
           const response = await listPluginMarket({ query: { custom_registry: registry || undefined, page: 1, page_size: 1000 } });
@@ -76,13 +78,13 @@ function InstalledPlugins() {
       }));
       setItems(annotatePluginUpdates(installed, markets));
       window.dispatchEvent(new CustomEvent(PLUGIN_SIDEBAR_CHANGED_EVENT, { detail: installed }));
-      setFailed(pluginList(responseData(failedResponse)));
+      setFailed(failedResponse ? decodeApiData(failedResponse, parsePlugins, 'failed plugin list') : []);
     } catch (cause) { setError(errorMessage(cause, e('messages.refreshFailed'))); } finally { setLoading(false); }
   }, [t]);
   useEffect(() => { void load(); }, [load]);
-  const toggle = async (item: JsonObject) => { const id = pluginId(item); try { await setPluginEnabledById({ body: { plugin_id: id, enabled: (item.activated ?? item.enabled) === false } }); await load(); } catch (cause) { toast.error(errorMessage(cause, e('messages.operationFailed'))); } };
-  const reload = async (item: JsonObject) => { const id = pluginId(item); try { await reloadPluginById({ body: { plugin_id: id } }); toast.success(e('messages.reloadSuccess')); await load(); } catch (cause) { toast.error(errorMessage(cause, e('messages.reloadFailed'))); } };
-  const update = async (item: JsonObject) => { try { await updatePlugins({ body: { plugin_id: pluginId(item) } }); toast.success(e('messages.updateSuccess')); await load(); } catch (cause) { toast.error(errorMessage(cause, e('messages.operationFailed'))); } };
+  const toggle = async (item: PluginDto) => { const id = pluginId(item); try { await setPluginEnabledById({ body: { plugin_id: id, enabled: (item.activated ?? item.enabled) === false } }); await load(); } catch (cause) { toast.error(errorMessage(cause, e('messages.operationFailed'))); } };
+  const reload = async (item: PluginDto) => { const id = pluginId(item); try { await reloadPluginById({ body: { plugin_id: id } }); toast.success(e('messages.reloadSuccess')); await load(); } catch (cause) { toast.error(errorMessage(cause, e('messages.reloadFailed'))); } };
+  const update = async (item: PluginDto) => { try { await updatePlugins({ body: { plugin_id: pluginId(item) } }); toast.success(e('messages.updateSuccess')); await load(); } catch (cause) { toast.error(errorMessage(cause, e('messages.operationFailed'))); } };
   const updateAll = async () => {
     if (updatingAll) return;
     const targets = pluginUpdateTargets(items);
@@ -122,7 +124,7 @@ function InstalledPlugins() {
       setUpdatingAll(false);
     }
   };
-  const openConfig = async (item: JsonObject) => {
+  const openConfig = async (item: PluginDto) => {
     const id = pluginId(item);
     setConfigPlugin(item); setConfig({}); setConfigMetadata(null); setConfigI18n({}); setConfigLoading(true);
     try {
@@ -147,7 +149,7 @@ function InstalledPlugins() {
     if (Boolean(a.reserved) !== Boolean(b.reserved)) return Number(Boolean(a.reserved)) - Number(Boolean(b.reserved));
     return pluginTitle(a).localeCompare(pluginTitle(b));
   }), [items, pinned, search]);
-  const viewDocs = async (item: JsonObject) => {
+  const viewDocs = async (item: PluginDto) => {
     setDocumentDialog({ item, content: '', error: '', loading: true });
     try {
       const response = await getPluginReadmeById({ query: { plugin_id: pluginId(item) } });
@@ -157,7 +159,7 @@ function InstalledPlugins() {
       setDocumentDialog({ item, content: '', error: errorMessage(cause, e('detail.docsEmpty')), loading: false });
     }
   };
-  const openSourceBinding = async (item: JsonObject) => {
+  const openSourceBinding = async (item: PluginDto) => {
     const repo = pluginInstallUrl(item);
     setSourceBinding({ candidates: [], item, loading: true, saving: false, selected: '' });
     try {
@@ -199,8 +201,8 @@ function InstalledPlugins() {
       setSourceBinding({ ...sourceBinding, saving: false });
     }
   };
-  const reloadFailed = async (item: JsonObject) => { const id = recordId(item, 'dir_name', 'name', 'id'); try { await reloadFailedPlugin({ path: { plugin_id: id } }); toast.success(e('messages.reloadSuccess')); await load(); } catch (cause) { toast.error(errorMessage(cause, e('messages.reloadFailed'))); } };
-  const removeFailed = async (item: JsonObject) => { const id = recordId(item, 'dir_name', 'name', 'id'); if (!await confirmAction({ danger: true, title: e('buttons.uninstall'), message: id })) return; try { await uninstallFailedPlugin({ path: { plugin_id: id } }); await load(); } catch (cause) { toast.error(errorMessage(cause, e('messages.operationFailed'))); } };
+  const reloadFailed = async (item: PluginDto) => { const id = recordId(item, 'dir_name', 'name', 'id'); try { await reloadFailedPlugin({ path: { plugin_id: id } }); toast.success(e('messages.reloadSuccess')); await load(); } catch (cause) { toast.error(errorMessage(cause, e('messages.reloadFailed'))); } };
+  const removeFailed = async (item: PluginDto) => { const id = recordId(item, 'dir_name', 'name', 'id'); if (!await confirmAction({ danger: true, title: e('buttons.uninstall'), message: id })) return; try { await uninstallFailedPlugin({ path: { plugin_id: id } }); await load(); } catch (cause) { toast.error(errorMessage(cause, e('messages.operationFailed'))); } };
   return <section className="extension-section extension-installed">
     <header className="extension-installed__header">
       <h2>{e('titles.installedAstrBotPlugins')}</h2>
@@ -266,14 +268,14 @@ function InstalledPlugins() {
 
 function PluginMarket() {
   const { t } = useTranslation(); const navigate = useNavigate(); const e = (key: string, options?: Record<string, unknown>) => t(`features.extension.${key}`, options);
-  const [items, setItems] = useState<JsonObject[]>([]); const [sources, setSources] = useState<JsonObject[]>([]);
+  const [items, setItems] = useState<PluginDto[]>([]); const [sources, setSources] = useState<JsonObject[]>([]);
   const [selectedSource, setSelectedSource] = useState(() => localStorage.getItem('selectedPluginSource') || '');
   const [keyword, setKeyword] = useState(''); const [debouncedKeyword, setDebouncedKeyword] = useState(''); const [category, setCategory] = useState('all'); const [sort, setSort] = useState<'default' | 'stars' | 'author' | 'updated'>('default'); const [order, setOrder] = useState<'asc' | 'desc'>('desc'); const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true); const [refreshing, setRefreshing] = useState(false); const [error, setError] = useState(''); const [installing, setInstalling] = useState<JsonObject | null>(null); const [danger, setDanger] = useState<JsonObject | null>(null); const [randomNames, setRandomNames] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true); const [refreshing, setRefreshing] = useState(false); const [error, setError] = useState(''); const [installing, setInstalling] = useState<PluginDto | null>(null); const [danger, setDanger] = useState<PluginDto | null>(null); const [randomNames, setRandomNames] = useState<string[]>([]);
   const [sourceManager, setSourceManager] = useState(false); const [sourceEditor, setSourceEditor] = useState<{ editingUrl: string; meta: JsonObject | null; name: string; resolved: boolean; resolving: boolean; url: string } | null>(null);
   const compatibilityCache = useRef(new Map<string, { message: string; supported: boolean }>());
   const loadSources = useCallback(async () => { try { setSources(sourceList(responseData(await listPluginSources()))); } catch { setSources([]); } }, []);
-  const shuffle = useCallback((plugins: JsonObject[]) => {
+  const shuffle = useCallback((plugins: PluginDto[]) => {
     const copy = [...plugins]; for (let index = copy.length - 1; index > 0; index -= 1) { const target = Math.floor(Math.random() * (index + 1)); [copy[index], copy[target]] = [copy[target], copy[index]]; }
     setRandomNames(copy.slice(0, 3).map(pluginId));
   }, []);
@@ -331,7 +333,7 @@ function PluginMarket() {
     const next = sourceEditor.editingUrl ? sources.map((source) => String(source.url || '') === sourceEditor.editingUrl ? { ...source, ...entry } : source) : [...sources, entry];
     try { await persistSources(next); if (selectedSource === sourceEditor.editingUrl) chooseSource(entry.url); toast.success(e(sourceEditor.editingUrl ? 'market.sourceUpdated' : 'market.sourceAdded')); setSourceEditor(null); } catch (cause) { toast.error(errorMessage(cause, e('market.sourceError'))); }
   };
-  const requestInstall = (item: JsonObject) => { if (Array.isArray(item.tags) && item.tags.includes('danger')) setDanger(item); else setInstalling(item); };
+  const requestInstall = (item: PluginDto) => { if (Array.isArray(item.tags) && item.tags.includes('danger')) setDanger(item); else setInstalling(item); };
   return <section className="extension-section extension-market">
     <header className="extension-market__header"><div><div><h2>{e('tabs.market')}</h2><button onClick={() => setSourceManager(true)} title={e('market.sourceManagement')} type="button"><MdiIcon name="mdi-source-branch" /><span>{currentSourceName}</span></button></div><p><MdiIcon name="mdi-alert-outline" />{e('market.sourceSafetyWarning')}</p></div><label><MdiIcon name="mdi-magnify" /><input onChange={(event) => setKeyword(event.target.value)} placeholder={e('search.marketPlaceholder')} value={keyword} />{keyword && <button aria-label={e('buttons.close')} onClick={() => setKeyword('')} type="button"><MdiIcon name="mdi-close" /></button>}</label></header>
     <button aria-label={e('market.installPlugin')} className="extension-market__fab" onClick={() => setInstalling({})} title={e('market.installPlugin')} type="button"><MdiIcon name="mdi-plus" /></button>
@@ -347,7 +349,7 @@ function PluginMarket() {
   </section>;
 }
 
-function MarketPluginCard({ item, onInstall, onOpen, t }: { item: JsonObject; onInstall: (item: JsonObject) => void; onOpen: (item: JsonObject) => void; t: (key: string, options?: Record<string, unknown>) => string }) {
+function MarketPluginCard({ item, onInstall, onOpen, t }: { item: PluginDto; onInstall: (item: PluginDto) => void; onOpen: (item: PluginDto) => void; t: (key: string, options?: Record<string, unknown>) => string }) {
   const { i18n } = useTranslation(); const platforms = Array.isArray(item.support_platforms) ? item.support_platforms.map(String) : []; const canInstall = Boolean(item.market_plugin_id); const localizedTitle = localizedPluginTitle(item, i18n.language); const title = localizedTitle === pluginTitle(item) ? marketPluginDisplayName(item) : localizedTitle; const description = localizedPluginDescription(item, i18n.language) || String(item.short_desc || pluginDescription(item));
   return <article className="extension-market-card" onClick={() => onOpen(item)}>
     <div className="extension-market-card__body">{Boolean(item.logo) ? <img alt="" onError={(event) => event.currentTarget.remove()} src={String(item.logo)} /> : <div className="extension-market-card__fallback"><MdiIcon name="mdi-puzzle" /></div>}<div><header><h3 title={title}>{title}</h3>{Boolean(item.pinned) && <span className="is-recommended">{t('market.recommended')}</span>}{item.astrbot_version_supported === false && <span className="is-unsupported">{t('status.unsupported')}</span>}</header><div className="extension-market-card__meta"><MdiIcon name="mdi-account" />{Boolean(item.social_link) ? <a href={String(item.social_link)} onClick={(event) => event.stopPropagation()} rel="noreferrer" target="_blank">{pluginAuthor(item)}</a> : <strong>{pluginAuthor(item)}</strong>}{item.stars !== undefined && <span><MdiIcon name="mdi-star" />{String(item.stars)}</span>}{item.download_count !== undefined && item.download_count !== null && <span><MdiIcon name="mdi-download" />{String(item.download_count)}</span>}</div><p title={description}>{description}</p></div></div>

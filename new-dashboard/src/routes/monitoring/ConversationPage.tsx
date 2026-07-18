@@ -10,12 +10,20 @@ import {
   replaceConversationMessages,
   updateConversation,
 } from '@/api/openapi';
+import { decodeApiData, isRecord } from '@/api/response';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MonacoEditor } from '@/components/editor/MonacoEditor';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { confirmAction, toast } from '@/stores/feedback';
-import { conversationKey, parseConversationHistory, parseUmo, type Conversation, type ConversationListData } from './conversationModel';
-import { formatTimestamp, unwrapData } from './model';
+import {
+  conversationKey,
+  parseConversation,
+  parseConversationHistory,
+  parseConversationList,
+  parseUmo,
+  type Conversation,
+} from './conversationModel';
+import { formatTimestamp } from './model';
 
 export default function ConversationPage() {
   const { i18n, t } = useTranslation();
@@ -48,7 +56,7 @@ export default function ConversationPage() {
         platforms: platform.trim() || undefined,
         search: search.trim() || undefined,
       } });
-      const data = unwrapData<ConversationListData>(response);
+      const data = decodeApiData(response, parseConversationList, 'conversation list');
       setItems(data?.conversations ?? []);
       setTotal(data?.pagination?.total ?? 0);
       setTotalPages(data?.pagination?.total_pages ?? 1);
@@ -61,7 +69,7 @@ export default function ConversationPage() {
     setLoading(true);
     try {
       const response = await getConversation({ path: { conversation_id: item.cid }, query: { user_id: item.user_id } });
-      const data = unwrapData<Conversation>(response) ?? item;
+      const data = decodeApiData(response, parseConversation, 'conversation');
       setDetail({ ...item, ...data });
       const nextHistory = parseConversationHistory(data.history);
       setHistory(nextHistory);
@@ -91,8 +99,8 @@ export default function ConversationPage() {
     let parsed: Array<Record<string, unknown>>;
     try {
       const value: unknown = JSON.parse(historyJson);
-      if (!Array.isArray(value)) throw new Error(t(`${prefix}.messages.invalidJson`));
-      parsed = value as Array<Record<string, unknown>>;
+      if (!Array.isArray(value) || !value.every(isRecord)) throw new Error(t(`${prefix}.messages.invalidJson`));
+      parsed = value;
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : t(`${prefix}.messages.invalidJson`));
       return;
@@ -107,7 +115,8 @@ export default function ConversationPage() {
   const exportSelected = async () => {
     try {
       const response = await openApiAxiosClient.post('/api/v1/conversations/export', { conversations: selectedItems.map(({ cid, user_id }) => ({ cid, user_id })) }, { responseType: 'blob' });
-      const url = URL.createObjectURL(response.data as Blob);
+      if (!(response.data instanceof Blob)) throw new Error(t(`${prefix}.messages.exportError`));
+      const url = URL.createObjectURL(response.data);
       const anchor = document.createElement('a'); anchor.href = url; anchor.download = `conversations-${new Date().toISOString().slice(0, 10)}.jsonl`; anchor.click(); URL.revokeObjectURL(url);
       toast.success(t(`${prefix}.messages.exportSuccess`));
     } catch (cause) { toast.error(cause instanceof Error ? cause.message : t(`${prefix}.messages.exportError`)); }

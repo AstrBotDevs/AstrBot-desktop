@@ -13,10 +13,10 @@ import {
   updateSessionGroup,
   upsertSessionRule,
 } from '@/api/openapi';
+import { decodeApiData } from '@/api/response';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { confirmAction, toast } from '@/stores/feedback';
-import { unwrapData } from './model';
 import {
   EditorSection,
   MultiSelect,
@@ -28,6 +28,9 @@ import {
   FOLLOW_CONFIG_VALUE,
   initialSessionEditor as initialEditor,
   parseUmo,
+  parseActiveUmos,
+  parseSessionGroups,
+  parseSessionRulesData,
   sessionRecordValue as recordValue,
   sessionDisplayName as displayName,
   type ActiveUmoData,
@@ -108,9 +111,9 @@ export default function SessionManagementPage() {
     setLoading(true);
     setError('');
     try {
-      const data = unwrapData<SessionRulesData>(await listSessionRules({
+      const data = decodeApiData(await listSessionRules({
         query: { page, page_size: pageSize, search: search.trim() || undefined },
-      })) ?? {};
+      }), parseSessionRulesData, 'session rules');
       const nextRules = (data.rules ?? []).map((item) => ({ ...item, rules: item.rules ?? {} }));
       setRules(nextRules);
       setTotal(data.total ?? 0);
@@ -130,8 +133,7 @@ export default function SessionManagementPage() {
 
   const loadGroups = useCallback(async () => {
     try {
-      const data = unwrapData<{ groups?: SessionGroup[] } | SessionGroup[]>(await listSessionGroups());
-      setGroups(Array.isArray(data) ? data : data?.groups ?? []);
+      setGroups(decodeApiData(await listSessionGroups(), parseSessionGroups, 'session groups'));
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : text('messages.loadError'));
     }
@@ -140,7 +142,7 @@ export default function SessionManagementPage() {
   const loadUmos = useCallback(async () => {
     setLoadingUmos(true);
     try {
-      const data = unwrapData<ActiveUmoData>(await listActiveUmos()) ?? {};
+      const data = decodeApiData(await listActiveUmos(), parseActiveUmos, 'active sessions');
       setAllUmos(data.umos ?? []);
       mergeUmoInfos(data.umo_infos ?? []);
     } catch (cause) {

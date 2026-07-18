@@ -1,14 +1,15 @@
-import { isObject, objectList, recordId, type JsonObject } from '@/routes/configuration/model';
+import { isObject, objectList, recordId } from '@/routes/configuration/model';
+import type { PluginDto } from '@/api/domain';
 
-export function pluginId(item: JsonObject) {
+export function pluginId(item: PluginDto) {
   return recordId(item, 'name', 'id', 'plugin_id', 'module_name', 'dir_name');
 }
 
-export function pluginTitle(item: JsonObject) {
+export function pluginTitle(item: PluginDto) {
   return String(item.display_name || item.title || item.name || item.id || 'Plugin');
 }
 
-export function pluginDescription(item: JsonObject) {
+export function pluginDescription(item: PluginDto) {
   return String(item.desc || item.description || '');
 }
 
@@ -22,7 +23,7 @@ function nestedText(source: unknown, path: string) {
   return typeof current === 'string' ? current : '';
 }
 
-function pluginLocaleData(item: JsonObject, language: string) {
+function pluginLocaleData(item: PluginDto, language: string) {
   if (!isObject(item.i18n)) return undefined;
   const normalized = language.replace('_', '-');
   const short = normalized.split('-')[0];
@@ -30,11 +31,11 @@ function pluginLocaleData(item: JsonObject, language: string) {
   return Object.entries(item.i18n).find(([key]) => candidates.includes(key.replace('_', '-').toLowerCase()))?.[1];
 }
 
-export function localizedPluginTitle(item: JsonObject, language: string) {
+export function localizedPluginTitle(item: PluginDto, language: string) {
   return nestedText(pluginLocaleData(item, language), 'metadata.display_name') || pluginTitle(item);
 }
 
-export function localizedPluginDescription(item: JsonObject, language: string) {
+export function localizedPluginDescription(item: PluginDto, language: string) {
   return nestedText(pluginLocaleData(item, language), 'metadata.desc') || pluginDescription(item);
 }
 
@@ -48,18 +49,18 @@ export function markdownContent(value: unknown) {
   return typeof value.content === 'string' ? value.content : '';
 }
 
-export function pluginAuthor(item: JsonObject) {
+export function pluginAuthor(item: PluginDto) {
   const author = item.author;
   if (Array.isArray(author)) return author.join(', ');
   if (isObject(author)) return String(author.name || author.login || '');
   return String(author || '');
 }
 
-export function pluginList(data: unknown) {
+export function pluginList(data: unknown): PluginDto[] {
   return objectList(data, ['plugins', 'items', 'data', 'results']);
 }
 
-export function marketPluginList(data: unknown) {
+export function marketPluginList(data: unknown): PluginDto[] {
   const list = pluginList(data);
   if (list.length || Array.isArray(data)) return list;
   if (!isObject(data)) return [];
@@ -72,7 +73,7 @@ export function marketPluginList(data: unknown) {
       ...value,
       name: name || key,
       market_plugin_id: String(value.market_plugin_id || '').trim() || (author && name ? `${author}/${name}` : ''),
-    }];
+    } satisfies PluginDto];
   });
 }
 
@@ -95,17 +96,17 @@ export function normalizePluginUrl(value: unknown) {
   return String(value || '').trim().replace(/\/+$/, '').replace(/\.git$/i, '').toLowerCase();
 }
 
-export function pluginInstallUrl(item: JsonObject) {
+export function pluginInstallUrl(item: PluginDto) {
   return String(item.download_url || item.repo || item.repo_url || item.repository || item.url || '').trim();
 }
 
-export function pluginPages(item: JsonObject): string[] {
+export function pluginPages(item: PluginDto): string[] {
   const pages = item.pages;
   if (!Array.isArray(pages)) return [];
   return pages.map((page) => isObject(page) ? String(page.name || page.page_name || page.id || '') : String(page || '')).filter(Boolean);
 }
 
-export function filterPlugins(items: JsonObject[], query: string) {
+export function filterPlugins(items: PluginDto[], query: string) {
   const term = query.trim().toLowerCase();
   if (!term) return items;
   const loose = term.replace(/[\s_-]+/g, '');
@@ -122,7 +123,7 @@ export function filterPlugins(items: JsonObject[], query: string) {
   });
 }
 
-export async function addPluginPinyinSearchIndex(items: JsonObject[]) {
+export async function addPluginPinyinSearchIndex(items: PluginDto[]) {
   if (!items.some((item) => /\p{Unified_Ideograph}/u.test([
     pluginTitle(item), pluginAuthor(item), pluginDescription(item), item.short_desc,
   ].map(String).join(' ')))) return items;
@@ -141,11 +142,11 @@ export async function addPluginPinyinSearchIndex(items: JsonObject[]) {
   });
 }
 
-export function categoryValue(item: JsonObject) {
+export function categoryValue(item: PluginDto) {
   return String(item.category || objectList(item.categories, ['items'])[0]?.name || 'other');
 }
 
-export function marketPluginDisplayName(item: JsonObject, showFullName = false) {
+export function marketPluginDisplayName(item: PluginDto, showFullName = false) {
   const displayName = String(item.display_name || '').trim();
   if (displayName) return displayName;
   const name = pluginTitle(item);
@@ -157,7 +158,7 @@ export function normalizeMarketCategory(value: unknown) {
   return String(value || 'other').trim().toLowerCase().replace(/[\s-]+/g, '_') || 'other';
 }
 
-export function marketCategoryCounts(items: JsonObject[]) {
+export function marketCategoryCounts(items: PluginDto[]) {
   const counts = new Map<string, number>([['all', items.length]]);
   items.forEach((item) => {
     const category = normalizeMarketCategory(categoryValue(item));
@@ -166,7 +167,7 @@ export function marketCategoryCounts(items: JsonObject[]) {
   return counts;
 }
 
-export function sortMarketPlugins(items: JsonObject[], sort: 'default' | 'stars' | 'author' | 'updated', order: 'asc' | 'desc') {
+export function sortMarketPlugins(items: PluginDto[], sort: 'default' | 'stars' | 'author' | 'updated', order: 'asc' | 'desc') {
   const direction = order === 'desc' ? -1 : 1;
   const plugins = [...items];
   if (sort === 'default') return [...plugins.filter((item) => Boolean(item.pinned)), ...plugins.filter((item) => !item.pinned)];
@@ -177,11 +178,11 @@ export function sortMarketPlugins(items: JsonObject[], sort: 'default' | 'stars'
   });
 }
 
-export function markInstalledMarketPlugins(market: JsonObject[], installed: JsonObject[], registryUrl: string) {
+export function markInstalledMarketPlugins(market: PluginDto[], installed: PluginDto[], registryUrl: string) {
   const registry = normalizePluginUrl(registryUrl);
-  const identifiers = new Map<string, JsonObject>();
-  const repos = new Map<string, JsonObject>();
-  const names = new Map<string, JsonObject>();
+  const identifiers = new Map<string, PluginDto>();
+  const repos = new Map<string, PluginDto>();
+  const names = new Map<string, PluginDto>();
   installed.forEach((item) => {
     const source = isObject(item.install_source) ? item.install_source : {};
     if (source.install_method === 'market' && normalizePluginUrl(source.registry_url) === registry && source.market_plugin_id) identifiers.set(String(source.market_plugin_id), item);

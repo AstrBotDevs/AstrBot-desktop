@@ -8,6 +8,7 @@ import {
   installPluginFromUrl,
   validatePluginRepo,
 } from '@/api/openapi';
+import type { PluginDto } from '@/api/domain';
 import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { ProxySelector } from '@/routes/configuration/SettingsExtras';
@@ -21,7 +22,7 @@ import {
   pluginTitle,
 } from './extensionModel';
 
-export function InstallPluginDialog({ initial, onInstalled, onOpenChange, open, registryUrl = '' }: { initial?: JsonObject; onInstalled: (plugin: JsonObject) => void | Promise<void>; onOpenChange: (open: boolean) => void; open: boolean; registryUrl?: string }) {
+export function InstallPluginDialog({ initial, onInstalled, onOpenChange, open, registryUrl = '' }: { initial?: PluginDto; onInstalled: (plugin: PluginDto) => void | Promise<void>; onOpenChange: (open: boolean) => void; open: boolean; registryUrl?: string }) {
   const { t } = useTranslation(); const e = (key: string) => t(`features.extension.${key}`); const input = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<'file' | 'url'>(initial ? 'url' : 'file'); const [file, setFile] = useState<File | null>(null); const [url, setUrl] = useState(''); const [installing, setInstalling] = useState(false); const [compatibility, setCompatibility] = useState<{ checked: boolean; message: string; supported: boolean }>({ checked: false, message: '', supported: true }); const [versionWarning, setVersionWarning] = useState(false); const [validation, setValidation] = useState<{ message: string; status: 'idle' | 'loading' | 'valid' | 'error' }>({ message: '', status: 'idle' });
   useEffect(() => {

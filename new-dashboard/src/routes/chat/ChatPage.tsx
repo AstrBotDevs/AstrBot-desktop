@@ -29,6 +29,8 @@ import {
   uploadFile,
 } from '@/api/openapi';
 import { fetchWithAuth } from '@/api/http';
+import { type ProviderDto, parseChatSessions, parseProviders } from '@/api/domain';
+import { decodeApiData, expectRecord } from '@/api/response';
 import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { errorMessage, isObject, JsonObject, objectList, recordId, responseData } from '@/routes/configuration/model';
@@ -69,7 +71,6 @@ import {
   contextTokenCount,
   normalizeRecord,
   serializeChatParts,
-  sessionList,
   type StagedAttachmentType,
   stagedAttachmentType,
   usesLocalProviderOverride,
@@ -77,7 +78,7 @@ import {
 
 type ChatPageProps = { chatbox?: boolean };
 type StagedFile = { attachment_id: string; filename: string; preview_url?: string; type: StagedAttachmentType };
-type ProviderConfig = JsonObject & { id: string; model: string };
+type ProviderConfig = ProviderDto & { model: string };
 type CommandSuggestion = JsonObject & {
   effective_command: string;
   description?: string;
@@ -334,8 +335,11 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
 
   const loadSessions = useCallback(async () => {
     try {
-      const data = unwrap<unknown>(await listChatSessions({ query: { page: 1, page_size: 200 } }));
-      setSessions(sessionList(data));
+      setSessions(decodeApiData(
+        await listChatSessions({ query: { page: 1, page_size: 200 } }),
+        parseChatSessions,
+        'chat session list',
+      ));
     } catch (cause) {
       setError(errorMessage(cause, 'Failed to load conversations.'));
     }
@@ -353,8 +357,12 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const loadProjectSessions = useCallback(async (projectId: string) => {
     setLoadingProjectIds((current) => new Set(current).add(projectId));
     try {
-      const data = unwrap<unknown>(await listChatProjectSessions({ path: { project_id: projectId } }));
-      setProjectSessions((current) => ({ ...current, [projectId]: sessionList(data) }));
+      const sessions = decodeApiData(
+        await listChatProjectSessions({ path: { project_id: projectId } }),
+        parseChatSessions,
+        'project chat session list',
+      );
+      setProjectSessions((current) => ({ ...current, [projectId]: sessions }));
     } catch (cause) {
       toast.error(errorMessage(cause, t('features.chat.project.loadFailed')));
       setProjectSessions((current) => ({ ...current, [projectId]: [] }));
@@ -370,12 +378,14 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const loadProviders = useCallback(async () => {
     setProvidersLoading(true);
     try {
-      const data = responseData<unknown>(await listProviders({ query: { capability: 'chat', enabled: true } }));
-      const envelope = isObject(data) ? data : {};
-      const items = objectList(data, ['providers', 'data'])
+      const envelope = decodeApiData(
+        await listProviders({ query: { capability: 'chat', enabled: true } }),
+        (value) => expectRecord(value, 'provider list'),
+        'provider list',
+      );
+      const items = parseProviders(envelope)
         .filter((item) => (item.enable ?? item.enabled) !== false)
-        .map((item) => ({ ...item, id: recordId(item, 'id', 'provider_id'), model: String(item.model || '') }))
-        .filter((item): item is ProviderConfig => Boolean(item.id));
+        .map((item) => ({ ...item, model: typeof item.model === 'string' ? item.model : '' }));
       setProviders(items);
       setProviderMetadata(isObject(envelope.model_metadata) ? envelope.model_metadata as Record<string, JsonObject> : {});
       const selected = items.find((item) => item.id === provider);

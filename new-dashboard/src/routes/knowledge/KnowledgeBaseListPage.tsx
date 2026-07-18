@@ -4,10 +4,17 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 
 import { createKnowledgeBase, deleteKnowledgeBase, listKnowledgeBases, listProviders, updateKnowledgeBase } from '@/api/openapi';
+import {
+  type KnowledgeBaseDto,
+  type ProviderDto,
+  parseKnowledgeBasePage,
+  parseProviders,
+} from '@/api/domain';
+import { decodeApiData } from '@/api/response';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { confirmAction, toast } from '@/stores/feedback';
-import { errorMessage, JsonObject, objectList, responseData } from '@/routes/configuration/model';
+import { errorMessage } from '@/routes/configuration/model';
 import { knowledgeBaseId, chunkCount, documentCount } from './knowledgeModel';
 
 type Form = { kb_name: string; description: string; emoji: string; embedding_provider_id: string; rerank_provider_id: string };
@@ -24,9 +31,9 @@ type ProviderSelectProps = {
   emptyLabel?: string;
   onChange: (value: string) => void;
   placeholder: string;
-  providers: JsonObject[];
-  subtitle: (provider: JsonObject) => string;
-  title: (provider: JsonObject) => string;
+  providers: ProviderDto[];
+  subtitle: (provider: ProviderDto) => string;
+  title: (provider: ProviderDto) => string;
   value: string;
 };
 
@@ -95,13 +102,13 @@ function ProviderSelect({ disabled, emptyLabel, onChange, placeholder, providers
 export default function KnowledgeBaseListPage() {
   const { t } = useTranslation();
   const k = (key: string, options?: Record<string, unknown>) => t(`features.knowledge-base.index.${key}`, options);
-  const [items, setItems] = useState<JsonObject[]>([]);
-  const [providers, setProviders] = useState<JsonObject[]>([]);
+  const [items, setItems] = useState<KnowledgeBaseDto[]>([]);
+  const [providers, setProviders] = useState<ProviderDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const [editing, setEditing] = useState<JsonObject | null>(null);
+  const [editing, setEditing] = useState<KnowledgeBaseDto | null>(null);
   const [form, setForm] = useState<Form>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -109,9 +116,13 @@ export default function KnowledgeBaseListPage() {
   const load = useCallback(async (refresh = false) => {
     setLoading(true); setError('');
     try {
-      const data = responseData<JsonObject>(await listKnowledgeBases({ query: { page, page_size: 20, refresh_stats: refresh } })) ?? {};
-      const rows = objectList(data, ['items', 'knowledge_bases']);
-      setItems(rows); setTotal(typeof data.total === 'number' ? data.total : rows.length);
+      const data = decodeApiData(
+        await listKnowledgeBases({ query: { page, page_size: 20, refresh_stats: refresh } }),
+        parseKnowledgeBasePage,
+        'knowledge base list',
+      );
+      setItems(data.items);
+      setTotal(data.total);
     } catch (cause) { setError(errorMessage(cause, k('messages.loadError'))); }
     finally { setLoading(false); }
   }, [page, t]);
@@ -119,13 +130,13 @@ export default function KnowledgeBaseListPage() {
   useEffect(() => { void load(true); }, [load]);
   useEffect(() => {
     void Promise.all([listProviders({ query: { capability: 'embedding', enabled: true } }), listProviders({ query: { capability: 'rerank', enabled: true } })])
-      .then((responses) => setProviders(responses.flatMap((response) => objectList(responseData(response), ['providers', 'items', 'data']))))
+      .then((responses) => setProviders(responses.flatMap((response) => decodeApiData(response, parseProviders, 'provider list'))))
       .catch(() => setProviders([]));
   }, []);
 
   const embeddingProviders = useMemo(() => providers.filter((item) => String(item.provider_type || item.capability).includes('embedding')), [providers]);
   const rerankProviders = useMemo(() => providers.filter((item) => String(item.provider_type || item.capability).includes('rerank')), [providers]);
-  const open = (item?: JsonObject) => {
+  const open = (item?: KnowledgeBaseDto) => {
     setEditing(item ?? {});
     setForm(item ? { kb_name: String(item.kb_name || ''), description: String(item.description || ''), emoji: String(item.emoji || '📚'), embedding_provider_id: String(item.embedding_provider_id || ''), rerank_provider_id: String(item.rerank_provider_id || '') } : emptyForm);
   };
@@ -144,7 +155,7 @@ export default function KnowledgeBaseListPage() {
     } catch (cause) { toast.error(errorMessage(cause, k(id ? 'messages.updateFailed' : 'messages.createFailed'))); }
     finally { setSaving(false); }
   };
-  const remove = async (item: JsonObject) => {
+  const remove = async (item: KnowledgeBaseDto) => {
     const id = knowledgeBaseId(item); const name = String(item.kb_name || id);
     if (!id || !await confirmAction({ danger: true, title: k('delete.title'), message: `${k('delete.confirmText', { name })}\n${k('delete.warning')}` })) return;
     try { await deleteKnowledgeBase({ path: { kb_id: id } }); toast.success(k('messages.deleteSuccess')); if (items.length === 1 && page > 1) setPage((value) => value - 1); else await load(true); }

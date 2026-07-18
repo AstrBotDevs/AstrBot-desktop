@@ -3,39 +3,46 @@ import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 
 import { deleteKnowledgeChunk, getKnowledgeDocument, listKnowledgeChunks } from '@/api/openapi';
+import {
+  type KnowledgeChunkDto,
+  type KnowledgeDocumentDto,
+  parseKnowledgeChunkPage,
+  parseKnowledgeDocument,
+} from '@/api/domain';
+import { decodeApiData } from '@/api/response';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { confirmAction, toast } from '@/stores/feedback';
-import { errorMessage, JsonObject, objectList, recordId, responseData } from '@/routes/configuration/model';
+import { errorMessage, recordId } from '@/routes/configuration/model';
 import { chunkCount, documentName, formatFileSize, formatKnowledgeDate } from './knowledgeModel';
 
 export default function DocumentDetailPage() {
   const { kbId = '', docId = '' } = useParams();
   const { t, i18n } = useTranslation();
   const k = (key: string, options?: Record<string, unknown>) => t(`features.knowledge-base.document.${key}`, options);
-  const [document, setDocument] = useState<JsonObject>({});
-  const [chunks, setChunks] = useState<JsonObject[]>([]);
+  const [document, setDocument] = useState<KnowledgeDocumentDto>({});
+  const [chunks, setChunks] = useState<KnowledgeChunkDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<JsonObject | null>(null);
+  const [selected, setSelected] = useState<KnowledgeChunkDto | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
       const [docResponse, chunksResponse] = await Promise.all([getKnowledgeDocument({ path: { kb_id: kbId, document_id: docId } }), listKnowledgeChunks({ path: { kb_id: kbId }, query: { document_id: docId, page, page_size: pageSize } })]);
-      const data = responseData<JsonObject>(chunksResponse) ?? {};
-      setDocument(responseData<JsonObject>(docResponse) ?? {});
-      const rows = objectList(data, ['items', 'chunks']); setChunks(rows); setTotal(typeof data.total === 'number' ? data.total : rows.length);
+      const data = decodeApiData(chunksResponse, parseKnowledgeChunkPage, 'knowledge chunk list');
+      setDocument(decodeApiData(docResponse, parseKnowledgeDocument, 'knowledge document'));
+      setChunks(data.items); setTotal(data.total);
     } catch (cause) { setError(errorMessage(cause, k('title'))); }
     finally { setLoading(false); }
   }, [docId, kbId, page, pageSize, t]);
   useEffect(() => { void load(); }, [load]);
 
-  const remove = async (chunk: JsonObject) => {
+  const remove = async (chunk: KnowledgeChunkDto) => {
     const id = recordId(chunk, 'chunk_id', 'id');
     if (!id || !await confirmAction({ danger: true, title: k('delete.title'), message: `${k('delete.confirmText')}\n${k('delete.warning')}` })) return;
     try { await deleteKnowledgeChunk({ path: { kb_id: kbId, chunk_id: id }, query: { document_id: docId } }); toast.success(k('delete.deleteSuccess')); await load(); }

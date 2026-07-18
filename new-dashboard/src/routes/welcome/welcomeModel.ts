@@ -1,24 +1,23 @@
-export type ComputerAccessRuntime = 'local' | 'none';
+import { isRecord } from '@/api/response';
 
-export function unwrapApiData<T>(response: unknown): T | undefined {
-  const axiosData = (response as { data?: unknown } | null)?.data;
-  if (!axiosData || typeof axiosData !== 'object') return axiosData as T | undefined;
-  return ((axiosData as { data?: unknown }).data ?? axiosData) as T;
-}
+export type ComputerAccessRuntime = 'local' | 'none';
 
 export function hasChatProvider(payload: unknown) {
   return chatProviders(payload).length > 0;
 }
 
 export function chatProviders(payload: unknown) {
-  const data = payload as {
-    provider_sources?: Array<{ id?: string; provider_type?: string }>;
-    providers?: Array<{ enable?: boolean; id?: string; provider_source_id?: string; provider_type?: string; type?: string }>;
-  } | undefined;
-  const sourceTypes = new Map((data?.provider_sources ?? []).map((source) => [source.id, source.provider_type]));
-  return (data?.providers ?? []).filter((provider) => (
+  if (!isRecord(payload)) return [];
+  const sourceValue = payload.provider_sources ?? payload.providerSources;
+  const sources = Array.isArray(sourceValue) ? sourceValue.filter(isRecord) : [];
+  const providers = Array.isArray(payload.providers) ? payload.providers.filter(isRecord) : [];
+  const sourceTypes = new Map(sources.map((source) => [
+    typeof source.id === 'string' ? source.id : '',
+    typeof source.provider_type === 'string' ? source.provider_type : '',
+  ]));
+  return providers.filter((provider) => (
     provider.provider_type === 'chat_completion'
-    || sourceTypes.get(provider.provider_source_id) === 'chat_completion'
+    || sourceTypes.get(typeof provider.provider_source_id === 'string' ? provider.provider_source_id : '') === 'chat_completion'
     || String(provider.type ?? '').includes('chat_completion')
   ));
 }
@@ -38,8 +37,8 @@ export function isComputerAccessRuntimeConfigured(value: unknown) {
 
 export function resolveWelcomeAnnouncement(raw: unknown, locale: string) {
   if (typeof raw === 'string') return raw.trim();
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return '';
-  const values = raw as Record<string, unknown>;
+  if (!isRecord(raw)) return '';
+  const values = raw;
   const normalized = locale.replace('-', '_');
   const keys = normalized.startsWith('zh')
     ? [normalized, 'zh_CN', 'zh-CN', 'zh', 'en_US', 'en-US', 'en']
