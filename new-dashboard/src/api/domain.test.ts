@@ -3,12 +3,35 @@ import { describe, expect, it } from 'vitest';
 import {
   parseChatSessions,
   parseConfigProfiles,
+  parseFailedPlugins,
   parseKnowledgeBasePage,
   parseProviderSchema,
   parseProviders,
 } from './domain';
 
 describe('API domain parsers', () => {
+  it('normalizes the keyed failed-plugin response used by the backend', () => {
+    expect(parseFailedPlugins({})).toEqual([]);
+    expect(
+      parseFailedPlugins({
+        astrbot_plugin_broken: {
+          error: 'Import failed',
+          reserved: true,
+          traceback: 'traceback',
+        },
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        dir_name: 'astrbot_plugin_broken',
+        display_name: 'astrbot_plugin_broken',
+        error: 'Import failed',
+        name: 'astrbot_plugin_broken',
+        reserved: true,
+        traceback: 'traceback',
+      }),
+    ]);
+  });
+
   it('parses provider schema and provider lists with required identifiers', () => {
     expect(
       parseProviderSchema({

@@ -21,7 +21,7 @@ import {
   updatePluginConfigById,
   updatePlugins,
 } from '@/api/openapi';
-import { type PluginDto, parsePlugins } from '@/api/domain';
+import { type PluginDto, parseFailedPlugins, parsePlugins } from '@/api/domain';
 import { decodeApiData } from '@/api/response';
 import { pinnedPluginsPreference, selectedPluginSourcePreference } from '@/config/preferences';
 import { Markdown } from '@/components/content/Markdown';
@@ -208,7 +208,7 @@ function InstalledPlugins() {
       );
       setItems(annotatePluginUpdates(installed, markets));
       window.dispatchEvent(new CustomEvent(PLUGIN_SIDEBAR_CHANGED_EVENT, { detail: installed }));
-      setFailed(failedResponse ? decodeApiData(failedResponse, parsePlugins, 'failed plugin list') : []);
+      setFailed(failedResponse ? decodeApiData(failedResponse, parseFailedPlugins, 'failed plugin list') : []);
     } catch (cause) {
       setError(errorMessage(cause, e('messages.refreshFailed')));
     } finally {

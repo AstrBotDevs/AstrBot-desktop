@@ -51,6 +51,18 @@ describe('ExtensionPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('plugin service unavailable');
   });
 
+  it('accepts the empty keyed failed-plugin payload returned by the backend', async () => {
+    vi.mocked(listPlugins).mockResolvedValue(
+      plugins([{ activated: true, display_name: 'Calendar', name: 'calendar', version: '1.0.0' }]),
+    );
+    vi.mocked(listFailedPlugins).mockResolvedValue(mockApiResponse({}));
+
+    renderRoute(<ExtensionPage />, { route: '/extension' });
+
+    expect(await screen.findByText('Calendar')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('toggles an installed plugin and refreshes the list', async () => {
     const user = userEvent.setup();
     vi.mocked(listPlugins).mockResolvedValue(

@@ -125,6 +125,31 @@ export function parsePlugins(value: unknown): PluginDto[] {
   }));
 }
 
+export function parseFailedPlugins(value: unknown): PluginDto[] {
+  if (Array.isArray(value)) return parsePlugins(value);
+  const payload = expectRecord(value, 'failed plugin list');
+  for (const key of ['failed_plugins', 'plugins', 'items', 'data', 'results']) {
+    if (Array.isArray(payload[key])) return parsePlugins(payload[key]);
+  }
+  const nested = payload.failed_plugins;
+  const entries = isRecord(nested) ? nested : payload;
+  return Object.entries(entries).flatMap(([directory, rawDetail]) => {
+    if (directory === '$meta') return [];
+    const detail = isRecord(rawDetail) ? rawDetail : {};
+    return [
+      {
+        ...detail,
+        dir_name: directory,
+        display_name: optionalString(detail.display_name) || optionalString(detail.name) || directory,
+        error: optionalString(detail.error) || (typeof rawDetail === 'string' ? rawDetail : ''),
+        name: optionalString(detail.name) || directory,
+        reserved: Boolean(detail.reserved),
+        traceback: optionalString(detail.traceback) || '',
+      },
+    ];
+  });
+}
+
 export function parsePlugin(value: unknown): PluginDto {
   return { ...expectRecord(value, 'plugin') };
 }
@@ -219,4 +244,8 @@ function requiredString(value: unknown, field: string) {
 function optionalNumber(value: unknown) {
   const number = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(number) ? number : undefined;
+}
+
+function optionalString(value: unknown) {
+  return typeof value === 'string' ? value : '';
 }
