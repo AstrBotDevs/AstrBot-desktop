@@ -56,12 +56,3 @@ export function expectRecord(value: unknown, domain = 'object'): UnknownRecord {
 export function optionalRecord(value: unknown): UnknownRecord | undefined {
   return isRecord(value) ? value : undefined;
 }
-
-export function recordArray(value: unknown, domain = 'list'): UnknownRecord[] {
-  if (!Array.isArray(value)) throw new ApiPayloadError(`Expected ${domain} to be an array.`, value);
-  const invalidIndex = value.findIndex((item) => !isRecord(item));
-  if (invalidIndex >= 0) {
-    throw new ApiPayloadError(`Expected ${domain}[${invalidIndex}] to be an object.`, value[invalidIndex]);
-  }
-  return value;
-}

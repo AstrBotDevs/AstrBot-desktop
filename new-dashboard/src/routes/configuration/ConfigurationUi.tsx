@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RecordConfigForm } from '@/components/config/DynamicConfigForm';
 import { MonacoEditor } from '@/components/editor/MonacoEditor';
@@ -6,31 +6,6 @@ import { Dialog } from '@/components/headless/Dialog';
 import { Button, DialogCancel } from '@/components/ui/Button';
 import { DialogActions } from '@/components/ui/DialogActions';
 import { isObject, prettyJson } from './model';
-
-export function ConfigPageShell({
-  actions,
-  children,
-  description,
-  title,
-}: {
-  actions?: ReactNode;
-  children: ReactNode;
-  description: string;
-  title: string;
-}) {
-  return (
-    <div className="monitor-page config-page">
-      <header className="monitor-header">
-        <div>
-          <h1>{title}</h1>
-          <p>{description}</p>
-        </div>
-        <div className="monitor-actions">{actions}</div>
-      </header>
-      {children}
-    </div>
-  );
-}
 
 export function JsonConfigDialog({
   busy,

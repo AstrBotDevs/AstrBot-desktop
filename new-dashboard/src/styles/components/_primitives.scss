@@ -133,57 +133,6 @@
   font-size: 19px;
 }
 
-.ui-field {
-  display: grid;
-  gap: var(--astrbot-space-2);
-}
-
-.ui-field__label {
-  display: flex;
-  align-items: center;
-  gap: var(--astrbot-space-1);
-  color: var(--astrbot-text);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.ui-field__label > span {
-  color: var(--astrbot-error);
-}
-
-.ui-field__description,
-.ui-field__error {
-  color: color-mix(in srgb, var(--astrbot-text) 58%, transparent);
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.ui-field__error,
-.ui-field--error .ui-field__label {
-  color: var(--astrbot-error);
-}
-
-.ui-field input,
-.ui-field select,
-.ui-field textarea {
-  width: 100%;
-  min-height: 40px;
-  padding: var(--astrbot-space-2) var(--astrbot-space-3);
-  border: 1px solid var(--astrbot-border);
-  border-radius: var(--astrbot-radius-control);
-  outline: 0;
-  background: var(--astrbot-surface);
-  color: var(--astrbot-text);
-  font: inherit;
-}
-
-.ui-field input:focus,
-.ui-field select:focus,
-.ui-field textarea:focus {
-  border-color: var(--astrbot-primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--astrbot-primary) 18%, transparent);
-}
-
 .ui-search-field {
   display: flex;
   min-width: 180px;

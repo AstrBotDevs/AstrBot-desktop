@@ -23,13 +23,8 @@ import zhCNTrace from './locales/zh-CN/features/trace.json';
 import zhCNAbout from './locales/zh-CN/features/about.json';
 import zhCNSettings from './locales/zh-CN/features/settings.json';
 import zhCNAuth from './locales/zh-CN/features/auth.json';
-import zhCNChart from './locales/zh-CN/features/chart.json';
-import zhCNDashboard from './locales/zh-CN/features/dashboard.json';
 import zhCNCron from './locales/zh-CN/features/cron.json';
 import zhCNStats from './locales/zh-CN/features/stats.json';
-import zhCNAlkaidIndex from './locales/zh-CN/features/alkaid/index.json';
-import zhCNAlkaidKnowledgeBase from './locales/zh-CN/features/alkaid/knowledge-base.json';
-import zhCNAlkaidMemory from './locales/zh-CN/features/alkaid/memory.json';
 import zhCNKnowledgeBaseIndex from './locales/zh-CN/features/knowledge-base/index.json';
 import zhCNKnowledgeBaseDetail from './locales/zh-CN/features/knowledge-base/detail.json';
 import zhCNKnowledgeBaseDocument from './locales/zh-CN/features/knowledge-base/document.json';
@@ -64,13 +59,8 @@ import enUSTrace from './locales/en-US/features/trace.json';
 import enUSAbout from './locales/en-US/features/about.json';
 import enUSSettings from './locales/en-US/features/settings.json';
 import enUSAuth from './locales/en-US/features/auth.json';
-import enUSChart from './locales/en-US/features/chart.json';
-import enUSDashboard from './locales/en-US/features/dashboard.json';
 import enUSCron from './locales/en-US/features/cron.json';
 import enUSStats from './locales/en-US/features/stats.json';
-import enUSAlkaidIndex from './locales/en-US/features/alkaid/index.json';
-import enUSAlkaidKnowledgeBase from './locales/en-US/features/alkaid/knowledge-base.json';
-import enUSAlkaidMemory from './locales/en-US/features/alkaid/memory.json';
 import enUSKnowledgeBaseIndex from './locales/en-US/features/knowledge-base/index.json';
 import enUSKnowledgeBaseDetail from './locales/en-US/features/knowledge-base/detail.json';
 import enUSKnowledgeBaseDocument from './locales/en-US/features/knowledge-base/document.json';
@@ -105,13 +95,8 @@ import ruRUTrace from './locales/ru-RU/features/trace.json';
 import ruRUAbout from './locales/ru-RU/features/about.json';
 import ruRUSettings from './locales/ru-RU/features/settings.json';
 import ruRUAuth from './locales/ru-RU/features/auth.json';
-import ruRUChart from './locales/ru-RU/features/chart.json';
-import ruRUDashboard from './locales/ru-RU/features/dashboard.json';
 import ruRUCron from './locales/ru-RU/features/cron.json';
 import ruRUStats from './locales/ru-RU/features/stats.json';
-import ruRUAlkaidIndex from './locales/ru-RU/features/alkaid/index.json';
-import ruRUAlkaidKnowledgeBase from './locales/ru-RU/features/alkaid/knowledge-base.json';
-import ruRUAlkaidMemory from './locales/ru-RU/features/alkaid/memory.json';
 import ruRUKnowledgeBaseIndex from './locales/ru-RU/features/knowledge-base/index.json';
 import ruRUKnowledgeBaseDetail from './locales/ru-RU/features/knowledge-base/detail.json';
 import ruRUKnowledgeBaseDocument from './locales/ru-RU/features/knowledge-base/document.json';
@@ -150,15 +135,8 @@ export const translations = {
       about: zhCNAbout,
       settings: zhCNSettings,
       auth: zhCNAuth,
-      chart: zhCNChart,
-      dashboard: zhCNDashboard,
       cron: zhCNCron,
       stats: zhCNStats,
-      alkaid: {
-        index: zhCNAlkaidIndex,
-        'knowledge-base': zhCNAlkaidKnowledgeBase,
-        memory: zhCNAlkaidMemory,
-      },
       'knowledge-base': {
         index: zhCNKnowledgeBaseIndex,
         detail: zhCNKnowledgeBaseDetail,
@@ -199,15 +177,8 @@ export const translations = {
       about: enUSAbout,
       settings: enUSSettings,
       auth: enUSAuth,
-      chart: enUSChart,
-      dashboard: enUSDashboard,
       cron: enUSCron,
       stats: enUSStats,
-      alkaid: {
-        index: enUSAlkaidIndex,
-        'knowledge-base': enUSAlkaidKnowledgeBase,
-        memory: enUSAlkaidMemory,
-      },
       'knowledge-base': {
         index: enUSKnowledgeBaseIndex,
         detail: enUSKnowledgeBaseDetail,
@@ -248,15 +219,8 @@ export const translations = {
       about: ruRUAbout,
       settings: ruRUSettings,
       auth: ruRUAuth,
-      chart: ruRUChart,
-      dashboard: ruRUDashboard,
       cron: ruRUCron,
       stats: ruRUStats,
-      alkaid: {
-        index: ruRUAlkaidIndex,
-        'knowledge-base': ruRUAlkaidKnowledgeBase,
-        memory: ruRUAlkaidMemory,
-      },
       'knowledge-base': {
         index: ruRUKnowledgeBaseIndex,
         detail: ruRUKnowledgeBaseDetail,
@@ -274,5 +238,3 @@ export const translations = {
     },
   },
 };
-
-export type TranslationData = typeof translations;

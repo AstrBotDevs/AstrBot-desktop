@@ -17,6 +17,8 @@
     },
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noEmit": true,
     "jsx": "react-jsx"
   },

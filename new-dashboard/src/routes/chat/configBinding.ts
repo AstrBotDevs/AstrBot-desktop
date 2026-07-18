@@ -2,8 +2,6 @@ import { DEFAULT_CONFIG_ID, DEFAULT_PLATFORM_ID } from '@/config/defaults';
 import { selectedConfigPreference } from '@/config/preferences';
 import { storageKeys } from '@/config/storageKeys';
 
-export const CHAT_SELECTED_CONFIG_STORAGE_KEY = storageKeys.chat.selectedConfigId;
-
 export type ConfigRouteEntry = {
   pattern: string;
   configId: string;

@@ -1,9 +1,7 @@
 import { create } from 'zustand';
 
 import { legacyThemePreference, openedSidebarGroupsPreference, themeModePreference } from '@/config/preferences';
-import { storageKeys } from '@/config/storageKeys';
 
-export const SIDEBAR_OPENED_ITEMS_KEY = storageKeys.layout.openedSidebarGroups;
 export const SIDEBAR_MIN_WIDTH = 200;
 export const SIDEBAR_MAX_WIDTH = 300;
 export const SIDEBAR_DEFAULT_WIDTH = 235;

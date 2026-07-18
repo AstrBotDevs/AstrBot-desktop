@@ -13,6 +13,7 @@ const uiSources = import.meta.glob('../{app,components,layouts,routes}/**/*.{ts,
   import: 'default',
   query: '?raw',
 }) as Record<string, string>;
+const combinedUiSource = Object.values(uiSources).join('\n');
 
 describe('route translation keys', () => {
   it('uses dot-separated paths for the nested feature resources', () => {
@@ -69,6 +70,16 @@ describe('locale resources', () => {
         .map(([key]) => key);
       expect(empty, `${code} empty translations`).toEqual([]);
     }
+  });
+
+  it('only loads feature namespaces referenced by UI source', () => {
+    const unused = Object.keys(translations['zh-CN'].features).filter((namespace) => {
+      const escaped = namespace.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return !new RegExp(`\\bfeatures\\.${escaped}(?![\\w-])`).test(combinedUiSource);
+    });
+
+    expect(unused).toEqual([]);
+    expect(combinedUiSource).not.toMatch(/features\.\$\{/);
   });
 
   it('defines every statically referenced UI key in each locale', () => {

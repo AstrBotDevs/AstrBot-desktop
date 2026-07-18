@@ -27,21 +27,6 @@ export function useEventListener(
   }, [options, target, type]);
 }
 
-export function useObjectUrl(blob?: Blob | null) {
-  const { createObjectUrl, revokeObjectUrl } = useBrowserCapabilities();
-  const [url, setUrl] = useState('');
-  useEffect(() => {
-    if (!blob) {
-      setUrl('');
-      return;
-    }
-    const next = createObjectUrl(blob);
-    setUrl(next);
-    return () => revokeObjectUrl(next);
-  }, [blob, createObjectUrl, revokeObjectUrl]);
-  return url;
-}
-
 export function useObjectUrlRegistry() {
   const { createObjectUrl, revokeObjectUrl } = useBrowserCapabilities();
   const urls = useRef(new Set<string>());
