@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
@@ -7,6 +9,8 @@ import { DialogActions } from './DialogActions';
 import { Pagination } from './Pagination';
 import { SearchField } from './SearchField';
 import { StatusChip } from './StatusChip';
+
+const primitiveStyles = readFileSync(new URL('../../styles/components/_primitives.scss', import.meta.url), 'utf8');
 
 describe('shared UI primitives', () => {
   it('applies a consistent button variant while preserving caller classes', () => {
@@ -33,6 +37,12 @@ describe('shared UI primitives', () => {
     expect(markup).toContain('ui-dialog-actions__leading');
     expect(markup).toContain('Reset');
     expect(markup).toContain('Confirm');
+  });
+
+  it('gives legacy dialog actions and semantic button classes the shared button appearance', () => {
+    expect(primitiveStyles).toContain(':where(.dialog-actions) > button');
+    expect(primitiveStyles).toContain('.button--danger');
+    expect(primitiveStyles).toContain('.button--warning');
   });
 
   it('gives search and status controls consistent accessible markup', () => {

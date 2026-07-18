@@ -1,7 +1,10 @@
 .ui-button,
 .button--primary,
+.button--danger,
+.button--warning,
 .route-card .button--primary,
-.about-hero button {
+.about-hero button,
+:where(.dialog-actions) > button {
   display: inline-flex;
   min-height: 38px;
   align-items: center;
@@ -19,17 +22,29 @@
   transition: border-color .15s ease, background-color .15s ease, color .15s ease;
 }
 
-.ui-button:hover {
+.ui-button:hover,
+.button--primary:hover,
+.button--danger:hover,
+.button--warning:hover,
+:where(.dialog-actions) > button:hover {
   border-color: color-mix(in srgb, var(--astrbot-primary) 38%, var(--astrbot-border));
   background: var(--astrbot-hover);
 }
 
-.ui-button:focus-visible {
+.ui-button:focus-visible,
+.button--primary:focus-visible,
+.button--danger:focus-visible,
+.button--warning:focus-visible,
+:where(.dialog-actions) > button:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--astrbot-primary) 38%, transparent);
   outline-offset: 2px;
 }
 
-.ui-button:disabled {
+.ui-button:disabled,
+.button--primary:disabled,
+.button--danger:disabled,
+.button--warning:disabled,
+:where(.dialog-actions) > button:disabled {
   cursor: not-allowed;
   opacity: .5;
 }
@@ -43,21 +58,35 @@
   color: #fff;
 }
 
-.ui-button--primary:hover {
+.ui-button--primary:hover,
+.button--primary:hover {
   border-color: var(--astrbot-secondary);
   background: var(--astrbot-secondary);
 }
 
-.ui-button--danger {
+.ui-button--danger,
+.button--danger {
   border-color: color-mix(in srgb, var(--astrbot-error) 34%, var(--astrbot-border));
   background: color-mix(in srgb, var(--astrbot-error) 9%, var(--astrbot-surface));
   color: var(--astrbot-error);
 }
 
-.ui-button--warning {
+.ui-button--danger:hover,
+.button--danger:hover {
+  border-color: var(--astrbot-error);
+  background: color-mix(in srgb, var(--astrbot-error) 15%, var(--astrbot-surface));
+}
+
+.ui-button--warning,
+.button--warning {
   border-color: var(--astrbot-warning);
   background: color-mix(in srgb, var(--astrbot-warning) 16%, var(--astrbot-surface));
   color: var(--astrbot-warning);
+}
+
+.ui-button--warning:hover,
+.button--warning:hover {
+  background: color-mix(in srgb, var(--astrbot-warning) 22%, var(--astrbot-surface));
 }
 
 .ui-button--text {
