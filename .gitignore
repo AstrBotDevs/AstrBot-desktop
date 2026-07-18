@@ -5,9 +5,9 @@
 
 # dependencies/cache
 node_modules/
-new-dashboard/dist/
-new-dashboard/coverage/
-new-dashboard/public/legacy/
+dashboard/dist/
+dashboard/coverage/
+dashboard/public/legacy/
 vendor/
 runtime/
 
