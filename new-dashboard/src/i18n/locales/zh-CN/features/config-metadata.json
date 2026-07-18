@@ -1140,9 +1140,17 @@
           "statusPending": "需完成设置",
           "statusEnabled": "已启用",
           "setupRequiredHint": "TOTP 已开启但尚未完成配置，请点击“管理”完成初始化。",
-          "setupTitle": "设置 TOTP",
-          "setupSubtitle": "请使用认证器应用扫描二维码，然后输入验证码。",
-          "setupConfirm": "验证并继续",
+        "setupTitle": "设置 TOTP",
+        "setupSubtitle": "请使用认证器应用扫描二维码，然后输入验证码。",
+        "setupConfirm": "验证并继续",
+        "identityTitle": "验证当前 TOTP",
+        "identitySubtitle": "输入当前认证器应用中的验证码以验证身份。",
+        "identityCode": "当前验证码",
+        "identityConfirm": "验证",
+        "qrCodeAlt": "TOTP 二维码",
+        "secretGenerationFailed": "无法生成 TOTP 密钥",
+        "verificationFailed": "验证失败",
+        "recoveryGenerationFailed": "生成恢复码失败",
           "activeSubtitle": "可使用此二维码和密钥添加新的认证器设备。",
           "rotateTitle": "更换 TOTP 密钥",
           "rotateSubtitle": "生成新密钥并完成验证后，将替换当前密钥。",
@@ -1318,57 +1326,57 @@
           "description": "文本语言",
           "hint": "默认为中文"
         },
-        "gsv_top_k": {
-          "description": "生成语音的多样性",
-          "hint": ""
+      "gsv_top_k": {
+        "description": "生成语音的多样性",
+        "hint": "控制每一步保留的候选数量，值越大生成结果越多样。"
         },
-        "gsv_top_p": {
-          "description": "核采样的阈值",
-          "hint": ""
+      "gsv_top_p": {
+        "description": "核采样的阈值",
+        "hint": "控制核采样范围，通常取 0 到 1。"
         },
-        "gsv_temperature": {
-          "description": "生成语音的随机性",
-          "hint": ""
+      "gsv_temperature": {
+        "description": "生成语音的随机性",
+        "hint": "值越高生成结果越随机。"
         },
         "gsv_text_split_method": {
           "description": "切分文本的方法",
           "hint": "可选值：  `cut0`：不切分    `cut1`：四句一切   `cut2`：50字一切    `cut3`：按中文句号切    `cut4`：按英文句号切    `cut5`：按标点符号切"
         },
-        "gsv_batch_size": {
-          "description": "批处理大小",
-          "hint": ""
+      "gsv_batch_size": {
+        "description": "批处理大小",
+        "hint": "单批并行处理的文本片段数量。"
         },
-        "gsv_batch_threshold": {
-          "description": "批处理阈值",
-          "hint": ""
+      "gsv_batch_threshold": {
+        "description": "批处理阈值",
+        "hint": "控制文本片段进入批处理的长度阈值。"
         },
-        "gsv_split_bucket": {
-          "description": "将文本分割成桶以便并行处理",
-          "hint": ""
+      "gsv_split_bucket": {
+        "description": "将文本分割成桶以便并行处理",
+        "hint": "启用后按长度将文本分组，以提高并行处理效率。"
         },
         "gsv_speed_factor": {
           "description": "语音播放速度",
           "hint": "1为原始语速"
         },
-        "gsv_fragment_interval": {
-          "description": "语音片段之间的间隔时间",
-          "hint": ""
+      "gsv_fragment_interval": {
+        "description": "语音片段之间的间隔时间",
+        "hint": "控制相邻语音片段之间的静音间隔。"
         },
-        "gsv_streaming_mode": {
-          "description": "启用流模式",
-          "hint": ""
+      "gsv_streaming_mode": {
+        "description": "启用流模式",
+        "hint": "启用后以流式方式返回合成音频。"
         },
         "gsv_seed": {
           "description": "随机种子",
           "hint": "用于结果的可重复性"
         },
-        "gsv_parallel_infer": {
-          "description": "并行执行推理",
-          "hint": ""
+      "gsv_parallel_infer": {
+        "description": "并行执行推理",
+        "hint": "启用后并行处理多个文本片段。"
         },
-        "gsv_repetition_penalty": {
-          "description": "重复惩罚因子",
-          "hint": ""
+      "gsv_repetition_penalty": {
+        "description": "重复惩罚因子",
+        "hint": "提高该值可减少重复生成的内容。"
         },
         "gsv_media_type": {
           "description": "输出媒体的类型",

@@ -20,5 +20,6 @@
   "reset": "重置",
   "clear": "清空",
   "save": "保存",
-  "close": "关闭"
-} 
+  "close": "关闭",
+  "collapse": "收起"
+}

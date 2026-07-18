@@ -10,14 +10,20 @@
     "recordingPrompt": "Запись... говорите",
     "chatPrompt": "Давай пообщаемся!",
     "dropToUpload": "Отпустите, чтобы загрузить файл",
-    "stopGenerating": "Остановить генерацию"
+    "stopGenerating": "Остановить генерацию",
+    "download": "Скачать"
+  },
+  "attachment": {
+    "image": "Изображение",
+    "downloadFailed": "Не удалось скачать вложение"
   },
   "message": {
     "user": "Вы",
     "assistant": "Ассистент",
     "system": "Система",
     "error": "Ошибка в сообщении",
-    "loading": "Думаю..."
+    "loading": "Думаю...",
+    "editFailed": "Не удалось изменить сообщение"
   },
   "voice": {
     "start": "Начать запись",
@@ -78,6 +84,9 @@
     "askInThread": "Спросить в ветке",
     "count": "Веток: {count}",
     "createFailed": "Не удалось создать ветку",
+    "loadFailed": "Не удалось загрузить ветку",
+    "sendFailed": "Не удалось отправить сообщение в ветку",
+    "deleteFailed": "Не удалось удалить ветку",
     "delete": "Удалить ветку",
     "confirmDelete": "Удалить эту ветку? Это действие необратимо.",
     "placeholder": "Спросить об этом фрагменте..."
@@ -93,7 +102,8 @@
     "displayName": "Имя чата",
     "displayNameUpdated": "Имя чата обновлено",
     "displayNameUpdateFailed": "Не удалось обновить имя чата",
-    "confirmDelete": "Вы уверены, что хотите удалить «{name}»? Это действие необратимо."
+    "confirmDelete": "Вы уверены, что хотите удалить «{name}»? Это действие необратимо.",
+    "renameFailed": "Не удалось переименовать диалог"
   },
   "modes": {
     "darkMode": "Темная тема",
@@ -121,7 +131,8 @@
     "websocket": "WebSocket"
   },
   "config": {
-    "title": "Конфигурация"
+    "title": "Конфигурация",
+    "applyFailed": "Не удалось применить конфигурацию"
   },
   "reasoning": {
     "thinking": "Рассуждение",
@@ -200,5 +211,15 @@
   "errors": {
     "sendMessageFailed": "Ошибка отправки сообщения, попробуйте еще раз",
     "createSessionFailed": "Ошибка создания сессии, обновите страницу"
+  },
+  "batch": {
+    "selected": "Выбрано: {count}",
+    "confirmDelete": "Удалить выбранные диалоги ({count})? Это действие необратимо.",
+    "selectAll": "Выбрать все",
+    "deselectAll": "Снять выделение",
+    "delete": "Удалить",
+    "exit": "Выйти",
+    "partialFailure": "Не удалось удалить {failed} из {total} диалогов",
+    "requestFailed": "Не удалось удалить диалоги. Повторите попытку."
   }
 }

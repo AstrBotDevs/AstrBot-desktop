@@ -48,7 +48,7 @@ const newTemplateSource = `<!doctype html>
   <title>New Template</title>
 </head>
 <body>
-  <!-- 从这里开始编辑 -->
+  <!-- Start editing here -->
   <article>{{ text | safe }}</article>
 </body>
 </html>
@@ -93,29 +93,28 @@ export function T2ITemplateEditor() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [version, setVersion] = useState('v4.0.0');
-  const previewText = t(
-    'core.shared.t2iTemplateEditor.previewText',
-    '这是一个示例文本，用于预览模板效果。\n\n这里可以包含多行文本，支持换行和各种格式。',
-  );
+  const previewText = t('core.shared.t2iTemplateEditor.previewText');
   const preview = useMemo(() => normalizeT2iPreview(content, previewText, version), [content, previewText, version]);
   const label = useCallback(
-    (key: string, fallback: string, options?: Record<string, unknown>) =>
-      t(`core.shared.t2iTemplateEditor.${key}`, { defaultValue: fallback, ...options }),
+    (key: string, options?: Record<string, unknown>) => t(`core.shared.t2iTemplateEditor.${key}`, options),
     [t],
   );
 
-  const loadTemplate = useCallback(async (templateName: string) => {
-    if (!templateName) return;
-    setLoading(true);
-    try {
-      const data = responsePayload<ConfigRecord>(await getT2iTemplate({ path: { name: templateName } }));
-      setContent(typeof data?.content === 'string' ? data.content : '');
-    } catch (cause) {
-      toast.error(errorText(cause, `加载模板 ${templateName} 失败`));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const loadTemplate = useCallback(
+    async (templateName: string) => {
+      if (!templateName) return;
+      setLoading(true);
+      try {
+        const data = responsePayload<ConfigRecord>(await getT2iTemplate({ path: { name: templateName } }));
+        setContent(typeof data?.content === 'string' ? data.content : '');
+      } catch (cause) {
+        toast.error(errorText(cause, label('loadTemplateFailed', { name: templateName })));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [label],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -138,7 +137,7 @@ export function T2ITemplateEditor() {
       setSelected(activeName || nextTemplates[0]?.name || '');
       if (rawVersion) setVersion(rawVersion.startsWith('v') ? rawVersion : `v${rawVersion}`);
     } catch (cause) {
-      toast.error(errorText(cause, label('loadFailed', '加载模板列表失败')));
+      toast.error(errorText(cause, label('loadFailed')));
     } finally {
       setLoading(false);
     }
@@ -170,14 +169,14 @@ export function T2ITemplateEditor() {
         await load();
         setCreating(false);
         setSelected(createdName);
-        toast.success(label('saveSuccess', '模板已保存'));
+        toast.success(label('saveSuccess'));
         return createdName;
       }
       await updateT2iTemplate({ body: { content }, path: { name: selected } });
-      toast.success(label('saveSuccess', '模板已保存'));
+      toast.success(label('saveSuccess'));
       return selected;
     } catch (cause) {
-      toast.error(errorText(cause, label('saveFailed', '保存模板失败')));
+      toast.error(errorText(cause, label('saveFailed')));
       return '';
     } finally {
       setSaving(false);
@@ -188,10 +187,10 @@ export function T2ITemplateEditor() {
     try {
       await setActiveT2iTemplate({ body: { name: templateName } });
       setActive(templateName);
-      toast.success(label('applySuccess', '模板已应用'));
+      toast.success(label('applySuccess'));
       return true;
     } catch (cause) {
-      toast.error(errorText(cause, label('applyFailed', '应用模板失败')));
+      toast.error(errorText(cause, label('applyFailed')));
       return false;
     }
   };
@@ -202,7 +201,7 @@ export function T2ITemplateEditor() {
   };
 
   const reset = async () => {
-    if (!(await confirmAction(label('confirmResetMessage', '将基础模板恢复为默认内容？')))) return;
+    if (!(await confirmAction(label('confirmResetMessage')))) return;
     setSaving(true);
     try {
       await resetDefaultT2iTemplate();
@@ -211,7 +210,7 @@ export function T2ITemplateEditor() {
       setSelected('base');
       await loadTemplate('base');
     } catch (cause) {
-      toast.error(errorText(cause, label('resetFailed', '重置模板失败')));
+      toast.error(errorText(cause, label('resetFailed')));
     } finally {
       setSaving(false);
     }
@@ -222,8 +221,8 @@ export function T2ITemplateEditor() {
     if (
       !(await confirmAction({
         danger: true,
-        message: label('confirmDeleteMessage', `确定删除模板 ${selected}？`, { name: selected }),
-        title: label('confirmDelete', '删除模板'),
+        message: label('confirmDeleteMessage', { name: selected }),
+        title: label('confirmDelete'),
       }))
     )
       return;
@@ -233,7 +232,7 @@ export function T2ITemplateEditor() {
       if (active === selected) await apply('base');
       await load();
     } catch (cause) {
-      toast.error(errorText(cause, label('deleteFailed', '删除模板失败')));
+      toast.error(errorText(cause, label('deleteFailed')));
     } finally {
       setSaving(false);
     }
@@ -243,16 +242,16 @@ export function T2ITemplateEditor() {
     <>
       <button className="config-special-trigger" disabled={loading} onClick={() => setOpen(true)} type="button">
         <MdiIcon name="mdi-code-tags" />
-        {label('buttonText', '管理模板')}
+        {label('buttonText')}
       </button>
-      <Dialog onOpenChange={setOpen} open={open} title={label('dialogTitle', '文本转图像模板')}>
+      <Dialog onOpenChange={setOpen} open={open} title={label('dialogTitle')}>
         <div className="t2i-editor">
           <header className="t2i-editor__toolbar">
             {creating ? (
               <input
                 autoFocus
                 onChange={(event) => setName(event.target.value)}
-                placeholder={label('newTemplateNameLabel', '新模板名称')}
+                placeholder={label('newTemplateNameLabel')}
                 value={name}
               />
             ) : (
@@ -260,17 +259,17 @@ export function T2ITemplateEditor() {
                 {templates.map((template) => (
                   <option key={template.name} value={template.name}>
                     {template.name}
-                    {template.name === active ? ` · ${label('applied', '已应用')}` : ''}
+                    {template.name === active ? ` · ${label('applied')}` : ''}
                   </option>
                 ))}
               </select>
             )}
             <button onClick={startNew} type="button">
               <MdiIcon name="mdi-plus" />
-              {label('new', '新建')}
+              {label('new')}
             </button>
             <button onClick={() => void reset()} type="button">
-              {label('resetBase', '重置基础模板')}
+              {label('resetBase')}
             </button>
             <button
               className="button--danger-text"
@@ -278,7 +277,7 @@ export function T2ITemplateEditor() {
               onClick={() => void remove()}
               type="button"
             >
-              {label('delete', '删除')}
+              {label('delete')}
             </button>
             <button
               className="button--primary-soft"
@@ -286,12 +285,12 @@ export function T2ITemplateEditor() {
               onClick={() => void save()}
               type="button"
             >
-              {label('save', '保存')}
+              {label('save')}
             </button>
           </header>
           <div className="t2i-editor__workspace">
             <section>
-              <h3>{label('templateEditor', '模板编辑器')}</h3>
+              <h3>{label('templateEditor')}</h3>
               <MonacoEditor
                 language="html"
                 onChange={setContent}
@@ -300,16 +299,16 @@ export function T2ITemplateEditor() {
               />
             </section>
             <section>
-              <h3>{label('livePreview', '实时预览')}</h3>
+              <h3>{label('livePreview')}</h3>
               <div className="t2i-editor__preview">
-                <iframe sandbox="allow-scripts" srcDoc={preview} title={label('livePreview', '实时预览')} />
+                <iframe sandbox="allow-scripts" srcDoc={preview} title={label('livePreview')} />
               </div>
             </section>
           </div>
           <footer>
             <small>
               <MdiIcon name="mdi-information-outline" />
-              {label('syntaxHint', '模板支持 {{ text | safe }} 和 {{ version }} 变量。')}
+              {label('syntaxHint')}
             </small>
             <div>
               <button onClick={() => setOpen(false)} type="button">
@@ -321,7 +320,7 @@ export function T2ITemplateEditor() {
                 onClick={() => void saveAndApply()}
                 type="button"
               >
-                {label('saveAndApply', '保存并应用')}
+                {label('saveAndApply')}
               </button>
             </div>
           </footer>
@@ -331,7 +330,7 @@ export function T2ITemplateEditor() {
   );
 }
 
-function QrCodeImage({ value }: { value: string }) {
+function QrCodeImage({ alt, value }: { alt: string; value: string }) {
   const [source, setSource] = useState('');
   useEffect(() => {
     let cancelled = false;
@@ -346,7 +345,7 @@ function QrCodeImage({ value }: { value: string }) {
       cancelled = true;
     };
   }, [value]);
-  return source ? <img alt="TOTP QR Code" className="totp-manager__qr" src={source} /> : null;
+  return source ? <img alt={alt} className="totp-manager__qr" src={source} /> : null;
 }
 
 export function DashboardTotpManager({
@@ -360,8 +359,7 @@ export function DashboardTotpManager({
 }) {
   const { t } = useTranslation();
   const text = useCallback(
-    (key: string, fallback: string) =>
-      t(`features.config-metadata.system_group.system.dashboard.totp.${key}`, { defaultValue: fallback }),
+    (key: string) => t(`features.config-metadata.system_group.system.dashboard.totp.${key}`),
     [t],
   );
   const dashboard = isConfigRecord(configRoot.dashboard) ? configRoot.dashboard : {};
@@ -400,7 +398,7 @@ export function DashboardTotpManager({
       setStep('secret');
       setMode('setup');
     } catch (cause) {
-      setError(errorText(cause, text('rotateError', '无法生成 TOTP 密钥')));
+      setError(errorText(cause, text('secretGenerationFailed')));
       setMode('setup');
     } finally {
       setLoading(false);
@@ -426,12 +424,12 @@ export function DashboardTotpManager({
       const response = await authApi.setupTotp({ code });
       const data = responsePayload<ConfigRecord>(response);
       const nextSecret = typeof data?.secret === 'string' ? data.secret : '';
-      if (!nextSecret) throw new Error(responseMessage(response, text('rotateError', '验证失败')));
+      if (!nextSecret) throw new Error(responseMessage(response, text('verificationFailed')));
       setNewSecret(nextSecret);
       setCode('');
       setStep('secret');
     } catch (cause) {
-      setError(errorText(cause, text('rotateError', '验证失败')));
+      setError(errorText(cause, text('verificationFailed')));
     } finally {
       setLoading(false);
     }
@@ -447,7 +445,7 @@ export function DashboardTotpManager({
       const nextRecoveryCode = typeof data?.recovery_code === 'string' ? data.recovery_code : '';
       const nextRecoveryHash = typeof data?.recovery_code_hash === 'string' ? data.recovery_code_hash : '';
       if (!nextRecoveryCode || !nextRecoveryHash)
-        throw new Error(responseMessage(response, text('rotateError', '验证失败')));
+        throw new Error(responseMessage(response, text('verificationFailed')));
       let next = setConfigValue(configRoot, 'dashboard.totp.enable', true);
       next = setConfigValue(next, 'dashboard.totp.secret', newSecret);
       next = setConfigValue(next, 'dashboard.totp.recovery_code_hash', nextRecoveryHash);
@@ -456,7 +454,7 @@ export function DashboardTotpManager({
       setMode('recovery');
       setCode('');
     } catch (cause) {
-      setError(errorText(cause, text('rotateError', '验证失败')));
+      setError(errorText(cause, text('verificationFailed')));
     } finally {
       setLoading(false);
     }
@@ -477,12 +475,12 @@ export function DashboardTotpManager({
       const data = responsePayload<ConfigRecord>(response);
       const nextCode = typeof data?.recovery_code === 'string' ? data.recovery_code : '';
       const nextHash = typeof data?.recovery_code_hash === 'string' ? data.recovery_code_hash : '';
-      if (!nextCode || !nextHash) throw new Error(responseMessage(response, text('rotateError', '生成恢复码失败')));
+      if (!nextCode || !nextHash) throw new Error(responseMessage(response, text('recoveryGenerationFailed')));
       setPendingTotpConfig(setConfigValue(configRoot, 'dashboard.totp.recovery_code_hash', nextHash));
       setRecoveryCode(nextCode);
       setMode('recovery');
     } catch (cause) {
-      toast.error(errorText(cause, text('rotateError', '生成恢复码失败')));
+      toast.error(errorText(cause, text('recoveryGenerationFailed')));
     } finally {
       setLoading(false);
     }
@@ -503,28 +501,28 @@ export function DashboardTotpManager({
         <>
           <span className={`totp-manager__status ${configured ? 'is-success' : 'is-warning'}`}>
             <MdiIcon name={configured ? 'mdi-check-circle-outline' : 'mdi-alert-circle-outline'} />
-            {configured ? text('statusEnabled', '已启用') : text('statusPending', '等待设置')}
+            {configured ? text('statusEnabled') : text('statusPending')}
           </span>
           <button
             className="button--primary-soft"
             onClick={() => (configured ? setMode('manage') : void fetchSecret())}
             type="button"
           >
-            {text('manage', '管理')}
+            {text('manage')}
           </button>
         </>
       )}
       <Dialog
         onOpenChange={(next) => !next && close()}
         open={mode === 'setup' || mode === 'verify'}
-        title={step === 'identity' ? '验证当前 TOTP' : text('setupTitle', '设置 TOTP')}
+        title={step === 'identity' ? text('identityTitle') : text('setupTitle')}
       >
         <div className="totp-dialog">
           {step === 'identity' ? (
             <>
-              <p>输入当前认证器应用中的验证码以验证身份。</p>
+              <p>{text('identitySubtitle')}</p>
               <label>
-                当前验证码
+                {text('identityCode')}
                 <input
                   autoFocus
                   inputMode="numeric"
@@ -536,15 +534,15 @@ export function DashboardTotpManager({
             </>
           ) : (
             <>
-              <p>{text('setupSubtitle', '使用认证器扫描二维码，然后输入验证码完成设置。')}</p>
+              <p>{text('setupSubtitle')}</p>
               {newSecret && (
                 <>
-                  <QrCodeImage value={provisioningUri(newSecret)} />
+                  <QrCodeImage alt={text('qrCodeAlt')} value={provisioningUri(newSecret)} />
                   <code>{newSecret}</code>
                 </>
               )}
               <label>
-                {text('rotateCode', '验证码')}
+                {text('rotateCode')}
                 <input
                   inputMode="numeric"
                   maxLength={6}
@@ -564,50 +562,44 @@ export function DashboardTotpManager({
               onClick={() => void (step === 'identity' ? verifyIdentity() : confirmSetup())}
               variant="primary"
             >
-              {step === 'identity' ? '验证' : text('setupConfirm', '确认启用')}
+              {step === 'identity' ? text('identityConfirm') : text('setupConfirm')}
             </Button>
           </DialogActions>
         </div>
       </Dialog>
-      <Dialog
-        onOpenChange={(next) => !next && close()}
-        open={mode === 'manage'}
-        title={text('configuration', 'TOTP 配置')}
-      >
+      <Dialog onOpenChange={(next) => !next && close()} open={mode === 'manage'} title={text('configuration')}>
         <div className="totp-dialog">
-          <p>{text('activeSubtitle', '双因素认证已启用。')}</p>
+          <p>{text('activeSubtitle')}</p>
           {secret && (
             <>
-              <QrCodeImage value={provisioningUri(secret)} />
+              <QrCodeImage alt={text('qrCodeAlt')} value={provisioningUri(secret)} />
               <code>{secret}</code>
             </>
           )}
           <div className="totp-dialog__manage">
             <button className="button--primary-soft" onClick={rotate} type="button">
               <MdiIcon name="mdi-shield-key" />
-              {text('rotate', '轮换密钥')}
+              {text('rotate')}
             </button>
             <button onClick={() => void rotateRecovery()} type="button">
               <MdiIcon name="mdi-key-variant" />
-              {text('rotateRecovery', '重新生成恢复码')}
+              {text('rotateRecovery')}
             </button>
           </div>
         </div>
       </Dialog>
-      <Dialog onOpenChange={() => undefined} open={mode === 'recovery'} title={text('recoveryTitle', '保存恢复码')}>
+      <Dialog onOpenChange={() => undefined} open={mode === 'recovery'} title={text('recoveryTitle')}>
         <div className="totp-dialog">
-          <p>{text('recoverySubtitle', '请妥善保存此恢复码。')}</p>
-          <div className="settings-alert settings-alert--warning">
-            {text('recoveryWarning', '恢复码只会显示一次。')}
-          </div>
+          <p>{text('recoverySubtitle')}</p>
+          <div className="settings-alert settings-alert--warning">{text('recoveryWarning')}</div>
           <code className="totp-dialog__recovery">{recoveryCode}</code>
           <label className="totp-dialog__ack">
             <input checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} type="checkbox" />
-            {text('recoveryAcknowledge', '我已保存恢复码')}
+            {text('recoveryAcknowledge')}
           </label>
           <DialogActions>
             <Button disabled={!acknowledged} onClick={finishRecovery} variant="primary">
-              {text('recoveryClose', '完成')}
+              {text('recoveryClose')}
             </Button>
           </DialogActions>
         </div>

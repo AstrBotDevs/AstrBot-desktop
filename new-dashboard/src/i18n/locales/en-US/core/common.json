@@ -17,6 +17,13 @@
   "pagination": "Pagination",
   "previousPage": "Previous page",
   "nextPage": "Next page",
+  "bootstrap": {
+    "starting": "Starting the AstrBot backend…",
+    "timeout": "The AstrBot backend took too long to start.",
+    "retry": "Retry"
+  },
+  "notFound": "Page not found",
+  "backHome": "Back to dashboard",
   "success": "Success",
   "error": "Error",
   "warning": "Warning",

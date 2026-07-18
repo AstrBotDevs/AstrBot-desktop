@@ -2,6 +2,14 @@
   "page": {
     "description": "管理人格角色设定"
   },
+  "import": {
+    "import": "导入人格",
+    "importError": "导入人格失败",
+    "importInvalid": "人格文件格式无效",
+    "importPartial": "{count} 个人格导入失败或已存在",
+    "importSuccess": "成功导入 {count} 个人格",
+    "selectSpecificTools": "选择指定函数工具"
+  },
   "buttons": {
     "create": "创建人格",
     "createFirst": "创建第一个人格",

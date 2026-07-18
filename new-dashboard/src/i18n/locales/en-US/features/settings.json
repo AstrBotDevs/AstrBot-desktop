@@ -2,6 +2,14 @@
   "page": {
     "title": "Settings"
   },
+  "about": {
+    "resources": {
+      "changelog": "View updates for current and previous versions.",
+      "documentation": "Open the official AstrBot documentation.",
+      "troubleshooting": "Browse common questions and troubleshooting guides.",
+      "github": "Visit the AstrBot repository on GitHub."
+    }
+  },
   "sections": {
     "general": {
       "title": "General"

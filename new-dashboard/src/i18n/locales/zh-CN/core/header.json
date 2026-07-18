@@ -7,6 +7,9 @@
   "buttons": {
     "update": "更新",
     "account": "账户",
+    "openSidebar": "展开侧边栏",
+    "collapseSidebar": "收起侧边栏",
+    "menu": "应用菜单",
     "theme": {
       "title": "主题",
       "light": "浅色模式",

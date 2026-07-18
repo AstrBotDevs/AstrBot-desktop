@@ -65,15 +65,15 @@ function ConfirmHost() {
         if (!open) resolve(current.id, false);
       }}
       open
-      title={current.title ?? t('core.common.confirm', 'Confirm')}
+      title={current.title ?? t('core.common.confirm')}
     >
       <DialogActions className="global-confirm__actions">
         <DialogCancel onClick={() => resolve(current.id, false)}>
-          {current.cancelLabel ?? t('core.common.cancel', 'Cancel')}
+          {current.cancelLabel ?? t('core.common.cancel')}
         </DialogCancel>
         <DialogClose asChild>
           <Button onClick={() => resolve(current.id, true)} variant={current.danger ? 'danger' : 'primary'}>
-            {current.confirmLabel ?? t('core.common.confirm', 'Confirm')}
+            {current.confirmLabel ?? t('core.common.confirm')}
           </Button>
         </DialogClose>
       </DialogActions>

@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { MdiIcon } from '@/components/icons/MdiIcon';
 
@@ -101,20 +102,6 @@ export type ChatComposerHandle = {
   openFilePicker: () => void;
 };
 
-const defaultLabels: Required<ChatComposerLabels> = {
-  clear: 'Clear',
-  config: 'Configuration',
-  dropToUpload: 'Drop files to upload',
-  recording: 'Recording',
-  send: 'Send',
-  startRecording: 'Start recording',
-  stopGenerating: 'Stop generating',
-  stopRecording: 'Stop recording',
-  streamingDisabled: 'Streaming disabled',
-  streamingEnabled: 'Streaming enabled',
-  upload: 'Upload files',
-};
-
 /**
  * Controlled ChatUI composer.
  *
@@ -154,7 +141,21 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
   },
   ref,
 ) {
-  const labels = { ...defaultLabels, ...labelsOverride };
+  const { t } = useTranslation();
+  const labels: Required<ChatComposerLabels> = {
+    clear: t('features.chat.input.clear'),
+    config: t('features.chat.config.title'),
+    dropToUpload: t('features.chat.input.dropToUpload'),
+    recording: t('features.chat.voice.recording'),
+    send: t('features.chat.input.send'),
+    startRecording: t('features.chat.voice.startRecording'),
+    stopGenerating: t('features.chat.input.stopGenerating'),
+    stopRecording: t('features.chat.voice.stop'),
+    streamingDisabled: t('features.chat.streaming.disabled'),
+    streamingEnabled: t('features.chat.streaming.enabled'),
+    upload: t('features.chat.input.upload'),
+    ...labelsOverride,
+  };
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);

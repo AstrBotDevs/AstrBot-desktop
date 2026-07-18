@@ -136,7 +136,8 @@
     },
     "market": {
         "recommended": "🥳 Рекомендуем",
-        "allPlugins": "📦 Все плагины",
+    "allPlugins": "📦 Все плагины",
+    "category": "Категория",
         "categories": {
             "all": "Все",
             "ai_tools": "AI Tools",
@@ -289,7 +290,9 @@
         "sourceResolveFailed": "Не удалось проверить источник",
         "invalidUrl": "Введите корректный URL",
         "invalidGithubRepo": "Введите корректный URL репозитория GitHub",
-        "enterJsonUrl": "Введите URL, возвращающий список плагинов в формате JSON",
+    "enterJsonUrl": "Введите URL, возвращающий список плагинов в формате JSON",
+    "pluginNotFound": "Плагин не найден",
+    "pluginDisabled": "Плагин отключён. Включите его перед открытием страницы.",
         "pluginPageNotFound": "Страница плагина не найдена",
         "pluginPageLoadFailed": "Не удалось загрузить страницу плагина",
         "pluginPageLoading": "Загрузка страницы плагина...",

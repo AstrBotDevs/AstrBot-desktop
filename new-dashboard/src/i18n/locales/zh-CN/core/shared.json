@@ -111,6 +111,14 @@
     "confirmDeleteMessage": "确定要删除模板 '{name}' 吗？此操作无法撤销。",
     "confirmDeleteButton": "确认删除",
     "confirmAction": "确认操作",
-    "confirmApplyMessage": "确定要保存对 '{name}' 的修改，并将其设为新的活动模板吗？"
+    "confirmApplyMessage": "确定要保存对 '{name}' 的修改，并将其设为新的活动模板吗？",
+    "loadTemplateFailed": "加载模板 {name} 失败",
+    "loadFailed": "加载模板列表失败",
+    "saveSuccess": "模板已保存",
+    "saveFailed": "保存模板失败",
+    "applySuccess": "模板已应用",
+    "applyFailed": "应用模板失败",
+    "resetFailed": "重置模板失败",
+    "deleteFailed": "删除模板失败"
   }
 }

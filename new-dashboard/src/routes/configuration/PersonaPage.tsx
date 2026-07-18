@@ -38,35 +38,6 @@ import {
 
 type FolderDialog = { mode: 'create' | 'rename'; folder?: JsonObject; name: string; description: string } | null;
 type MoveDialog = { type: 'persona' | 'folder'; item: JsonObject } | null;
-type LocalPersonaKey =
-  'import' | 'importError' | 'importInvalid' | 'importPartial' | 'importSuccess' | 'selectSpecificTools';
-const localPersonaText: Record<string, Record<LocalPersonaKey, string>> = {
-  'zh-CN': {
-    import: '导入人格',
-    importError: '导入人格失败',
-    importInvalid: '人格文件格式无效',
-    importPartial: '{count} 个人格导入失败或已存在',
-    importSuccess: '成功导入 {count} 个人格',
-    selectSpecificTools: '选择指定函数工具',
-  },
-  'en-US': {
-    import: 'Import Persona',
-    importError: 'Failed to import personas',
-    importInvalid: 'Invalid persona file format',
-    importPartial: '{count} personas failed to import or already exist',
-    importSuccess: 'Imported {count} personas successfully',
-    selectSpecificTools: 'Select specific tools',
-  },
-  'ru-RU': {
-    import: 'Импортировать персонажа',
-    importError: 'Ошибка импорта персонажей',
-    importInvalid: 'Неверный формат файла персонажа',
-    importPartial: 'Не удалось импортировать или уже существует: {count}',
-    importSuccess: 'Успешно импортировано персонажей: {count}',
-    selectSpecificTools: 'Выбрать определенные инструменты',
-  },
-};
-
 function FolderTree({
   currentId,
   nodes,
@@ -373,13 +344,9 @@ function ChoicePanel({
 }
 
 export default function PersonaPage() {
-  const { i18n, t } = useTranslation();
+  const { t } = useTranslation();
   const k = (key: string, options?: Record<string, unknown>) => t(`features.persona.${key}`, options);
-  const l = (key: LocalPersonaKey, count?: number) =>
-    (localPersonaText[i18n.resolvedLanguage || i18n.language] || localPersonaText['zh-CN'])[key].replace(
-      '{count}',
-      String(count ?? ''),
-    );
+  const l = (key: string, count?: number) => k(`import.${key}`, { count });
   const [tree, setTree] = useState<PersonaFolderNode[]>([]);
   const [folders, setFolders] = useState<JsonObject[]>([]);
   const [personas, setPersonas] = useState<JsonObject[]>([]);

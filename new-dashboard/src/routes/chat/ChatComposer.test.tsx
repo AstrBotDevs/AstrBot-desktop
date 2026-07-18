@@ -14,6 +14,7 @@ describe('ChatComposer', () => {
         ]}
         configId="default"
         busy
+        labels={{ config: 'Configuration' }}
         onChange={() => undefined}
         onConfigChange={() => undefined}
         onSend={() => undefined}

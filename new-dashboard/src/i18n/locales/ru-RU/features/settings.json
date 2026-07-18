@@ -2,6 +2,14 @@
     "page": {
         "title": "Настройки"
     },
+    "about": {
+        "resources": {
+            "changelog": "Просмотреть изменения текущей и предыдущих версий.",
+            "documentation": "Открыть официальную документацию AstrBot.",
+            "troubleshooting": "Открыть ответы на частые вопросы и инструкции.",
+            "github": "Открыть репозиторий AstrBot на GitHub."
+        }
+    },
     "sections": {
         "general": {
             "title": "Общие"

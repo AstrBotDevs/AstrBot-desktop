@@ -906,9 +906,7 @@ export function ConfigGroup({
             onClick={() => setShowCollapsed((current) => !current)}
             type="button"
           >
-            {showCollapsed
-              ? t('core.actions.collapse', 'Collapse')
-              : t('features.config.sections.moreConfig', 'More settings')}
+            {showCollapsed ? t('core.actions.collapse') : t('features.config.sections.moreConfig')}
           </button>
           <ExpandCollapse className="dynamic-config__collapsed" open={showCollapsed}>
             {collapsed.map(renderEntry)}
@@ -1057,7 +1055,7 @@ export function RecordConfigForm({
       metadata={inferConfigMetadata(value)}
       onChange={onChange}
       resolveText={defaultTextResolver(t)}
-      title={t('features.config.editor.visual', 'Form')}
+      title={t('features.config.editor.visual')}
       translationPath="record"
       value={value}
     />

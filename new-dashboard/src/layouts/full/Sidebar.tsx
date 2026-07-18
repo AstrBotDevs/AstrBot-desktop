@@ -150,7 +150,7 @@ export function Sidebar() {
     <>
       <button aria-label={t('core.common.close')} className="sidebar-backdrop" onClick={closeDrawer} type="button" />
       <nav
-        aria-label={t('core.navigation.title', 'Main navigation')}
+        aria-label={t('core.navigation.title')}
         className={`sidebar${mini ? ' sidebar--mini' : ''}`}
         style={{ width }}
       >
@@ -173,7 +173,7 @@ export function Sidebar() {
         )}
         {!mini && (
           <div
-            aria-label={t('core.navigation.resize', 'Resize sidebar')}
+            aria-label={t('core.navigation.resize')}
             aria-orientation="vertical"
             aria-valuemax={SIDEBAR_MAX_WIDTH}
             aria-valuemin={SIDEBAR_MIN_WIDTH}

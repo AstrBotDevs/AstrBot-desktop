@@ -20,5 +20,6 @@
   "reset": "Reset",
   "clear": "Clear",
   "save": "Save",
-  "close": "Close"
-} 
+  "close": "Close",
+  "collapse": "Collapse"
+}

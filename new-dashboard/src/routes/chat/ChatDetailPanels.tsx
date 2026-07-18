@@ -114,7 +114,7 @@ export function ChatDetailPanels({
       <Dialog
         onOpenChange={(open) => !open && onCloseImage()}
         open={imagePreview !== null}
-        title={imagePreview?.name || t('features.chat.attachment.image', 'Image')}
+        title={imagePreview?.name || t('features.chat.attachment.image')}
       >
         {imagePreview && (
           <div className="chat-image-preview">

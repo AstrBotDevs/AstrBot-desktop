@@ -22,7 +22,8 @@
     "description": {
       "openai": "Supports all OpenAI API-style providers.",
       "kimi_code": "Dedicated Kimi CodingPlan / Kimi Code integration using a custom Anthropic API adapter.",
-      "default": ""
+      "vllm_rerank": "Also supports providers such as Jina AI, Cohere, and PPIO.",
+      "default": "Model service provider."
     }
   },
   "availability": {

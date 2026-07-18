@@ -1,4 +1,5 @@
 import { Fragment, type MouseEvent, type ReactNode, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Markdown } from '@/components/content/Markdown';
 import { MdiIcon } from '@/components/icons/MdiIcon';
@@ -80,27 +81,6 @@ export type ChatMessageListProps = {
   onSelectText?: (selection: string, message: ChatRecord, event: MouseEvent<HTMLDivElement>) => void;
 };
 
-const defaultLabels: ChatMessageLabels = {
-  assistant: 'AstrBot',
-  copy: '复制',
-  edit: '编辑',
-  retry: '重新生成',
-  references: '参考资料',
-  threads: '线程',
-  reasoning: '思考过程',
-  running: '运行中',
-  completed: '已完成',
-  download: '下载',
-  replyTo: '回复消息',
-  cachedTokens: '输入（缓存）',
-  inputTokens: '输入 Token',
-  outputTokens: '输出 Token',
-  ttft: '首字时间',
-  duration: '耗时',
-  cancel: '取消',
-  save: '保存',
-};
-
 export function ChatMessageList({
   messages,
   className = '',
@@ -132,7 +112,31 @@ export function ChatMessageList({
   onOpenThread,
   onSelectText,
 }: ChatMessageListProps) {
-  const labels = useMemo(() => ({ ...defaultLabels, ...customLabels }), [customLabels]);
+  const { t } = useTranslation();
+  const labels = useMemo<ChatMessageLabels>(
+    () => ({
+      assistant: t('features.chat.message.assistant'),
+      cachedTokens: t('features.chat.stats.cachedTokens'),
+      cancel: t('core.common.cancel'),
+      completed: t('core.status.completed'),
+      copy: t('features.chat.actions.copy'),
+      download: t('features.chat.input.download'),
+      duration: t('features.chat.stats.duration'),
+      edit: t('core.common.edit'),
+      inputTokens: t('features.chat.stats.inputTokens'),
+      outputTokens: t('features.chat.stats.outputTokens'),
+      reasoning: t('features.chat.reasoning.thinking'),
+      references: t('features.chat.refs.title'),
+      replyTo: t('features.chat.reply.replyTo'),
+      retry: t('features.chat.actions.retry'),
+      running: t('features.chat.toolStatus.running'),
+      save: t('core.common.save'),
+      threads: t('features.chat.thread.title'),
+      ttft: t('features.chat.stats.ttft'),
+      ...customLabels,
+    }),
+    [customLabels, t],
+  );
   const messageById = useMemo(() => new Map(messages.map((message) => [String(message.id), message])), [messages]);
   const latestEditableUserIndex = useMemo(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {

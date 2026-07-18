@@ -14,6 +14,16 @@
     "id": "ID",
     "itemsPerPage": "Элементов на странице",
     "paginationRange": "{from}-{to} из {total}",
+    "pagination": "Навигация по страницам",
+    "previousPage": "Предыдущая страница",
+    "nextPage": "Следующая страница",
+    "bootstrap": {
+        "starting": "Запуск серверной части AstrBot…",
+        "timeout": "Серверная часть AstrBot не запустилась вовремя.",
+        "retry": "Повторить"
+    },
+    "notFound": "Страница не найдена",
+    "backHome": "Вернуться в панель управления",
     "success": "Успешно",
     "error": "Ошибка",
     "warning": "Внимание",

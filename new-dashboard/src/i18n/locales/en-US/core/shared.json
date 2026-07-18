@@ -111,6 +111,14 @@
     "confirmDeleteMessage": "Are you sure you want to delete template '{name}'? This action cannot be undone.",
     "confirmDeleteButton": "Confirm Delete",
     "confirmAction": "Confirm Action",
-    "confirmApplyMessage": "Are you sure you want to save changes to '{name}' and set it as the active template?"
+    "confirmApplyMessage": "Are you sure you want to save changes to '{name}' and set it as the active template?",
+    "loadTemplateFailed": "Failed to load template {name}",
+    "loadFailed": "Failed to load templates",
+    "saveSuccess": "Template saved",
+    "saveFailed": "Failed to save template",
+    "applySuccess": "Template applied",
+    "applyFailed": "Failed to apply template",
+    "resetFailed": "Failed to reset template",
+    "deleteFailed": "Failed to delete template"
   }
 }

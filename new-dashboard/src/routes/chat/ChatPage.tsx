@@ -75,6 +75,7 @@ import {
   stagedAttachmentType,
   usesLocalProviderOverride,
 } from './model';
+import { localeMetadata, localeRegistry } from '@/i18n/locales';
 
 type ChatPageProps = { chatbox?: boolean };
 type StagedFile = { attachment_id: string; filename: string; preview_url?: string; type: StagedAttachmentType };
@@ -86,12 +87,6 @@ type CommandSuggestion = JsonObject & {
   enabled?: boolean;
   reserved?: boolean;
 };
-
-const chatLanguageOptions = [
-  { code: 'zh-CN', flag: 'CN', label: '简体中文' },
-  { code: 'en-US', flag: 'US', label: 'English' },
-  { code: 'ru-RU', flag: 'RU', label: 'Русский' },
-] as const;
 
 export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const { i18n, t } = useTranslation();
@@ -221,7 +216,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     [provider, providers],
   );
   const providerOverrideEnabled = !agentRunnerLoading && usesLocalProviderOverride(agentRunnerType);
-  const currentLanguage = chatLanguageOptions.find((item) => item.code === i18n.language) || chatLanguageOptions[0];
+  const currentLanguage = localeMetadata(i18n.language);
   const editingProjectForm = useMemo<ChatProjectForm | null>(
     () =>
       editingProject
@@ -347,7 +342,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
         configIdRef.current = previous;
         setConfigId(previous);
         storeChatConfigId(previous);
-        toast.error(errorMessage(cause, t('features.chat.config.applyFailed', 'Failed to apply configuration.')));
+        toast.error(errorMessage(cause, t('features.chat.config.applyFailed')));
         return false;
       } finally {
         releaseLock();
@@ -696,7 +691,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       await Promise.all(Object.keys(projectSessions).map((projectId) => loadProjectSessions(projectId)));
       setRenamingSession(null);
     } catch (cause) {
-      toast.error(errorMessage(cause, t('features.chat.conversation.renameFailed', 'Failed to rename conversation.')));
+      toast.error(errorMessage(cause, t('features.chat.conversation.renameFailed')));
     } finally {
       setSessionTitleSaving(false);
     }
@@ -1166,7 +1161,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
         }
       }
     } catch (cause) {
-      toast.error(errorMessage(cause, t('features.chat.message.editFailed', 'Failed to edit message.')));
+      toast.error(errorMessage(cause, t('features.chat.message.editFailed')));
     } finally {
       setSavingMessageEdit(false);
     }
@@ -1207,7 +1202,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       setActiveThread(thread);
       window.getSelection()?.removeAllRanges();
     } catch (cause) {
-      toast.error(errorMessage(cause, t('features.chat.thread.createFailed', 'Failed to create thread.')));
+      toast.error(errorMessage(cause, t('features.chat.thread.createFailed')));
     } finally {
       setThreadSelection(null);
     }
@@ -1227,7 +1222,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
           : currentThread,
       );
     } catch (cause) {
-      toast.error(errorMessage(cause, t('features.chat.thread.loadFailed', 'Failed to load thread.')));
+      toast.error(errorMessage(cause, t('features.chat.thread.loadFailed')));
     }
   };
 
@@ -1269,7 +1264,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
         },
       );
     } catch (cause) {
-      const message = errorMessage(cause, t('features.chat.thread.sendFailed', 'Failed to send thread message.'));
+      const message = errorMessage(cause, t('features.chat.thread.sendFailed'));
       bot.content.message.push({ type: 'plain', text: message });
       toast.error(message);
     } finally {
@@ -1304,7 +1299,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       setMessages([...messages]);
       setActiveThread(null);
     } catch (cause) {
-      toast.error(errorMessage(cause, t('features.chat.thread.deleteFailed', 'Failed to delete thread.')));
+      toast.error(errorMessage(cause, t('features.chat.thread.deleteFailed')));
     } finally {
       setThreadDeleting(false);
     }
@@ -1326,7 +1321,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       if (!endpoint) return;
       const response = await fetchWithAuth(endpoint).catch(() => null);
       if (!response?.ok) {
-        toast.error(t('features.chat.attachment.downloadFailed', 'Failed to download attachment.'));
+        toast.error(t('features.chat.attachment.downloadFailed'));
         return;
       }
       url = URL.createObjectURL(await response.blob());
@@ -1701,7 +1696,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
                     onMouseEnter={() => openSettingsSubmenu('language')}
                     onMouseLeave={scheduleSettingsSubmenuClose}
                   >
-                    {chatLanguageOptions.map((language) => (
+                    {localeRegistry.map((language) => (
                       <button
                         className={i18n.language === language.code ? 'is-active' : ''}
                         key={language.code}
@@ -1934,7 +1929,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
                   cancel: t('core.common.cancel'),
                   completed: t('core.status.completed'),
                   copy: t('features.chat.actions.copy'),
-                  download: t('features.chat.input.download', 'Download'),
+                  download: t('features.chat.input.download'),
                   duration: t('features.chat.stats.duration'),
                   edit: t('core.common.edit'),
                   inputTokens: t('features.chat.stats.inputTokens'),
@@ -1955,7 +1950,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
                 onOpenImage={(url, part) =>
                   url &&
                   setImagePreview({
-                    name: String(part.filename || part.stored_filename || t('features.chat.attachment.image', 'Image')),
+                    name: String(part.filename || part.stored_filename || t('features.chat.attachment.image')),
                     url,
                   })
                 }
@@ -1992,7 +1987,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
             style={{ left: threadSelection.left, top: threadSelection.top }}
             type="button"
           >
-            {t('features.chat.thread.askInThread', 'Ask in thread')}
+            {t('features.chat.thread.askInThread')}
           </button>
         )}
         <Dialog
@@ -2052,7 +2047,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
           onOpenImage={(url, part) =>
             url &&
             setImagePreview({
-              name: String(part.filename || part.stored_filename || t('features.chat.attachment.image', 'Image')),
+              name: String(part.filename || part.stored_filename || t('features.chat.attachment.image')),
               url,
             })
           }

@@ -10,14 +10,20 @@
     "recordingPrompt": "录音中，请说话...",
     "chatPrompt": "聊天吧!",
     "dropToUpload": "松开鼠标上传文件",
-    "stopGenerating": "停止生成"
+    "stopGenerating": "停止生成",
+    "download": "下载"
+  },
+  "attachment": {
+    "image": "图片",
+    "downloadFailed": "附件下载失败"
   },
   "message": {
     "user": "用户",
     "assistant": "助手",
     "system": "系统",
     "error": "错误消息",
-    "loading": "思考中..."
+    "loading": "思考中...",
+    "editFailed": "编辑消息失败"
   },
   "voice": {
     "start": "开始录音",
@@ -78,6 +84,9 @@
     "askInThread": "在新分支中询问",
     "count": "{count} 个分支",
     "createFailed": "创建分支失败",
+    "loadFailed": "加载分支失败",
+    "sendFailed": "发送分支消息失败",
+    "deleteFailed": "删除分支失败",
     "delete": "删除分支",
     "confirmDelete": "确定要删除这个分支吗？此操作无法撤销。",
     "placeholder": "继续追问这段内容..."
@@ -93,7 +102,8 @@
     "displayName": "会话名称",
     "displayNameUpdated": "会话名称已更新",
     "displayNameUpdateFailed": "更新会话名称失败",
-    "confirmDelete": "确定要删除“{name}”吗？此操作无法撤销。"
+    "confirmDelete": "确定要删除“{name}”吗？此操作无法撤销。",
+    "renameFailed": "重命名会话失败"
   },
   "modes": {
     "darkMode": "切换到夜间模式",
@@ -121,7 +131,8 @@
     "websocket": "WebSocket"
   },
   "config": {
-    "title": "配置文件"
+    "title": "配置文件",
+    "applyFailed": "应用配置失败"
   },
   "reasoning": {
     "thinking": "思考过程",

@@ -10,14 +10,20 @@
     "recordingPrompt": "Recording, please speak...",
     "chatPrompt": "Let's chat!",
     "dropToUpload": "Drop files to upload",
-    "stopGenerating": "Stop generating"
+    "stopGenerating": "Stop generating",
+    "download": "Download"
+  },
+  "attachment": {
+    "image": "Image",
+    "downloadFailed": "Failed to download attachment"
   },
   "message": {
     "user": "User",
     "assistant": "Assistant",
     "system": "System",
     "error": "Error Message",
-    "loading": "Thinking..."
+    "loading": "Thinking...",
+    "editFailed": "Failed to edit message"
   },
   "voice": {
     "start": "Start Recording",
@@ -78,6 +84,9 @@
     "askInThread": "Ask in thread",
     "count": "{count} threads",
     "createFailed": "Failed to create thread",
+    "loadFailed": "Failed to load thread",
+    "sendFailed": "Failed to send thread message",
+    "deleteFailed": "Failed to delete thread",
     "delete": "Delete thread",
     "confirmDelete": "Delete this thread? This action cannot be undone.",
     "placeholder": "Ask about this excerpt..."
@@ -93,7 +102,8 @@
     "displayName": "Session Name",
     "displayNameUpdated": "Session name updated",
     "displayNameUpdateFailed": "Failed to update session name",
-    "confirmDelete": "Are you sure you want to delete \"{name}\"? This action cannot be undone."
+    "confirmDelete": "Are you sure you want to delete \"{name}\"? This action cannot be undone.",
+    "renameFailed": "Failed to rename conversation"
   },
   "modes": {
     "darkMode": "Switch to Dark Mode",
@@ -121,7 +131,8 @@
     "websocket": "WebSocket"
   },
   "config": {
-    "title": "Config"
+    "title": "Config",
+    "applyFailed": "Failed to apply configuration"
   },
   "reasoning": {
     "thinking": "Thinking Process",

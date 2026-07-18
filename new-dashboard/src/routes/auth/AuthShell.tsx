@@ -1,13 +1,8 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { localeRegistry } from '@/i18n/locales';
 import { useLayoutStore, type ThemeMode } from '@/stores/layout';
-
-const languages = [
-  { code: 'zh-CN', label: '简体中文' },
-  { code: 'en-US', label: 'English' },
-  { code: 'ru-RU', label: 'Русский' },
-];
 
 export function AuthShell({ children, subtitle, title }: { children: ReactNode; subtitle: string; title: string }) {
   const { i18n, t } = useTranslation();
@@ -20,13 +15,13 @@ export function AuthShell({ children, subtitle, title }: { children: ReactNode; 
           <img alt="AstrBot" height="64" src="/favicon.svg" width="64" />
           <div className="auth-card__controls">
             <label>
-              <span className="sr-only">{t('core.common.language', 'Language')}</span>
+              <span className="sr-only">{t('core.common.language')}</span>
               <select
-                aria-label={t('core.common.language', 'Language')}
+                aria-label={t('core.common.language')}
                 onChange={(event) => void i18n.changeLanguage(event.target.value)}
                 value={i18n.language}
               >
-                {languages.map((language) => (
+                {localeRegistry.map((language) => (
                   <option key={language.code} value={language.code}>
                     {language.label}
                   </option>

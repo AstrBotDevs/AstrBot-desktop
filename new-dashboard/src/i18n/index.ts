@@ -1,11 +1,12 @@
 import i18next from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
+import { defaultLocale, isSupportedLocale, supportedLocales } from './locales';
 import { translations } from './translations';
 
 const LOCALE_STORAGE_KEY = 'astrbot-locale';
 const storedLocale = localStorage.getItem(LOCALE_STORAGE_KEY);
-const initialLocale = storedLocale === 'en-US' || storedLocale === 'ru-RU' ? storedLocale : 'zh-CN';
+const initialLocale = storedLocale && isSupportedLocale(storedLocale) ? storedLocale : defaultLocale;
 
 const resources = Object.fromEntries(
   Object.entries(translations).map(([locale, translation]) => [locale, { translation }]),
@@ -14,7 +15,7 @@ const resources = Object.fromEntries(
 export const i18n = i18next.createInstance();
 
 void i18n.use(initReactI18next).init({
-  fallbackLng: 'zh-CN',
+  fallbackLng: defaultLocale,
   interpolation: {
     escapeValue: false,
     prefix: '{',
@@ -22,7 +23,7 @@ void i18n.use(initReactI18next).init({
   },
   lng: initialLocale,
   resources,
-  supportedLngs: ['zh-CN', 'en-US', 'ru-RU'],
+  supportedLngs: supportedLocales,
 });
 
 i18n.on('languageChanged', (locale) => {

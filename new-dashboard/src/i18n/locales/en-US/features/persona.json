@@ -2,6 +2,14 @@
   "page": {
     "description": "Manage and configure chat bot personality settings"
   },
+  "import": {
+    "import": "Import Persona",
+    "importError": "Failed to import personas",
+    "importInvalid": "Invalid persona file format",
+    "importPartial": "{count} personas failed to import or already exist",
+    "importSuccess": "Imported {count} personas successfully",
+    "selectSpecificTools": "Select specific tools"
+  },
   "buttons": {
     "create": "Create Persona",
     "createFirst": "Create First Persona",

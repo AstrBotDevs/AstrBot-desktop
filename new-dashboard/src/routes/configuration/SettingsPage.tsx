@@ -93,7 +93,7 @@ function selectMetadata(metadata: ConfigGroupMetadata, keys: readonly string[]):
 }
 
 export default function SettingsPage() {
-  const { i18n, t } = useTranslation();
+  const { t } = useTranslation();
   const { restartBackend } = useDesktop();
   const prefix = 'features.settings';
   const initialSection = NAV_ITEMS.find((item) => window.location.hash.includes(item.id))?.id ?? 'general';
@@ -384,48 +384,27 @@ export default function SettingsPage() {
     />
   );
 
-  const aboutDescriptions =
-    i18n.resolvedLanguage === 'en-US'
-      ? [
-          'View updates for current and previous versions.',
-          'Open the official AstrBot documentation.',
-          'Browse common questions and troubleshooting guides.',
-          'Visit the AstrBot repository on GitHub.',
-        ]
-      : i18n.resolvedLanguage === 'ru-RU'
-        ? [
-            'Просмотреть изменения текущей и предыдущих версий.',
-            'Открыть официальную документацию AstrBot.',
-            'Открыть ответы на частые вопросы и инструкции.',
-            'Открыть репозиторий AstrBot на GitHub.',
-          ]
-        : [
-            '查看当前版本和历史版本的更新内容。',
-            '打开 AstrBot 官方文档。',
-            '查看常见问题与排障说明。',
-            '访问 AstrBot GitHub 仓库。',
-          ];
   const aboutResources = [
     {
-      description: aboutDescriptions[0],
+      description: t('features.settings.about.resources.changelog'),
       icon: 'mdi-file-document-outline' as const,
       label: t('core.navigation.changelog'),
       url: 'https://github.com/AstrBotDevs/AstrBot/releases',
     },
     {
-      description: aboutDescriptions[1],
+      description: t('features.settings.about.resources.documentation'),
       icon: 'mdi-book-open-variant' as const,
       label: t('core.navigation.documentation'),
       url: 'https://docs.astrbot.app/',
     },
     {
-      description: aboutDescriptions[2],
+      description: t('features.settings.about.resources.troubleshooting'),
       icon: 'mdi-frequently-asked-questions' as const,
       label: t('core.navigation.faq'),
       url: 'https://docs.astrbot.app/faq.html',
     },
     {
-      description: aboutDescriptions[3],
+      description: t('features.settings.about.resources.github'),
       icon: 'mdi-github' as const,
       label: t('core.navigation.github'),
       url: 'https://github.com/AstrBotDevs/AstrBot',

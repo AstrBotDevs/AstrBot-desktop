@@ -91,6 +91,7 @@
     },
     "knowledgebase": {
       "description": "Knowledge Base",
+      "hint": "AstrBot's external knowledge system.",
       "kb_names": {
         "description": "Knowledge Base List",
         "hint": "Supports multiple selections"
@@ -110,6 +111,7 @@
     },
     "websearch": {
       "description": "Web Search",
+      "hint": "Allow AstrBot to access the internet and retrieve current information.",
       "provider_settings": {
         "web_search": {
           "description": "Enable Web Search"
@@ -1138,9 +1140,17 @@
           "statusPending": "Setup required",
           "statusEnabled": "Enabled",
           "setupRequiredHint": "TOTP is enabled but not yet configured. Click Manage to complete setup.",
-          "setupTitle": "Set up TOTP",
-          "setupSubtitle": "Scan this QR code in your authenticator app, then enter a verification code.",
-          "setupConfirm": "Verify and continue",
+        "setupTitle": "Set up TOTP",
+        "setupSubtitle": "Scan this QR code in your authenticator app, then enter a verification code.",
+        "setupConfirm": "Verify and continue",
+        "identityTitle": "Verify Current TOTP",
+        "identitySubtitle": "Enter the code from your current authenticator app to verify your identity.",
+        "identityCode": "Current Verification Code",
+        "identityConfirm": "Verify",
+        "qrCodeAlt": "TOTP QR code",
+        "secretGenerationFailed": "Failed to generate a TOTP secret",
+        "verificationFailed": "Verification failed",
+        "recoveryGenerationFailed": "Failed to generate a recovery code",
           "activeSubtitle": "Use this QR code or secret to add another authenticator device.",
           "rotateTitle": "Rotate TOTP Secret",
           "rotateSubtitle": "Generate a new secret, then enter a code from your authenticator to confirm the replacement.",
@@ -1316,57 +1326,57 @@
           "description": "Text language",
           "hint": "Default is Chinese."
         },
-        "gsv_top_k": {
-          "description": "Speech diversity",
-          "hint": ""
+      "gsv_top_k": {
+        "description": "Speech diversity",
+        "hint": "Controls how many candidates are retained at each step; higher values increase diversity."
         },
-        "gsv_top_p": {
-          "description": "Nucleus sampling threshold",
-          "hint": ""
+      "gsv_top_p": {
+        "description": "Nucleus sampling threshold",
+        "hint": "Controls the nucleus sampling range, usually between 0 and 1."
         },
-        "gsv_temperature": {
-          "description": "Speech randomness",
-          "hint": ""
+      "gsv_temperature": {
+        "description": "Speech randomness",
+        "hint": "Higher values produce more varied results."
         },
         "gsv_text_split_method": {
           "description": "Text splitting method",
           "hint": "Options: `cut0` no split, `cut1` split every 4 sentences, `cut2` split every 50 chars, `cut3` split by Chinese period, `cut4` split by English period, `cut5` split by punctuation."
         },
-        "gsv_batch_size": {
-          "description": "Batch size",
-          "hint": ""
+      "gsv_batch_size": {
+        "description": "Batch size",
+        "hint": "Number of text segments processed in each batch."
         },
-        "gsv_batch_threshold": {
-          "description": "Batch threshold",
-          "hint": ""
+      "gsv_batch_threshold": {
+        "description": "Batch threshold",
+        "hint": "Length threshold used to group text segments into batches."
         },
-        "gsv_split_bucket": {
-          "description": "Split text into buckets for parallel processing",
-          "hint": ""
+      "gsv_split_bucket": {
+        "description": "Split text into buckets for parallel processing",
+        "hint": "Groups text by length to improve parallel processing efficiency."
         },
         "gsv_speed_factor": {
           "description": "Speech playback speed",
           "hint": "1 is the original speed."
         },
-        "gsv_fragment_interval": {
-          "description": "Interval between speech segments",
-          "hint": ""
+      "gsv_fragment_interval": {
+        "description": "Interval between speech segments",
+        "hint": "Controls the silence interval between adjacent speech segments."
         },
-        "gsv_streaming_mode": {
-          "description": "Enable streaming mode",
-          "hint": ""
+      "gsv_streaming_mode": {
+        "description": "Enable streaming mode",
+        "hint": "Returns synthesized audio as a stream when enabled."
         },
         "gsv_seed": {
           "description": "Random seed",
           "hint": "For reproducible results."
         },
-        "gsv_parallel_infer": {
-          "description": "Run inference in parallel",
-          "hint": ""
+      "gsv_parallel_infer": {
+        "description": "Run inference in parallel",
+        "hint": "Processes multiple text segments in parallel when enabled."
         },
-        "gsv_repetition_penalty": {
-          "description": "Repetition penalty",
-          "hint": ""
+      "gsv_repetition_penalty": {
+        "description": "Repetition penalty",
+        "hint": "Increase this value to reduce repeated output."
         },
         "gsv_media_type": {
           "description": "Output media type",

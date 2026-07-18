@@ -17,6 +17,13 @@
   "pagination": "分页",
   "previousPage": "上一页",
   "nextPage": "下一页",
+  "bootstrap": {
+    "starting": "正在启动 AstrBot 后端…",
+    "timeout": "AstrBot 后端启动超时。",
+    "retry": "重试"
+  },
+  "notFound": "页面不存在",
+  "backHome": "返回控制面板",
   "success": "成功",
   "error": "错误",
   "warning": "警告",

@@ -15,6 +15,7 @@ import { toast } from '@/stores/feedback';
 import { type ThemeMode, useLayoutStore } from '@/stores/layout';
 import { useDesktopStore } from '@/stores/desktop';
 import { useDesktop } from '@/desktop/DesktopProvider';
+import { localeMetadata, localeRegistry } from '@/i18n/locales';
 import {
   passwordWarningFromFlags,
   persistPasswordSecurityFlags,
@@ -46,12 +47,6 @@ export function getModeSwitchTarget(pathname: string, storage: Pick<Storage, 'ge
   const lastChatId = storage.getItem(LAST_CHAT_ROUTE_KEY);
   return lastChatId ? `/chat/${lastChatId}` : '/chat';
 }
-
-const languageOptions = [
-  { code: 'zh-CN', label: '简体中文', flag: 'CN' },
-  { code: 'en-US', label: 'English', flag: 'US' },
-  { code: 'ru-RU', label: 'Русский', flag: 'RU' },
-] as const;
 
 const themeOptions: Array<{ icon: `mdi-${string}`; mode: ThemeMode; labelKey: string }> = [
   { icon: 'mdi-white-balance-sunny', mode: 'light', labelKey: 'core.header.buttons.theme.light' },
@@ -150,7 +145,7 @@ export function Header() {
     };
   }, []);
 
-  const currentLanguage = languageOptions.find((item) => item.code === i18n.language) || languageOptions[0];
+  const currentLanguage = localeMetadata(i18n.language);
   const currentTheme = themeOptions.find((item) => item.mode === themeMode) || themeOptions[0];
 
   const openSubmenu = (next: 'language' | 'theme') => {
@@ -281,11 +276,7 @@ export function Header() {
       <div className={`app-header${isChat ? ' app-header--chat' : ''}`}>
         {!isChat && (
           <button
-            aria-label={
-              mobile
-                ? t('core.header.buttons.openSidebar', 'Toggle sidebar')
-                : t('core.header.buttons.collapseSidebar', 'Collapse sidebar')
-            }
+            aria-label={mobile ? t('core.header.buttons.openSidebar') : t('core.header.buttons.collapseSidebar')}
             aria-pressed={mobile ? drawerOpen : miniSidebar}
             className="app-header__icon-button"
             onClick={mobile ? toggleDrawer : toggleMiniSidebar}
@@ -301,7 +292,7 @@ export function Header() {
         )}
         {isChat && mobile && (
           <button
-            aria-label={t('core.header.buttons.openSidebar', 'Toggle chat sidebar')}
+            aria-label={t('core.header.buttons.openSidebar')}
             aria-pressed={chatSidebarOpen}
             className="app-header__icon-button"
             onClick={toggleChatSidebar}
@@ -321,11 +312,11 @@ export function Header() {
         </button>
         <Menu
           className="app-header__menu"
-          label={t('core.header.buttons.menu', 'Application menu')}
+          label={t('core.header.buttons.menu')}
           trigger={(props) => (
             <button
               {...props}
-              aria-label={t('core.header.buttons.menu', 'Application menu')}
+              aria-label={t('core.header.buttons.menu')}
               className="app-header__icon-button app-header__menu-button"
               onClick={() => {
                 setSubmenu(null);
@@ -365,7 +356,7 @@ export function Header() {
                 className="header-submenu header-submenu--language"
                 role="menu"
               >
-                {languageOptions.map((language) => (
+                {localeRegistry.map((language) => (
                   <button
                     className={i18n.language === language.code ? 'is-active' : ''}
                     key={language.code}

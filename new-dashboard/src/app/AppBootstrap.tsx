@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import App from '@/App';
 import { waitForDesktopBackendReady } from '@/desktop/readiness';
@@ -7,6 +8,7 @@ import { detectDesktopRuntime } from '@/desktop/runtime';
 type BootstrapStatus = 'waiting' | 'ready' | 'error';
 
 export function AppBootstrap() {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<BootstrapStatus>('waiting');
   const [attempt, setAttempt] = useState(0);
 
@@ -40,13 +42,13 @@ export function AppBootstrap() {
       {status === 'waiting' ? (
         <>
           <span className="app-bootstrap__spinner" aria-hidden="true" />
-          <p>正在启动 AstrBot 后端…</p>
+          <p>{t('core.common.bootstrap.starting')}</p>
         </>
       ) : (
         <>
-          <p role="alert">AstrBot 后端启动超时。</p>
+          <p role="alert">{t('core.common.bootstrap.timeout')}</p>
           <button className="app-bootstrap__retry" type="button" onClick={retry}>
-            重试
+            {t('core.common.bootstrap.retry')}
           </button>
         </>
       )}
