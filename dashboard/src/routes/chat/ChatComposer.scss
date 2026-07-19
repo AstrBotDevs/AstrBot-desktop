@@ -1,8 +1,13 @@
 .chat-composer-v2 {
+  --chat-composer-background: var(--astrbot-surface);
+  --chat-composer-border: var(--astrbot-border);
+  --chat-composer-color: var(--astrbot-text);
+  --chat-composer-hover: color-mix(in srgb, var(--astrbot-text) 6%, transparent);
+  --chat-composer-muted: color-mix(in srgb, var(--astrbot-text) 58%, transparent);
   position: relative;
   flex: 0 0 auto;
   padding: 12px 16px 0;
-  border-top: 1px solid var(--border-color, #e8e8e8);
+  border-top: 1px solid var(--chat-composer-border);
 }
 
 .chat-composer-v2__surface {
@@ -13,10 +18,10 @@
   margin: 0 auto;
   padding: 6px 12px 6px 14px;
   overflow: visible;
-  color: var(--chat-composer-color, #202124);
-  border: 1px solid var(--chat-composer-border, #e0e0e0);
+  color: var(--chat-composer-color);
+  border: 1px solid var(--chat-composer-border);
   border-radius: 24px;
-  background: var(--chat-composer-background, #fff);
+  background: var(--chat-composer-background);
   box-shadow: 0 2px 2px rgb(0 0 0 / 10%);
 }
 
@@ -69,7 +74,7 @@
 
 .chat-composer-v2__reply q {
   overflow: hidden;
-  color: #737373;
+  color: var(--chat-composer-muted);
   font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -97,7 +102,7 @@
   padding: 7px 32px 7px 10px;
   overflow: hidden;
   border-radius: 8px;
-  background: rgb(0 0 0 / 5%);
+  background: var(--chat-composer-hover);
 }
 
 .chat-composer-v2__attachment.is-image {
@@ -123,7 +128,7 @@
   width: 34px;
   flex: 0 0 34px;
   place-content: center;
-  color: #607d8b;
+  color: var(--chat-composer-muted);
 }
 
 .chat-composer-v2__remove {
@@ -153,9 +158,9 @@
   padding: 6px;
   overflow-y: auto;
   list-style: none;
-  border: 1px solid #e3e3e3;
+  border: 1px solid var(--chat-composer-border);
   border-radius: 12px;
-  background: var(--chat-composer-background, #fff);
+  background: var(--chat-composer-background);
   box-shadow: 0 10px 30px rgb(0 0 0 / 14%);
 }
 
@@ -180,14 +185,14 @@
 
 .chat-composer-v2__suggestions strong {
   overflow: hidden;
-  color: #258dc8;
+  color: var(--astrbot-primary);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .chat-composer-v2__suggestions span {
   overflow: hidden;
-  color: #777;
+  color: var(--chat-composer-muted);
   font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -237,6 +242,11 @@
   resize: none;
 }
 
+.chat-composer-v2__field textarea::placeholder {
+  color: var(--chat-composer-muted);
+  opacity: 1;
+}
+
 .chat-composer-v2__right {
   display: flex;
   grid-area: right;
@@ -259,7 +269,7 @@
 }
 
 .chat-composer-v2__icon-button:hover {
-  background: rgb(0 0 0 / 5%);
+  background: var(--chat-composer-hover);
 }
 
 .chat-composer-v2__icon-button:disabled {
@@ -290,9 +300,9 @@
   left: 0;
   width: min(310px, calc(100vw - 32px));
   padding: 6px;
-  border: 1px solid #e3e3e3;
+  border: 1px solid var(--chat-composer-border);
   border-radius: 12px;
-  background: var(--chat-composer-background, #fff);
+  background: var(--chat-composer-background);
   box-shadow: 0 10px 30px rgb(0 0 0 / 14%);
 }
 
@@ -316,7 +326,7 @@
 
 .chat-composer-v2__menu > button:hover,
 .chat-composer-v2__menu > label:hover {
-  background: rgb(0 0 0 / 5%);
+  background: var(--chat-composer-hover);
 }
 
 .chat-composer-v2__config {
@@ -330,12 +340,15 @@
 .chat-composer-v2__config select {
   max-width: 170px;
   padding: 5px;
+  color: var(--chat-composer-color);
+  border: 1px solid var(--chat-composer-border);
+  background: var(--chat-composer-background);
 }
 
 .chat-composer-v2__config small {
   width: 100%;
   padding-left: 30px;
-  color: #777;
+  color: var(--chat-composer-muted);
 }
 
 .chat-composer-v2__token {
@@ -345,14 +358,17 @@
   flex: 0 0 24px;
   place-content: center;
   border-radius: 50%;
-  background: conic-gradient(#3997cf var(--chat-token-percent, 0deg), #e4e4e4 0);
+  background: conic-gradient(
+    var(--astrbot-primary) var(--chat-token-percent, 0deg),
+    color-mix(in srgb, var(--astrbot-text) 14%, transparent) 0
+  );
 }
 
 .chat-composer-v2__token::after {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--chat-composer-background, #fff);
+  background: var(--chat-composer-background);
   content: "";
 }
 
