@@ -2,9 +2,10 @@
 
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Link, Route, Routes } from 'react-router-dom';
+import { Link, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ApiError } from '@/api/http';
 import {
   createChatSession,
   getChatSession,
@@ -25,6 +26,10 @@ import ChatPage from './ChatPage';
 vi.mock('@/api/openapi');
 vi.mock('./chatTransport', () => ({ runChatStream: vi.fn() }));
 vi.mock('@/routes/configuration/ProviderPage', () => ({ default: () => <div>provider workspace</div> }));
+
+function CurrentPath() {
+  return <output aria-label="current path">{useLocation().pathname}</output>;
+}
 
 describe('ChatPage', () => {
   beforeEach(() => {
@@ -52,6 +57,28 @@ describe('ChatPage', () => {
     renderRoute(<ChatPage />, { route: '/chat' });
 
     expect(await screen.findByRole('alert')).toHaveTextContent('conversation service unavailable');
+  });
+
+  it.each([
+    new ApiError('Session stale-session not found', 404, null),
+    new ApiError('Session stale-session not found', 200, { status: 'error' }),
+  ])('returns to a new chat when the selected session no longer exists', async (missingSessionError) => {
+    vi.mocked(getChatSession).mockRejectedValue(missingSessionError);
+
+    renderRoute(
+      <>
+        <CurrentPath />
+        <Routes>
+          <Route element={<ChatPage />} path="/chat" />
+          <Route element={<ChatPage />} path="/chat/:conversationId" />
+        </Routes>
+      </>,
+      { route: '/chat/stale-session' },
+    );
+
+    await waitFor(() => expect(screen.getByRole('status', { name: 'current path' })).toHaveTextContent('/chat'));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(await screen.findByText('features.chat.welcome.title')).toBeInTheDocument();
   });
 
   it('creates a session and sends a message through the stream layer', async () => {

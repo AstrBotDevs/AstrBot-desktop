@@ -30,6 +30,7 @@ import {
 } from '@/api/openapi';
 import { fetchWithAuth } from '@/api/http';
 import { type ProviderDto, parseChatSessions, parseProviders } from '@/api/domain';
+import { ApiError } from '@/api/http';
 import { decodeApiData, expectRecord } from '@/api/response';
 import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
@@ -92,6 +93,11 @@ type CommandSuggestion = JsonObject & {
   enabled?: boolean;
   reserved?: boolean;
 };
+
+function isMissingChatSessionError(cause: unknown) {
+  if (cause instanceof ApiError && cause.status === 404) return true;
+  return cause instanceof Error && /\bsession\b.+\bnot found\b/i.test(cause.message.trim());
+}
 
 export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const { downloadBlob } = useBrowserCapabilities();
@@ -458,13 +464,30 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       if (requestId === messageLoadRequestRef.current) setMessages(normalized);
     } catch (cause) {
       if (requestId === messageLoadRequestRef.current) {
-        setError(errorMessage(cause, 'Failed to load conversation.'));
-        setMessages([]);
+        if (isMissingChatSessionError(cause)) {
+          delete messageCacheRef.current[conversationId];
+          setSessions((currentSessions) => currentSessions.filter((session) => session.session_id !== conversationId));
+          setProjectSessions((currentProjects) =>
+            Object.fromEntries(
+              Object.entries(currentProjects).map(([projectId, projectSessionItems]) => [
+                projectId,
+                projectSessionItems.filter((session) => session.session_id !== conversationId),
+              ]),
+            ),
+          );
+          setSelectedProjectId('');
+          setError('');
+          setMessages([]);
+          void navigate(basePath, { replace: true });
+        } else {
+          setError(errorMessage(cause, 'Failed to load conversation.'));
+          setMessages([]);
+        }
       }
     } finally {
       if (requestId === messageLoadRequestRef.current) setLoading(false);
     }
-  }, [conversationId]);
+  }, [basePath, conversationId, navigate]);
 
   useEffect(() => {
     void loadSessions();
