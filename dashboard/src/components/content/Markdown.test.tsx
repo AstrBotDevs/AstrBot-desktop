@@ -25,6 +25,14 @@ describe('Streamdown Markdown renderer', () => {
     expect(html).not.toContain('markdown-body--streaming');
   });
 
+  it('marks external links as link-safety controls', () => {
+    const html = renderToStaticMarkup(<Markdown content="Visit [AstrBot](https://astrbot.app) for documentation." />);
+
+    expect(html).toContain('<button');
+    expect(html).toContain('data-streamdown="link"');
+    expect(html).toContain('>AstrBot</button>');
+  });
+
   it('defers rich controls while content is still streaming', () => {
     const html = renderToStaticMarkup(<Markdown content={'```ts\nconst value = 1;\n```'} streaming />);
 
