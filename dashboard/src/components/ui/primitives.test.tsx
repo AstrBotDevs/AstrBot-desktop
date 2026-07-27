@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { Button } from './Button';
 import { DataTable } from './DataTable';
+import { DisclosureButton } from './DisclosureButton';
 import { DialogActions } from './DialogActions';
 import { Pagination } from './Pagination';
 import { SearchField } from './SearchField';
@@ -57,6 +58,32 @@ describe('shared UI primitives', () => {
     expect(markup).toContain('aria-label="Search plugins"');
     expect(markup).toContain('aria-label="Clear search"');
     expect(markup).toContain('ui-status-chip--success');
+  });
+
+  it('keeps disclosure controls centered and exposes their current state', () => {
+    const collapsed = renderToStaticMarkup(
+      <DisclosureButton collapseLabel="Collapse" expanded={false} expandLabel="Expand" label="Config file" />,
+    );
+    const expanded = renderToStaticMarkup(
+      <DisclosureButton
+        collapseLabel="Collapse"
+        compact
+        direction="right"
+        expanded
+        expandLabel="Expand"
+        label="Tool details"
+      />,
+    );
+
+    expect(collapsed).toContain('aria-expanded="false"');
+    expect(collapsed).toContain('aria-label="Expand: Config file"');
+    expect(collapsed).toContain('ui-disclosure-button__icon');
+    expect(expanded).toContain('aria-expanded="true"');
+    expect(expanded).toContain('aria-label="Collapse: Tool details"');
+    expect(expanded).toContain('ui-disclosure-button--compact');
+    expect(expanded).toContain('ui-disclosure-button--tree');
+    expect(expanded).toContain('mdi-chevron-right');
+    expect(primitiveStyles).toContain(".ui-disclosure-button[aria-expanded='true']");
   });
 
   it('shares table selection, empty state and pagination structure', () => {

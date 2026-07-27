@@ -43,6 +43,7 @@ import {
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { Dialog } from '@/components/headless/Dialog';
 import { MonacoEditor } from '@/components/editor/MonacoEditor';
+import { DisclosureButton } from '@/components/ui/DisclosureButton';
 import { useUnsavedChangesGuard } from '@/components/ui/useUnsavedChangesGuard';
 import { confirmAction, toast } from '@/stores/feedback';
 import { useBrowserCapabilities } from '@/platform/BrowserCapabilitiesProvider';
@@ -74,6 +75,10 @@ export function ComponentsSection() {
   const c = (key: string, options?: Record<string, unknown>) => t(`features.command.${key}`, options);
   const u = (key: string, options?: Record<string, unknown>) => t(`features.tooluse.${key}`, options);
   const e = (key: string) => t(`features.extension.${key}`);
+  const disclosureLabels = {
+    collapse: t('core.actions.collapse'),
+    expand: t('core.actions.expand'),
+  };
   const [commands, setCommands] = useState<JsonObject[]>([]);
   const [tools, setTools] = useState<JsonObject[]>([]);
   const [summary, setSummary] = useState({ conflicts: 0, disabled: 0 });
@@ -394,6 +399,7 @@ export function ComponentsSection() {
                     expanded={expandedGroups.has(recordId(item, 'handler_full_name'))}
                     item={item}
                     key={recordId(item, 'handler_full_name') || index}
+                    labels={disclosureLabels}
                     onDetails={setDetails}
                     onPermission={commandPermission}
                     onRename={(command) =>
@@ -413,6 +419,7 @@ export function ComponentsSection() {
                     expanded={expandedTools.has(recordId(item, 'name'))}
                     item={item}
                     key={recordId(item, 'name') || index}
+                    labels={disclosureLabels}
                     onPermission={toolPermission}
                     onToggle={toggleTool}
                     onToggleExpand={(tool) => toggleSet(setExpandedTools, recordId(tool, 'name'))}
@@ -615,6 +622,7 @@ function CommandFilters({
 function CommandRow({
   expanded,
   item,
+  labels,
   onDetails,
   onPermission,
   onRename,
@@ -624,6 +632,7 @@ function CommandRow({
 }: {
   expanded: boolean;
   item: JsonObject;
+  labels: { collapse: string; expand: string };
   onDetails: (item: JsonObject) => void;
   onPermission: (item: JsonObject, value: 'admin' | 'member') => Promise<void>;
   onRename: (item: JsonObject) => void;
@@ -650,9 +659,15 @@ function CommandRow({
       <td>
         <div className="component-command-name">
           {isGroup && subCommands.length ? (
-            <button onClick={() => onToggleExpand(item)} type="button">
-              <MdiIcon name={expanded ? 'mdi-chevron-down' : 'mdi-chevron-right'} />
-            </button>
+            <DisclosureButton
+              collapseLabel={labels.collapse}
+              compact
+              direction="right"
+              expanded={expanded}
+              expandLabel={labels.expand}
+              label={String(item.effective_command || item.current_fragment || item.original_command || '')}
+              onClick={() => onToggleExpand(item)}
+            />
           ) : type === 'sub_command' ? (
             <span className="component-command-indent" />
           ) : null}
@@ -722,6 +737,7 @@ function CommandRow({
 function ToolRow({
   expanded,
   item,
+  labels,
   onPermission,
   onToggle,
   onToggleExpand,
@@ -729,6 +745,7 @@ function ToolRow({
 }: {
   expanded: boolean;
   item: JsonObject;
+  labels: { collapse: string; expand: string };
   onPermission: (item: JsonObject, value: 'admin' | 'member') => Promise<void>;
   onToggle: (item: JsonObject) => Promise<void>;
   onToggleExpand: (item: JsonObject) => void;
@@ -744,9 +761,15 @@ function ToolRow({
     <>
       <tr>
         <td>
-          <button className="component-expand" onClick={() => onToggleExpand(item)} type="button">
-            <MdiIcon name={expanded ? 'mdi-chevron-up' : 'mdi-chevron-down'} />
-          </button>
+          <DisclosureButton
+            className="component-expand"
+            collapseLabel={labels.collapse}
+            compact
+            expanded={expanded}
+            expandLabel={labels.expand}
+            label={id}
+            onClick={() => onToggleExpand(item)}
+          />
         </td>
         <td>
           <div className="component-tool-name">
@@ -900,7 +923,7 @@ function RenameCommandDialog({
           />
         </label>
         <section>
-          <button onClick={() => setAliasesOpen((value) => !value)} type="button">
+          <button aria-expanded={aliasesOpen} onClick={() => setAliasesOpen((value) => !value)} type="button">
             <span>{t('dialogs.rename.aliases')}</span>
             <MdiIcon name={aliasesOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'} />
           </button>

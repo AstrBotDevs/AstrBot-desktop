@@ -121,9 +121,9 @@
 .component-panel__table > footer button { display: grid; width: 32px; height: 32px; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--astrbot-text); cursor: pointer; }
 .component-panel__table > footer button:disabled { opacity: .3; }
 .component-command-name { display: flex; align-items: center; }
-.component-command-name button,
-.component-expand { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border: 0; background: transparent; color: var(--astrbot-text); cursor: pointer; }
-.component-command-indent { width: 28px; }
+.component-command-name .ui-disclosure-button,
+.component-expand { margin: -2px 0; }
+.component-command-indent { width: 32px; }
 .component-command-name code,
 .component-details code { padding: 3px 7px; border-radius: 5px; background: color-mix(in srgb, var(--astrbot-primary) 10%, transparent); color: var(--astrbot-text); white-space: nowrap; }
 .is-subcommand .component-command-name code { background: color-mix(in srgb, var(--astrbot-secondary) 10%, transparent); color: var(--astrbot-secondary); }
@@ -168,6 +168,7 @@
 .component-rename input { min-height: 42px; padding: 8px 11px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: var(--astrbot-text); font: inherit; }
 .component-rename > section { overflow: hidden; border: 1px solid var(--astrbot-border); border-radius: 9px; }
 .component-rename > section > button { display: flex; width: 100%; min-height: 46px; align-items: center; justify-content: space-between; padding: 8px 13px; border: 0; background: transparent; color: var(--astrbot-text); font: inherit; }
+.component-rename > section > button > .mdi { flex: 0 0 auto; margin-left: 12px; font-size: 19px; line-height: 1; }
 .component-rename > section > div { display: grid; gap: 9px; padding: 12px; border-top: 1px solid var(--astrbot-border); }
 .component-rename > section > div label { display: flex; gap: 8px; }
 .component-rename > section > div label input { flex: 1; }
@@ -551,4 +552,3 @@
 .knowledge-retrieval { display: grid; gap: 10px; }
 .knowledge-chunk-preview { max-width: 700px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .knowledge-chunk-content { max-height: 65vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
-

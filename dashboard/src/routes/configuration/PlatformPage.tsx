@@ -20,6 +20,7 @@ import { ConfigGroup, MetadataConfigEditor } from '@/components/config/DynamicCo
 import type { ConfigGroupMetadata, ConfigRecord } from '@/components/config/configFormModel';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { DisclosureButton } from '@/components/ui/DisclosureButton';
 import { DEFAULT_CONFIG_ID } from '@/config/defaults';
 import { useBrowserCapabilities } from '@/platform/BrowserCapabilitiesProvider';
 import { i18n } from '@/i18n';
@@ -748,16 +749,17 @@ function PlatformEditor({
                         {t('createDialog.configHint')} {t('createDialog.configDefaultHint')}
                       </p>
                     </div>
-                    <button
-                      aria-expanded={showConfigSection}
+                    <DisclosureButton
+                      aria-controls="platform-editor-config-profiles"
+                      collapseLabel={i18n.t('core.actions.collapse')}
+                      expanded={showConfigSection}
+                      expandLabel={i18n.t('core.actions.expand')}
+                      label={t('createDialog.configFileTitle')}
                       onClick={() => setShowConfigSection((current) => !current)}
-                      type="button"
-                    >
-                      <MdiIcon name={showConfigSection ? 'mdi-chevron-up' : 'mdi-chevron-down'} />
-                    </button>
+                    />
                   </div>
                   {showConfigSection && (
-                    <div className="platform-editor__profiles">
+                    <div className="platform-editor__profiles" id="platform-editor-config-profiles">
                       <label>
                         <input
                           checked={configMode === 'existing'}
