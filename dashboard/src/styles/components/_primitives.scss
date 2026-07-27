@@ -133,6 +133,65 @@
   font-size: 19px;
 }
 
+.ui-disclosure-button {
+  position: relative;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--astrbot-radius-control);
+  background: transparent;
+  color: color-mix(in srgb, var(--astrbot-text) 68%, transparent);
+  cursor: pointer;
+  place-items: center;
+}
+
+.ui-disclosure-button::before {
+  position: absolute;
+  inset: -2px;
+  content: '';
+}
+
+.ui-disclosure-button:hover {
+  background: var(--astrbot-hover);
+  color: var(--astrbot-primary);
+}
+
+.ui-disclosure-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--astrbot-primary) 38%, transparent);
+  outline-offset: 2px;
+}
+
+.ui-disclosure-button__icon {
+  font-size: 20px;
+  line-height: 1;
+  transition: transform .18s ease;
+}
+
+.ui-disclosure-button[aria-expanded='true'] .ui-disclosure-button__icon {
+  transform: rotate(180deg);
+}
+
+.ui-disclosure-button--tree[aria-expanded='true'] .ui-disclosure-button__icon {
+  transform: rotate(90deg);
+}
+
+.ui-disclosure-button--compact {
+  width: 32px;
+  height: 32px;
+  flex-basis: 32px;
+}
+
+.ui-disclosure-button--compact::before {
+  inset: -6px;
+}
+
+.ui-disclosure-button--compact .ui-disclosure-button__icon {
+  font-size: 18px;
+}
+
 .ui-search-field {
   display: flex;
   min-width: 180px;

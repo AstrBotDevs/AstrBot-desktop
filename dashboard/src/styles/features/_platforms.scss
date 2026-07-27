@@ -88,10 +88,9 @@
 .platform-editor__config { margin: 18px 0 0 40px; }
 .platform-editor__config .dynamic-config { padding: 0; border: 0; }
 .platform-editor__step--config { margin-top: 30px; }
-.platform-editor__step-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.platform-editor__step-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.platform-editor__step-heading > div { min-width: 0; flex: 1; }
 .platform-editor__step-heading h3 small { margin-left: 6px; padding: 3px 8px; border-radius: 5px; background: color-mix(in srgb, var(--astrbot-primary) 10%, transparent); color: var(--astrbot-primary); font-size: 11px; font-weight: 500; }
-.platform-editor__step-heading button { display: grid; width: 36px; height: 36px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; }
-.platform-editor__step-heading button:hover { background: var(--astrbot-hover); }
 .platform-editor__profiles { display: grid; gap: 14px; margin-top: 22px; }
 .platform-editor__profiles > label { display: flex; align-items: center; gap: 10px; font-size: 16px; }
 .platform-editor__profiles input[type='radio'] { width: 20px; height: 20px; accent-color: var(--astrbot-text); }

@@ -93,9 +93,33 @@
 
 .markdown-body a,
 .markdown-body [data-streamdown='link'] {
-  color: var(--astrbot-text);
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  appearance: none;
+  background: transparent;
+  color: var(--astrbot-primary);
+  cursor: pointer;
+  font: inherit;
+  line-height: inherit;
+  text-align: inherit;
+  text-decoration: none;
+  vertical-align: baseline;
+}
+
+.markdown-body a:hover,
+.markdown-body [data-streamdown='link']:hover {
+  text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
+}
+
+.markdown-body a:focus-visible,
+.markdown-body [data-streamdown='link']:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid color-mix(in srgb, var(--astrbot-primary) 38%, transparent);
+  outline-offset: 2px;
 }
 
 .markdown-body [data-streamdown='strong'] {
