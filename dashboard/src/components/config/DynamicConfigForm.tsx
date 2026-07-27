@@ -599,7 +599,7 @@ function ConfigControl({
         onChange={(event) => onChange(metadata.options?.[Number(event.target.value)])}
         value={selectedIndex < 0 ? '' : selectedIndex}
       >
-        <option disabled hidden value="" />
+        {selectedIndex < 0 && <option disabled hidden value="" />}
         {metadata.options.map((option, index) => (
           <option key={String(option)} value={index}>
             {String(labels[index] ?? option)}

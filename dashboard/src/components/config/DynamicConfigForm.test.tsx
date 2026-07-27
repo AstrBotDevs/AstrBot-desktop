@@ -45,6 +45,59 @@ describe('DynamicConfigForm', () => {
     expect(markup).not.toContain('dynamic-object__manage');
   });
 
+  it('does not add a blank option when the current enum value is valid', () => {
+    const markup = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <ConfigGroup
+          fieldsFromValue
+          metadata={{
+            type: 'object',
+            items: {
+              segment_mode: {
+                labels: ['Regular expression', 'Word list'],
+                options: ['regex', 'word_list'],
+                type: 'string',
+              },
+            },
+          }}
+          onChange={() => undefined}
+          translationPath="config"
+          value={{ segment_mode: 'regex' }}
+          variant="inline"
+        />
+      </I18nextProvider>,
+    );
+
+    expect(markup).not.toContain('<option disabled="" hidden="" value=""></option>');
+    expect(markup).toContain('<option value="0" selected="">Regular expression</option>');
+    expect(markup).toContain('<option value="1">Word list</option>');
+  });
+
+  it('keeps a hidden placeholder for an unmatched enum value', () => {
+    const markup = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <ConfigGroup
+          fieldsFromValue
+          metadata={{
+            type: 'object',
+            items: {
+              segment_mode: {
+                options: ['regex', 'word_list'],
+                type: 'string',
+              },
+            },
+          }}
+          onChange={() => undefined}
+          translationPath="config"
+          value={{ segment_mode: 'legacy_mode' }}
+          variant="inline"
+        />
+      </I18nextProvider>,
+    );
+
+    expect(markup).toContain('<option disabled="" hidden="" value="" selected=""></option>');
+  });
+
   it('renders the embedding dimension detector for special metadata', () => {
     const markup = renderToStaticMarkup(
       <I18nextProvider i18n={i18n}>
