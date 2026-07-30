@@ -105,7 +105,20 @@ export function Header() {
   );
 
   useEffect(() => {
-    if (accountWarning) setAccountOpen(true);
+    if (isDesktop) {
+      persistPasswordSecurityFlags(
+        { change_pwd_hint: false, md5_pwd_hint: false, password_upgrade_required: false },
+        localStorage,
+      );
+      setAccountWarning(null);
+      setAccountOpen(false);
+      return;
+    }
+    const storedWarning = readPasswordWarning(localStorage);
+    if (storedWarning) {
+      setAccountWarning(storedWarning);
+      setAccountOpen(true);
+    }
     let active = true;
     void statsApi
       .version()
@@ -126,7 +139,7 @@ export function Header() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isDesktop]);
 
   const currentLanguage = localeMetadata(i18n.language);
   const currentTheme = themeOptions.find((item) => item.mode === themeMode) || themeOptions[0];
@@ -411,12 +424,14 @@ export function Header() {
               {t('core.header.updateDialog.title')}
             </span>
           </MenuItem>
-          <MenuItem onSelect={() => setAccountOpen(true)}>
-            <span className="headless-menu__item-label">
-              <MdiIcon name="mdi-account" />
-              {t('core.header.accountDialog.title')}
-            </span>
-          </MenuItem>
+          {!isDesktop && (
+            <MenuItem onSelect={() => setAccountOpen(true)}>
+              <span className="headless-menu__item-label">
+                <MdiIcon name="mdi-account" />
+                {t('core.header.accountDialog.title')}
+              </span>
+            </MenuItem>
+          )}
         </Menu>
       </div>
       <Dialog onOpenChange={setUpdateOpen} open={updateOpen} title={t('core.header.updateDialog.title')}>
@@ -461,7 +476,11 @@ export function Header() {
           </DialogActions>
         </div>
       </Dialog>
-      <Dialog onOpenChange={setAccountOpen} open={accountOpen} title={t('core.header.accountDialog.title')}>
+      <Dialog
+        onOpenChange={setAccountOpen}
+        open={!isDesktop && accountOpen}
+        title={t('core.header.accountDialog.title')}
+      >
         <div className="dialog-form header-account-form">
           {accountWarning && (
             <p className="auth-warning" role="status">

@@ -20,6 +20,7 @@
     "bootstrap": {
         "starting": "Запуск серверной части AstrBot…",
         "timeout": "Серверная часть AstrBot не запустилась вовремя.",
+        "desktopAuthFailed": "Не удалось инициализировать сеанс AstrBot Desktop.",
         "retry": "Повторить"
     },
     "notFound": "Страница не найдена",

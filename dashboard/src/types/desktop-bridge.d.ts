@@ -10,11 +10,17 @@ declare global {
     canManage: boolean;
   }
 
+  interface AstrBotDesktopAuthSession extends AstrBotDesktopResult {
+    token?: string | null;
+    username?: string | null;
+  }
+
   interface AstrBotDesktopBridge {
     __tauriBridge?: boolean;
     isDesktop: boolean;
     isDesktopRuntime: () => Promise<boolean>;
     getBackendState: () => Promise<AstrBotDesktopBackendState>;
+    getAuthSession?: () => Promise<AstrBotDesktopAuthSession>;
     restartBackend: (authToken?: string | null) => Promise<AstrBotDesktopResult>;
     stopBackend: () => Promise<AstrBotDesktopResult>;
     openExternalUrl?: (url: string) => Promise<AstrBotDesktopResult>;

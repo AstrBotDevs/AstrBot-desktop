@@ -8,6 +8,7 @@ mod app_types;
 
 mod backend;
 mod bridge;
+mod desktop_auth;
 mod desktop_settings;
 mod desktop_state;
 

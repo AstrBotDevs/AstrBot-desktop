@@ -60,8 +60,10 @@ dependencies = [
 name = "astrbot-desktop-tauri"
 version = "4.26.8"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "home",
+ "ring",
  "semver",
  "serde",
  "serde_json",

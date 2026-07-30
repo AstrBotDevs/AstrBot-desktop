@@ -15,7 +15,9 @@ tauri-build = { version = "2.0", features = [] }
 
 [dependencies]
 chrono = { version = "0.4", features = ["clock"] }
+base64 = "0.22"
 home = "0.5"
+ring = "0.17"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 semver = "1.0"
