@@ -7,6 +7,7 @@ import { NotFoundPage } from '@/routes/NotFoundPage';
 import { BlankLayout } from '@/layouts/blank/BlankLayout';
 import { FullLayout } from '@/layouts/full/FullLayout';
 import { coreRouteModuleLoaders } from '@/app/coreRouteModules';
+import { RouteErrorPage } from '@/app/RouteErrorPage';
 
 const WelcomePage = lazy(() => import('@/routes/welcome/WelcomePage'));
 const AboutPage = lazy(() => import('@/routes/about/AboutPage'));
@@ -94,10 +95,12 @@ function routesForLayout(layout: RouteLayout) {
 const router = createHashRouter([
   {
     element: <BlankLayout />,
+    errorElement: <RouteErrorPage />,
     children: routesForLayout('protected-blank'),
   },
   {
     element: <FullLayout />,
+    errorElement: <RouteErrorPage />,
     children: [...routesForLayout('protected-full'), { path: '*', element: <NotFoundPage /> }],
   },
 ]);
