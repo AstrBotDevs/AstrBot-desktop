@@ -16,7 +16,10 @@
 }
 
 .about-hero__actions {
+  display: flex;
+  align-items: center;
   justify-content: center;
+  gap: 10px;
   margin-top: 24px;
 }
 
@@ -26,8 +29,6 @@
 }
 
 @media (max-width: tokens.$breakpoint-mobile-max) {
-  .auth-page { padding: 12px; }
-  .auth-card { padding: 20px; }
   .route-page { padding: 10px; }
   .route-card { padding: 18px; }
   .component-panel__filters { grid-template-columns: 1fr; }

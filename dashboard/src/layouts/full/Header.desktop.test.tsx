@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { statsApi } from '@/api/compat';
 import { useDesktopStore } from '@/stores/desktop';
 import { Header } from './Header';
 
@@ -19,17 +18,14 @@ vi.mock('@/desktop/DesktopProvider', () => ({
   useDesktop: () => ({ checkForUpdate: vi.fn(), installUpdate: vi.fn() }),
 }));
 
-describe('desktop header account controls', () => {
+describe('desktop header', () => {
   afterEach(() => {
     vi.restoreAllMocks();
-    window.localStorage.clear();
     useDesktopStore.setState({ isDesktop: false, runtimeChecked: false });
   });
 
-  it('does not show password warnings or request password status in desktop mode', () => {
-    window.localStorage.setItem('change_pwd_hint', 'true');
+  it('does not expose account or password controls', () => {
     useDesktopStore.setState({ isDesktop: true, runtimeChecked: true });
-    const version = vi.spyOn(statsApi, 'version');
 
     render(
       <MemoryRouter>
@@ -37,9 +33,9 @@ describe('desktop header account controls', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.queryByText('core.header.accountDialog.title')).not.toBeInTheDocument();
-    expect(screen.queryByText('core.header.accountDialog.form.currentPassword')).not.toBeInTheDocument();
-    expect(version).not.toHaveBeenCalled();
-    expect(window.localStorage.getItem('change_pwd_hint')).toBeNull();
+    fireEvent.click(screen.getByLabelText('core.header.buttons.menu'));
+    expect(screen.getByText('core.common.language')).toBeInTheDocument();
+    expect(screen.getByText('core.header.buttons.theme.title')).toBeInTheDocument();
+    expect(screen.getByText('core.header.updateDialog.title')).toBeInTheDocument();
   });
 });

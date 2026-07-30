@@ -1,7 +1,6 @@
 import { type ReactNode, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { authSessionFromResponse } from '@/auth/authFlow';
 import { useAuthStore } from '@/stores/auth';
 import { useDesktopStore } from '@/stores/desktop';
 
@@ -37,15 +36,7 @@ export function DesktopAuthGate({ children }: { children: ReactNode }) {
         if (!response.ok || !response.token || !response.username) {
           throw new Error(response.reason || 'Desktop authentication failed.');
         }
-        finishSession(
-          authSessionFromResponse({
-            change_pwd_hint: false,
-            md5_pwd_hint: false,
-            password_upgrade_required: false,
-            token: response.token,
-            username: response.username,
-          }),
-        );
+        finishSession({ token: response.token, username: response.username });
         setStatus('ready');
       })
       .catch(() => {

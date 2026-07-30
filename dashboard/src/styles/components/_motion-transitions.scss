@@ -15,8 +15,7 @@
 .chat-model-menu[open] > .chat-model-menu__panel { transform-origin: top left; }
 .chat-settings-submenu { animation: motion-slide-left-in 0.18s ease-out both; }
 .onboarding-help[open] > :not(summary),
-.chat-message__body details[open] > :not(summary),
-.auth-version details[open] > :not(summary) { animation: motion-expand-content-in 0.2s ease-out both; }
+.chat-message__body details[open] > :not(summary) { animation: motion-expand-content-in 0.2s ease-out both; }
 .sidebar { animation: motion-slide-right-in 0.22s ease-out both; }
 .sidebar-backdrop,
 .chat-sidebar-backdrop { animation: motion-fade-in 0.18s ease-out both; }

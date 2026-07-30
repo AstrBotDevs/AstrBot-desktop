@@ -2,15 +2,12 @@ import { lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createHashRouter, Navigate, RouterProvider } from 'react-router-dom';
 
-import { RequireAuth } from '@/auth/RequireAuth';
 import { routeLayout, routeManifest, type RouteLayout } from '@/routes/routeManifest';
 import { NotFoundPage } from '@/routes/NotFoundPage';
 import { BlankLayout } from '@/layouts/blank/BlankLayout';
 import { FullLayout } from '@/layouts/full/FullLayout';
 import { coreRouteModuleLoaders } from '@/app/coreRouteModules';
 
-const LoginPage = lazy(() => import('@/routes/auth/LoginPage'));
-const SetupPage = lazy(() => import('@/routes/auth/SetupPage'));
 const WelcomePage = lazy(() => import('@/routes/welcome/WelcomePage'));
 const AboutPage = lazy(() => import('@/routes/about/AboutPage'));
 const StatsPage = lazy(() => import('@/routes/monitoring/StatsPage'));
@@ -49,8 +46,6 @@ function loading(element: React.ReactNode) {
 const reactRouteElements: Partial<Record<string, React.ReactNode>> = {
   '/': <Navigate replace to="/welcome" />,
   '/main': <Navigate replace to="/welcome" />,
-  '/auth/login': loading(<LoginPage />),
-  '/auth/setup': loading(<SetupPage />),
   '/welcome': loading(<WelcomePage />),
   '/about': loading(<AboutPage />),
   '/dashboard/default': loading(<StatsPage />),
@@ -99,22 +94,10 @@ function routesForLayout(layout: RouteLayout) {
 const router = createHashRouter([
   {
     element: <BlankLayout />,
-    children: routesForLayout('public-blank'),
-  },
-  {
-    element: (
-      <RequireAuth>
-        <BlankLayout />
-      </RequireAuth>
-    ),
     children: routesForLayout('protected-blank'),
   },
   {
-    element: (
-      <RequireAuth>
-        <FullLayout />
-      </RequireAuth>
-    ),
+    element: <FullLayout />,
     children: [...routesForLayout('protected-full'), { path: '*', element: <NotFoundPage /> }],
   },
 ]);

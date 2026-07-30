@@ -1,8 +1,5 @@
 export const storageKeys = {
   auth: {
-    changePasswordHint: 'change_pwd_hint',
-    md5PasswordHint: 'md5_pwd_hint',
-    passwordUpgradeRequired: 'password_upgrade_required',
     token: 'token',
     username: 'user',
   },

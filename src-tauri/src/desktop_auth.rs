@@ -73,8 +73,8 @@ fn read_session_from_root(root_dir: &Path) -> DesktopAuthSessionResult {
     };
     let dashboard = &config["dashboard"];
     let username = dashboard["username"].as_str().unwrap_or_default().trim();
-    let jwt_secret = dashboard["jwt_secret"].as_str().unwrap_or_default().trim();
-    if username.is_empty() || jwt_secret.is_empty() {
+    let jwt_secret = dashboard["jwt_secret"].as_str().unwrap_or_default();
+    if username.is_empty() || jwt_secret.trim().is_empty() {
         return DesktopAuthSessionResult::error("Dashboard authentication is not ready.");
     }
 
@@ -112,7 +112,7 @@ mod tests {
         fs::create_dir_all(&data_dir).expect("create data directory");
         fs::write(
             data_dir.join("cmd_config.json"),
-            r#"{"dashboard":{"username":"astrbot","jwt_secret":"desktop-secret"}}"#,
+            r#"{"dashboard":{"username":"astrbot","jwt_secret":" desktop-secret "}}"#,
         )
         .expect("write dashboard config");
 
@@ -127,7 +127,7 @@ mod tests {
         let signature = URL_SAFE_NO_PAD
             .decode(segments[2])
             .expect("decode signature");
-        let key = hmac::Key::new(hmac::HMAC_SHA256, b"desktop-secret");
+        let key = hmac::Key::new(hmac::HMAC_SHA256, b" desktop-secret ");
         hmac::verify(&key, signing_input.as_bytes(), &signature).expect("valid signature");
     }
 

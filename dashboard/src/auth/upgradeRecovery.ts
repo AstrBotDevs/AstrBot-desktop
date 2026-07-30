@@ -1,8 +1,6 @@
-import type { AuthSessionResponse } from '@/api/auth';
-import { recoveryApi, type CompatibleApiResponse } from '@/api/compat';
+import { recoveryApi } from '@/api/compat';
 import { sessionStorageKeys, storageKeys } from '@/config/storageKeys';
 
-export const UPGRADE_RECOVERY_EVENT = 'astrbot-upgrade-recovery';
 export const UPGRADE_RECOVERY_TOKEN_KEY = sessionStorageKeys.upgradeRecoveryToken;
 
 export type LegacyVersionData = {
@@ -37,21 +35,6 @@ export function restartPollDecision(
   if (nextStartTime != null && initialStartTime != null && String(nextStartTime) !== String(initialStartTime))
     return 'reloaded';
   return attempts >= maxAttempts ? 'timeout' : 'continue';
-}
-
-export async function legacyUpgradeDetail(
-  response: CompatibleApiResponse<AuthSessionResponse>,
-  fetchImpl: typeof fetch = fetch,
-): Promise<UpgradeRecoveryDetail | null> {
-  const token = String(response.data.data?.token ?? '');
-  if (!response.legacyFallback || !token) return null;
-  const version = await recoveryApi.version(token, fetchImpl);
-  return versionsMismatch(version.version, version.dashboard_version) ? { ...version, blocking: true } : null;
-}
-
-export function dispatchUpgradeRecovery(detail: UpgradeRecoveryDetail, token?: string) {
-  if (token) sessionStorage.setItem(UPGRADE_RECOVERY_TOKEN_KEY, token);
-  window.dispatchEvent(new CustomEvent<UpgradeRecoveryDetail>(UPGRADE_RECOVERY_EVENT, { detail }));
 }
 
 export async function getLegacyStartTime(token = recoveryToken(), fetchImpl: typeof fetch = fetch) {
