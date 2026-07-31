@@ -241,6 +241,13 @@
   box-shadow: 0 10px 28px rgb(0 0 0 / 16%);
 }
 
+.ui-select-menu__menu--portaled {
+  position: fixed;
+  z-index: 1300;
+  right: auto;
+  pointer-events: auto;
+}
+
 .ui-select-menu__menu > button {
   display: grid;
   width: 100%;
