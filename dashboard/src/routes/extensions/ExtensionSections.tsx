@@ -512,7 +512,12 @@ function ComponentPagination({
     <footer>
       <label>
         {t('core.common.itemsPerPage')}:{' '}
-        <SelectControl onChange={(event) => onPageSizeChange(Number(event.target.value))} value={pageSize}>
+        <SelectControl
+          aria-label={t('core.common.itemsPerPage')}
+          className="component-panel__page-size"
+          onChange={(event) => onPageSizeChange(Number(event.target.value))}
+          value={pageSize}
+        >
           <option>10</option>
           <option>25</option>
           <option>50</option>
