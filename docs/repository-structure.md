@@ -8,8 +8,6 @@
   - 桌面壳层核心（Rust + Tauri 配置）。
 - `dashboard/`
   - Desktop 仓库直接维护的 React/Vite WebUI 源码、OpenAPI 快照与前端静态资源。
-- `legacy-dashboard/`
-  - 只读保留的旧版 Vue Dashboard，仅供人工迁移对照，不参与默认构建与 CI。
 - `scripts/`
   - 构建、资源准备、CI 辅助脚本。
 - `resources/`

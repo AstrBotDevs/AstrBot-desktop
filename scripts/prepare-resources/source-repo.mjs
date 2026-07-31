@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
@@ -65,6 +65,30 @@ export const resolveSourceDir = (projectRoot, sourceDirOverrideRaw, cwd = proces
   return path.join(projectRoot, 'vendor', 'AstrBot');
 };
 
+export const removeUpstreamDashboard = (sourceDir) => {
+  const dashboardDir = path.join(sourceDir, 'dashboard');
+  if (!existsSync(dashboardDir)) return false;
+
+  rmSync(dashboardDir, {
+    force: true,
+    maxRetries: 3,
+    recursive: true,
+    retryDelay: 100,
+  });
+  console.log(`[source-repo] Removed upstream Dashboard: ${dashboardDir}`);
+  return true;
+};
+
+const restoreTrackedDashboardForCheckout = (sourceDir) => {
+  const trackedResult = spawnSync('git', ['-C', sourceDir, 'cat-file', '-e', 'HEAD:dashboard'], { stdio: 'ignore' });
+  if (trackedResult.status !== 0) return;
+
+  const restoreResult = spawnSync('git', ['-C', sourceDir, 'checkout', '--', 'dashboard'], { stdio: 'inherit' });
+  if (restoreResult.status !== 0) {
+    throw new Error(`Failed to restore the managed upstream Dashboard before checkout: ${sourceDir}`);
+  }
+};
+
 export const ensureSourceRepo = ({
   sourceDir,
   sourceRepoUrl,
@@ -105,6 +129,11 @@ export const ensureSourceRepo = ({
   }
 
   if (sourceRepoRef) {
+    // The managed checkout intentionally excludes the upstream WebUI. Restore only
+    // that tracked path before switching refs so Git does not treat its removal as
+    // a conflicting local change; all other local backend changes remain protected.
+    restoreTrackedDashboardForCheckout(sourceDir);
+
     const fetchResult = spawnSync(
       'git',
       ['-C', sourceDir, 'fetch', '--depth', '1', 'origin', sourceRepoRef],
@@ -127,4 +156,6 @@ export const ensureSourceRepo = ({
   if (!existsSync(path.join(sourceDir, 'main.py'))) {
     throw new Error(`Resolved source repository is invalid: ${sourceDir}. Cannot find main.py.`);
   }
+
+  removeUpstreamDashboard(sourceDir);
 };

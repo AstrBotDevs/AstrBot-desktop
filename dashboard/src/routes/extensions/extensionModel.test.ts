@@ -61,7 +61,7 @@ describe('extension model helpers', () => {
     expect(markdownContent({ content: '# README' })).toBe('# README');
   });
 
-  it('normalizes the keyed marketplace response used by the legacy dashboard', () => {
+  it('normalizes keyed marketplace responses', () => {
     const payload = {
       $meta: { name: 'AstrBot', total: 2 },
       astrbot_plugin_weather: { author: 'Alice', desc: 'Forecast' },

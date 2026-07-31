@@ -5,7 +5,7 @@ import { memoryStorage } from '@/test/storage';
 import { ApiError, apiRequest, fetchWithAuth } from './http';
 
 describe('apiRequest', () => {
-  it('preserves token and locale headers used by the legacy dashboard', async () => {
+  it('preserves the established token and locale headers', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({
         data: { ready: true },

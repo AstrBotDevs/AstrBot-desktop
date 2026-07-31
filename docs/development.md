@@ -42,7 +42,7 @@ ASTRBOT_SOURCE_GIT_URL=https://github.com/AstrBotDevs/AstrBot.git
 ASTRBOT_SOURCE_GIT_REF=master
 ```
 
-`.env` 仅用于本机且已被 Git 忽略。`pnpm run dev` 会自动把远端源码准备到 `vendor/AstrBot` 后再启动；`pnpm run build` 和资源准备脚本也会自动加载 `.env`。已有的进程环境变量优先级高于 `.env`。仅在明确需要使用现有本地源码时才设置 `ASTRBOT_SOURCE_DIR`。
+`.env` 仅用于本机且已被 Git 忽略。`pnpm run dev` 会自动把远端源码准备到 `vendor/AstrBot` 后再启动；`pnpm run build` 和资源准备脚本也会自动加载 `.env`。已有的进程环境变量优先级高于 `.env`。托管源码同步完成后会删除上游仓库自带的 `dashboard/`，确保桌面端只使用本仓库维护的 React Dashboard。仅在明确需要使用现有本地源码时才设置 `ASTRBOT_SOURCE_DIR`；显式指定的源码目录由用户管理，不会执行上述删除。
 
 推荐直接使用 Makefile：
 
@@ -75,9 +75,8 @@ pnpm --dir dashboard dev
 
 独立前端开发服务默认监听 `1420`，并把 `/api` 代理到本机 AstrBot 后端 `http://127.0.0.1:6185/`。
 
-React Dashboard 已成为唯一默认前端，目录位于 `dashboard/`。旧版 Vue 工程仅保留在
-`legacy-dashboard/` 供人工对照，不参与默认命令、资源准备或 CI。迁移边界见
-[`dashboard-react-migration.md`](./dashboard-react-migration.md)。
+React Dashboard 是唯一维护和构建的前端，目录位于 `dashboard/`。默认命令、资源准备、
+桌面打包和 CI 均以该目录为准。
 
 本地执行 `pnpm run build` 时，如果未设置 `TAURI_SIGNING_PRIVATE_KEY`，启动脚本会保留 MSI/NSIS 安装包构建，但跳过需要发布私钥的 updater 签名产物。正式发布流水线提供该私钥，因此仍会按 `tauri.conf.json` 生成并签名 updater artifacts。
 

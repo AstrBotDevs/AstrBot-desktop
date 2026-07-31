@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { getProviderIcon, PROVIDER_ICON_URLS } from './providerIcons';
 
 describe('provider icons', () => {
-  it('ports every provider icon mapping from the legacy dashboard', () => {
+  it('covers every supported provider icon mapping', () => {
     expect(Object.keys(PROVIDER_ICON_URLS)).toEqual([
       'openai',
       'azure',

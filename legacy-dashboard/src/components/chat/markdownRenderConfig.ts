@@ -1,1 +1,0 @@
-export const MARKDOWN_RENDER_MAX_LIVE_NODES = 320;

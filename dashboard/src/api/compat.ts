@@ -33,7 +33,7 @@ export const compatibilityExitPlan: readonly CompatibilityExitItem[] = [
   {
     id: 'legacy-storage',
     minimumBackendVersion: 'Not backend-dependent',
-    removalCondition: 'One stable release has migrated uiTheme and the Vue Dashboard rollback window is closed.',
+    removalCondition: 'One stable release has migrated uiTheme and no supported release requires the old key.',
     targetDashboardVersion: '2.0.0',
   },
   {
