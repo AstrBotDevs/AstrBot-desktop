@@ -71,9 +71,7 @@ describe('SessionManagementPage', () => {
     await screen.findByText('user-1');
     const checkboxes = screen.getAllByRole('checkbox');
     await user.click(checkboxes[1]);
-    await user.click(
-      screen.getByRole('button', { name: 'features.session-management.batchOperations.llmStatus' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'features.session-management.batchOperations.llmStatus' }));
     await user.click(screen.getByRole('option', { name: 'features.session-management.status.enabled' }));
     await user.click(screen.getByRole('button', { name: 'features.session-management.batchOperations.apply' }));
 
