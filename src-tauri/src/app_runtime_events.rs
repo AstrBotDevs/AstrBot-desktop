@@ -4,8 +4,6 @@ use tauri::{webview::PageLoadEvent, RunEvent};
 pub(crate) enum MainWindowAction {
     None,
     PreventCloseAndHide,
-    PreventCloseAndExit,
-    HideIfMinimized,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,10 +25,7 @@ pub(crate) enum RunEventAction {
 pub(crate) fn main_window_action(
     window_label: &str,
     is_quitting: bool,
-    minimized_on_focus_lost: bool,
     is_close_requested: bool,
-    is_focus_lost: bool,
-    close_to_tray: bool,
 ) -> MainWindowAction {
     if window_label != "main" {
         return MainWindowAction::None;
@@ -39,15 +34,9 @@ pub(crate) fn main_window_action(
     if is_close_requested {
         return if is_quitting {
             MainWindowAction::None
-        } else if close_to_tray {
-            MainWindowAction::PreventCloseAndHide
         } else {
-            MainWindowAction::PreventCloseAndExit
+            MainWindowAction::PreventCloseAndHide
         };
-    }
-
-    if is_focus_lost && minimized_on_focus_lost && !is_quitting {
-        return MainWindowAction::HideIfMinimized;
     }
 
     MainWindowAction::None
@@ -105,7 +94,7 @@ mod tests {
     #[test]
     fn main_window_action_ignores_non_main_windows() {
         assert_eq!(
-            main_window_action("settings", false, false, true, false, true),
+            main_window_action("settings", false, true),
             MainWindowAction::None
         );
     }
@@ -113,24 +102,24 @@ mod tests {
     #[test]
     fn main_window_action_hides_on_close_when_not_quitting() {
         assert_eq!(
-            main_window_action("main", false, false, true, false, true),
+            main_window_action("main", false, true),
             MainWindowAction::PreventCloseAndHide
         );
     }
 
     #[test]
-    fn main_window_action_allows_close_when_close_to_tray_is_disabled() {
+    fn main_window_action_allows_close_while_quitting_from_tray() {
         assert_eq!(
-            main_window_action("main", false, false, true, false, false),
-            MainWindowAction::PreventCloseAndExit
+            main_window_action("main", true, true),
+            MainWindowAction::None
         );
     }
 
     #[test]
-    fn main_window_action_hides_on_minimized_focus_loss() {
+    fn main_window_action_leaves_minimize_to_the_window_manager() {
         assert_eq!(
-            main_window_action("main", false, true, false, true, true),
-            MainWindowAction::HideIfMinimized
+            main_window_action("main", false, false),
+            MainWindowAction::None
         );
     }
 

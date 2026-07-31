@@ -74,15 +74,6 @@ pub fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
         None::<&str>,
     )
     .map_err(|error| format!("Failed to create tray silent launch menu item: {error}"))?;
-    let close_to_tray_item = CheckMenuItem::with_id(
-        app_handle,
-        actions::TRAY_MENU_CLOSE_TO_TRAY,
-        shell_texts.tray_close_to_tray,
-        true,
-        desktop_settings.close_to_tray,
-        None::<&str>,
-    )
-    .map_err(|error| format!("Failed to create tray close to tray menu item: {error}"))?;
     let quit_item = MenuItem::with_id(
         app_handle,
         actions::TRAY_MENU_QUIT,
@@ -105,7 +96,6 @@ pub fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
             &settings_separator,
             &launch_at_login_item,
             &silent_launch_item,
-            &close_to_tray_item,
             &separator,
             &quit_item,
         ],
@@ -118,7 +108,6 @@ pub fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
         restart_backend_item: restart_backend_item.clone(),
         launch_at_login_item: launch_at_login_item.clone(),
         silent_launch_item: silent_launch_item.clone(),
-        close_to_tray_item: close_to_tray_item.clone(),
         quit_item: quit_item.clone(),
     }) {
         append_desktop_log("tray menu state already exists, skipping manage");
