@@ -1609,7 +1609,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
                               </button>
                             </span>
                             {runningSessionIds.has(session.session_id) && (
-                              <MdiIcon className="chat-project-session-progress" name="mdi-loading" />
+                              <span aria-hidden="true" className="chat-project-session-progress" />
                             )}
                           </div>
                         ))
@@ -1629,7 +1629,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
                 <button onClick={() => selectSession(session.session_id)} type="button">
                   <span>{session.display_name || session.session_id}</span>
                   {runningSessionIds.has(session.session_id) && (
-                    <MdiIcon className="chat-session-progress" name="mdi-loading" />
+                    <span aria-hidden="true" className="chat-session-progress" />
                   )}
                 </button>
                 <div>

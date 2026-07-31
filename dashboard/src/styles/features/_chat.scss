@@ -131,7 +131,24 @@ html[data-theme='dark'] .chat-shell {
 .chat-project-session-row > span button { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 6px; color: var(--chat-muted); }
 .chat-project-session-row > span button:hover { background: color-mix(in srgb, var(--astrbot-text) 7%, transparent); color: var(--astrbot-text); }
 .chat-project-session-row > span button:last-child:hover { color: var(--astrbot-error); }
-.chat-project-session-progress { position: absolute; right: 8px; color: var(--astrbot-primary); animation: chat-spin .8s linear infinite; }
+.chat-project-session-row > .chat-project-session-progress {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  color: var(--astrbot-primary);
+  opacity: 1;
+  pointer-events: none;
+  transform: none;
+  visibility: visible;
+  animation: chat-spin .8s linear infinite;
+}
 .chat-project-session-row:hover > .chat-project-session-progress,
 .chat-project-session-row:focus-within > .chat-project-session-progress { display: none; }
 .chat-project-session-empty { padding: 5px 10px; color: var(--chat-muted); font-size: 13px; }
@@ -167,6 +184,24 @@ html[data-theme='dark'] .chat-shell {
 .chat-session-list > div > div button { display: grid; width: 27px; height: 27px; place-items: center; border-radius: 6px; color: var(--chat-muted); }
 .chat-session-list > div > div .chat-sidebar-icon { width: 15px; height: 15px; }
 .chat-session-list > div > div button:hover { background: color-mix(in srgb, var(--astrbot-text) 7%, transparent); color: var(--astrbot-text); }
+.chat-session-list > div > button > .chat-session-progress {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  color: var(--astrbot-primary);
+  font-size: 0;
+  pointer-events: none;
+  animation: chat-spin .8s linear infinite;
+}
+.chat-session-list > div:hover .chat-session-progress,
+.chat-session-list > div:focus-within .chat-session-progress { display: none; }
 .chat-sessions__footer { position: relative; margin-top: auto; padding: 10px 16px 14px; }
 .chat-settings-menu { position: relative; }
 .chat-settings-menu > summary::-webkit-details-marker { display: none; }
