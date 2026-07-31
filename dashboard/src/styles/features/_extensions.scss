@@ -231,7 +231,7 @@
 .extension-market-card footer .button--primary { background: var(--astrbot-primary); color: #fff; }
 .extension-market-card footer .is-installed { background: var(--astrbot-success); color: #fff; opacity: .72; }
 
-/* Legacy Dashboard MCP and Skills sections */
+/* MCP and Skills sections */
 .resource-page { position: relative; min-height: 100%; padding: 8px 4px 100px; }
 .resource-list { display: flex; flex-direction: column; gap: 12px; }
 .resource-list-item { display: flex; min-height: 104px; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; border: 1px solid var(--astrbot-border); border-radius: 10px; background: var(--astrbot-surface); cursor: pointer; transition: background .16s; }
@@ -419,7 +419,7 @@
 .extension-config-editor--detail { height: 60vh; margin-top: 18px; padding: 14px; border: 1px solid var(--astrbot-border); border-radius: 12px; }
 .extension-config-editor--detail > div:last-child { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 
-/* Installed plugin cards mirror the legacy dashboard layout and interactions. */
+/* Installed plugin cards */
 .extension-installed__header { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 18px; margin: 16px 0 24px; }
 .extension-installed__header h2 { margin: 0; font-size: clamp(24px, 2.2vw, 32px); }
 .extension-installed__search { display: flex; width: min(340px, 100%); min-height: 44px; align-items: center; gap: 8px; padding: 0 12px; border-radius: 10px; background: color-mix(in srgb, var(--astrbot-text) 5%, var(--astrbot-surface)); color: color-mix(in srgb, var(--astrbot-text) 52%, transparent); }
