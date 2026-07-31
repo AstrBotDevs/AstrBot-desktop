@@ -429,14 +429,17 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       setProviderMetadata(
         isObject(envelope.model_metadata) ? (envelope.model_metadata as Record<string, JsonObject>) : {},
       );
-      const selected = items.find((item) => item.id === provider);
-      if (selected?.model) setModel(selected.model);
+      const selected = items.find((item) => item.id === provider) || items[0];
+      const selectedProvider = selected?.id || '';
+      const selectedModel = selected?.model || '';
+      if (provider !== selectedProvider) setProvider(selectedProvider);
+      setModel(selectedModel);
     } catch (cause) {
       toast.error(errorMessage(cause, 'Failed to load models.'));
     } finally {
       setProvidersLoading(false);
     }
-  }, [provider]);
+  }, [provider, setModel, setProvider]);
 
   const loadMessages = useCallback(async () => {
     const requestId = ++messageLoadRequestRef.current;
@@ -994,8 +997,8 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
           enableStreaming: streaming,
           message: messagePayload,
           messageId,
-          selectedModel: providerOverrideEnabled ? model : '',
-          selectedProvider: providerOverrideEnabled ? provider : '',
+          selectedModel: providerOverrideEnabled ? currentProvider?.model || '' : '',
+          selectedProvider: providerOverrideEnabled ? currentProvider?.id || '' : '',
           sessionId,
           transport: transportMode,
         },
@@ -1034,7 +1037,11 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     }
   };
 
-  const regenerate = async (target: ChatRecord, selectedProvider = provider, selectedModel = model) => {
+  const regenerate = async (
+    target: ChatRecord,
+    selectedProvider = currentProvider?.id || '',
+    selectedModel = currentProvider?.model || '',
+  ) => {
     if (!conversationId || target.id == null || sending) return;
     const targetId = String(target.id);
     const index = messages.findIndex((item) => item === target || String(item.id) === targetId);
@@ -1133,8 +1140,8 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
           enableStreaming: streaming,
           llmCheckpointId: String(source.llm_checkpoint_id || ''),
           message: serializeChatParts(source.content.message),
-          selectedModel: providerOverrideEnabled ? model : '',
-          selectedProvider: providerOverrideEnabled ? provider : '',
+          selectedModel: providerOverrideEnabled ? currentProvider?.model || '' : '',
+          selectedProvider: providerOverrideEnabled ? currentProvider?.id || '' : '',
           sessionId: conversationId,
         },
         abort.signal,
@@ -1284,8 +1291,8 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
           kind: 'thread',
           enableStreaming: streaming,
           message: [{ type: 'plain', text }],
-          selectedModel: providerOverrideEnabled ? model : '',
-          selectedProvider: providerOverrideEnabled ? provider : '',
+          selectedModel: providerOverrideEnabled ? currentProvider?.model || '' : '',
+          selectedProvider: providerOverrideEnabled ? currentProvider?.id || '' : '',
           threadId,
         },
         abort.signal,

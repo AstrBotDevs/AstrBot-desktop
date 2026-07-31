@@ -6,6 +6,7 @@ import { Link, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '@/api/http';
+import { selectedModelPreference, selectedProviderPreference } from '@/config/preferences';
 import {
   createChatSession,
   getChatSession,
@@ -36,6 +37,7 @@ describe('ChatPage', () => {
   beforeEach(() => {
     resetChatStreamRegistry();
     vi.resetAllMocks();
+    localStorage.clear();
     vi.mocked(listChatSessions).mockResolvedValue(mockApiResponse({ sessions: [] }));
     vi.mocked(listChatProjects).mockResolvedValue(mockApiResponse({ projects: [] }));
     vi.mocked(listProviders).mockResolvedValue(mockApiResponse({ model_metadata: {}, providers: [] }));
@@ -99,6 +101,37 @@ describe('ChatPage', () => {
         kind: 'send',
         message: [{ text: 'Hello AstrBot', type: 'plain' }],
         sessionId: 'session-new',
+      }),
+      expect.any(AbortSignal),
+      expect.any(Object),
+    );
+  });
+
+  it('replaces a removed persisted provider before sending the first message', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem('selectedProvider', 'removed-provider');
+    localStorage.setItem('selectedProviderModel', 'removed-model');
+    vi.mocked(listProviders).mockResolvedValue(
+      mockApiResponse({
+        model_metadata: {},
+        providers: [{ enable: true, id: 'available-provider', model: 'available-model' }],
+      }),
+    );
+    vi.mocked(createChatSession).mockResolvedValue(mockApiResponse({ session_id: 'session-new' }));
+
+    renderRoute(<ChatPage />, { route: '/chat' });
+
+    const composer = await screen.findByPlaceholderText('features.chat.input.placeholder');
+    await waitFor(() => expect(selectedProviderPreference.read()).toBe('available-provider'));
+    expect(selectedModelPreference.read()).toBe('available-model');
+    await user.type(composer, 'Use the available provider');
+    await user.click(screen.getByRole('button', { name: 'features.chat.input.send' }));
+
+    await waitFor(() => expect(runChatStream).toHaveBeenCalled());
+    expect(runChatStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selectedModel: 'available-model',
+        selectedProvider: 'available-provider',
       }),
       expect.any(AbortSignal),
       expect.any(Object),
