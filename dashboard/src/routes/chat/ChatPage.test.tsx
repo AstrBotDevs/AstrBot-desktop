@@ -21,6 +21,7 @@ import {
 import { deferred } from '@/test/async';
 import { mockApiResponse, renderRoute } from '@/test/render';
 import { runChatStream } from './chatTransport';
+import { chatStreamRegistry, resetChatStreamRegistry } from './chatStreamRegistry';
 import ChatPage from './ChatPage';
 
 vi.mock('@/api/openapi');
@@ -33,6 +34,7 @@ function CurrentPath() {
 
 describe('ChatPage', () => {
   beforeEach(() => {
+    resetChatStreamRegistry();
     vi.resetAllMocks();
     vi.mocked(listChatSessions).mockResolvedValue(mockApiResponse({ sessions: [] }));
     vi.mocked(listChatProjects).mockResolvedValue(mockApiResponse({ projects: [] }));
@@ -133,5 +135,53 @@ describe('ChatPage', () => {
 
     await waitFor(() => expect(screen.queryByText('stale response')).not.toBeInTheDocument());
     expect(screen.getByText('newest response')).toBeInTheDocument();
+  });
+
+  it('keeps an active chat stream alive while navigating to another dashboard page', async () => {
+    const user = userEvent.setup();
+    const stream = deferred<void>();
+    let streamSignal: AbortSignal | undefined;
+    let deliverPayload: ((payload: unknown) => void) | undefined;
+    vi.mocked(getChatSession).mockResolvedValue(mockApiResponse({ history: [] }));
+    vi.mocked(runChatStream).mockImplementation(async (_action, signal, callbacks) => {
+      streamSignal = signal;
+      deliverPayload = callbacks.onPayload;
+      await stream.promise;
+    });
+
+    renderRoute(
+      <>
+        <Link to="/logs">Open logs</Link>
+        <Link to="/chat/session-1">Return to chat</Link>
+        <Routes>
+          <Route element={<ChatPage />} path="/chat/:conversationId" />
+          <Route element={<div>Logs page</div>} path="/logs" />
+        </Routes>
+      </>,
+      { route: '/chat/session-1' },
+    );
+
+    const composer = await screen.findByPlaceholderText('features.chat.input.placeholder');
+    await user.type(composer, 'Keep generating');
+    await user.click(screen.getByRole('button', { name: 'features.chat.input.send' }));
+    await waitFor(() => expect(runChatStream).toHaveBeenCalled());
+    expect(deliverPayload).toEqual(expect.any(Function));
+    expect(chatStreamRegistry.messageCache['session-1']).toHaveLength(2);
+
+    await user.click(screen.getByRole('link', { name: 'Open logs' }));
+    expect(await screen.findByText('Logs page')).toBeInTheDocument();
+    expect(streamSignal?.aborted).toBe(false);
+
+    await user.click(screen.getByRole('link', { name: 'Return to chat' }));
+    await screen.findByPlaceholderText('features.chat.input.placeholder');
+    expect(chatStreamRegistry.messageCache['session-1']).toHaveLength(2);
+    expect(await screen.findByText('Keep generating')).toBeInTheDocument();
+    deliverPayload?.({ type: 'plain', data: 'Still connected', streaming: true });
+    expect(chatStreamRegistry.messageCache['session-1'][1].content.message).toContainEqual({
+      text: 'Still connected',
+      type: 'plain',
+    });
+
+    stream.resolve();
   });
 });
