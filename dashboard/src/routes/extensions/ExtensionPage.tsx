@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -28,6 +27,7 @@ import { Markdown } from '@/components/content/Markdown';
 import { ConfigGroup } from '@/components/config/DynamicConfigForm';
 import type { ConfigGroupMetadata } from '@/components/config/configFormModel';
 import { Dialog } from '@/components/headless/Dialog';
+import { FloatingActionButton, FloatingActions } from '@/components/ui/FloatingActions';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { AsyncState } from '@/components/ui/AsyncState';
 import { FormDialog } from '@/components/ui/FormDialog';
@@ -750,33 +750,24 @@ function InstalledPlugins() {
           <p>{e('empty.noPluginsDesc')}</p>
         </div>
       )}
-      {typeof document !== 'undefined' &&
-        createPortal(
-          <div className="extension-installed__fabs">
-            <button
-              aria-label={e('buttons.updateAll')}
-              disabled={loading || updatingAll}
-              onClick={() => void updateAll()}
-              title={e('buttons.updateAll')}
-              type="button"
-            >
-              <MdiIcon
-                className={updatingAll ? 'mdi-spin' : undefined}
-                name={updatingAll ? 'mdi-loading' : 'mdi-update'}
-              />
-            </button>
-            <button
-              aria-label={e('market.installPlugin')}
-              disabled={updatingAll}
-              onClick={() => setInstallOpen(true)}
-              title={e('market.installPlugin')}
-              type="button"
-            >
-              <MdiIcon name="mdi-plus" />
-            </button>
-          </div>,
-          document.body,
-        )}
+      <FloatingActions>
+        <FloatingActionButton
+          aria-label={e('buttons.updateAll')}
+          disabled={loading || updatingAll}
+          onClick={() => void updateAll()}
+          title={e('buttons.updateAll')}
+        >
+          <MdiIcon className={updatingAll ? 'mdi-spin' : undefined} name={updatingAll ? 'mdi-loading' : 'mdi-update'} />
+        </FloatingActionButton>
+        <FloatingActionButton
+          aria-label={e('market.installPlugin')}
+          disabled={updatingAll}
+          onClick={() => setInstallOpen(true)}
+          title={e('market.installPlugin')}
+        >
+          <MdiIcon name="mdi-plus" />
+        </FloatingActionButton>
+      </FloatingActions>
       <Dialog
         onOpenChange={(open) => !open && setConfigPlugin(null)}
         open={configPlugin !== null}
@@ -1237,15 +1228,15 @@ function PluginMarket() {
           value={keyword}
         />
       </header>
-      <button
-        aria-label={e('market.installPlugin')}
-        className="extension-market__fab"
-        onClick={() => setInstalling({})}
-        title={e('market.installPlugin')}
-        type="button"
-      >
-        <MdiIcon name="mdi-plus" />
-      </button>
+      <FloatingActions>
+        <FloatingActionButton
+          aria-label={e('market.installPlugin')}
+          onClick={() => setInstalling({})}
+          title={e('market.installPlugin')}
+        >
+          <MdiIcon name="mdi-plus" />
+        </FloatingActionButton>
+      </FloatingActions>
       <div className="extension-market__section-title">
         <div>
           <h2>{e('market.allPlugins')}</h2>

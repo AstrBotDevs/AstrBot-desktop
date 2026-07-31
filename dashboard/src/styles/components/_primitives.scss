@@ -277,6 +277,51 @@
   opacity: .5;
 }
 
+.ui-floating-actions {
+  position: fixed;
+  z-index: 50;
+  right: 52px;
+  bottom: 52px;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ui-floating-action {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--astrbot-primary) 72%, #17202a);
+  box-shadow: 0 4px 6px rgb(0 0 0 / 10%);
+  color: #fff;
+  cursor: pointer;
+  font-size: 24px;
+  transition: box-shadow .3s ease, transform .3s ease;
+}
+
+.ui-floating-action:hover {
+  box-shadow: 0 12px 20px color-mix(in srgb, var(--astrbot-primary) 40%, transparent);
+  transform: translateY(-4px) scale(1.05);
+}
+
+.ui-floating-action:disabled {
+  cursor: wait;
+  opacity: .6;
+  transform: none;
+}
+
+@media (max-width: 760px) {
+  .ui-floating-actions {
+    right: 20px;
+    bottom: 20px;
+  }
+}
+
 .ui-select-menu__menu > button.is-selected {
   color: var(--astrbot-primary);
   font-weight: 650;

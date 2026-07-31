@@ -95,10 +95,6 @@
 .knowledge-form .dialog-actions > .button--primary-soft { background: color-mix(in srgb, var(--astrbot-primary) 12%, var(--astrbot-surface)); color: var(--astrbot-primary); }
 .knowledge-form .dialog-actions > .button--primary-soft:hover { background: color-mix(in srgb, var(--astrbot-primary) 18%, var(--astrbot-surface)); }
 .knowledge-form .dialog-actions > button:disabled { cursor: not-allowed; opacity: .55; }
-.knowledge-fab-stack { position: fixed; z-index: 30; right: 52px; bottom: 52px; display: flex; align-items: center; flex-direction: column; gap: 16px; }
-.knowledge-fab { display: grid; width: 56px; height: 56px; place-items: center; border: 0; border-radius: 16px; background: color-mix(in srgb, var(--astrbot-primary) 72%, #17202a); color: #fff; cursor: pointer; font-size: 24px; box-shadow: 0 4px 6px rgb(0 0 0 / 10%); transition: box-shadow .3s ease, transform .3s ease; }
-.knowledge-fab:hover { box-shadow: 0 12px 20px color-mix(in srgb, var(--astrbot-primary) 40%, transparent); transform: translateY(-4px) scale(1.05); }
-.knowledge-fab:disabled { cursor: wait; opacity: .6; transform: none; }
 .knowledge-emoji-picker { display: grid; gap: 14px; margin-top: 14px; }
 .knowledge-emoji-picker h3 { margin: 0 0 7px; font-size: 13px; }
 .knowledge-emoji-picker section > div { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; }

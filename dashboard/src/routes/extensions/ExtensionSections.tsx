@@ -44,6 +44,7 @@ import { MdiIcon } from '@/components/icons/MdiIcon';
 import { Dialog } from '@/components/headless/Dialog';
 import { MonacoEditor } from '@/components/editor/MonacoEditor';
 import { DisclosureButton } from '@/components/ui/DisclosureButton';
+import { FloatingActionButton, FloatingActions } from '@/components/ui/FloatingActions';
 import { SelectMenu } from '@/components/ui/SelectMenu';
 import { SelectControl } from '@/components/ui/SelectControl';
 import { useUnsavedChangesGuard } from '@/components/ui/useUnsavedChangesGuard';
@@ -1510,24 +1511,22 @@ export function McpSection() {
 
 function McpFloatingActions({ onAdd, onSync, t }: { onAdd: () => void; onSync: () => void; t: ModuleText }) {
   return (
-    <div className="resource-fab-stack">
-      <button
+    <FloatingActions>
+      <FloatingActionButton
         aria-label={t('mcpServers.buttons.sync')}
         onClick={onSync}
         title={t('mcpServers.buttons.sync')}
-        type="button"
       >
         <MdiIcon name="mdi-sync" />
-      </button>
-      <button
+      </FloatingActionButton>
+      <FloatingActionButton
         aria-label={t('mcpServers.buttons.add')}
         onClick={onAdd}
         title={t('mcpServers.buttons.add')}
-        type="button"
       >
         <MdiIcon name="mdi-plus" />
-      </button>
-    </div>
+      </FloatingActionButton>
+    </FloatingActions>
   );
 }
 
@@ -1965,21 +1964,20 @@ function SkillsFloatingActions({
   t: ModuleText;
 }) {
   return (
-    <div className="resource-fab-stack">
-      <button
+    <FloatingActions>
+      <FloatingActionButton
         aria-label={t('skills.refresh')}
         onClick={() => void onRefresh()}
         title={t('skills.refresh')}
-        type="button"
       >
         <MdiIcon name="mdi-refresh" />
-      </button>
+      </FloatingActionButton>
       {mode === 'local' && (
-        <button aria-label={t('skills.upload')} onClick={onUpload} title={t('skills.upload')} type="button">
+        <FloatingActionButton aria-label={t('skills.upload')} onClick={onUpload} title={t('skills.upload')}>
           <MdiIcon name="mdi-upload" />
-        </button>
+        </FloatingActionButton>
       )}
-    </div>
+    </FloatingActions>
   );
 }
 
