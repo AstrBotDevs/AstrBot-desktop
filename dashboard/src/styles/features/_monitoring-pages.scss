@@ -144,11 +144,11 @@
 
 .dialog-form { margin-top: 18px; }
 .dialog-form input,
-.dialog-form select,
+.dialog-form .ui-select-menu > button,
 .dialog-form textarea,
 .data-filters input,
-.data-filters select,
-.pagination select {
+.data-filters .ui-select-menu > button,
+.pagination .ui-select-menu > button {
   min-height: 38px;
   padding: 7px 9px;
   border: 1px solid var(--astrbot-border);

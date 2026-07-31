@@ -34,9 +34,9 @@
 .extension-controls > input { width: min(360px, 100%); margin-right: auto; }
 .extension-controls input,
 .extension-market-controls input,
-.extension-market-controls select,
+.extension-market-controls .ui-select-menu > button,
 .extension-table input,
-.extension-table select,
+.extension-table .ui-select-menu > button,
 .extension-install-form input,
 .extension-source-manager input { min-height: 39px; padding: 8px 11px; border: 1px solid var(--astrbot-border); border-radius: 9px; background: var(--astrbot-surface); color: inherit; }
 .extension-state { display: grid; min-height: 300px; place-items: center; color: var(--astrbot-primary); font-size: 34px; }
@@ -87,9 +87,9 @@
 .component-panel__tabs button { display: inline-flex; min-height: 42px; align-items: center; gap: 7px; padding: 8px 18px; border: 0; background: transparent; color: var(--astrbot-muted); cursor: pointer; font: inherit; }
 .component-panel__tabs button[aria-pressed='true'] { background: color-mix(in srgb, var(--astrbot-primary) 12%, transparent); color: var(--astrbot-primary); font-weight: 700; }
 .component-panel__filters { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 18px; }
-.component-panel__filters label { position: relative; display: block; min-width: 0; }
-.component-panel__filters label > span { position: absolute; z-index: 1; top: -8px; left: 11px; padding: 0 5px; background: var(--astrbot-surface); color: var(--astrbot-muted); font-size: 12px; line-height: 16px; pointer-events: none; }
-.component-panel__filters select { width: 100%; min-width: 0; height: 46px; padding: 0 13px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: var(--astrbot-text); font: inherit; }
+.component-panel__filter { position: relative; min-width: 0; }
+.component-panel__filter > span { position: absolute; z-index: 201; top: -8px; left: 11px; padding: 0 5px; background: var(--astrbot-surface); color: var(--astrbot-muted); font-size: 12px; line-height: 16px; pointer-events: none; }
+.component-panel__filter .ui-select-menu > button { min-height: 46px; padding: 8px 13px; }
 .component-panel__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
 .component-panel__toolbar > label { display: flex; width: min(350px, 100%); min-height: 42px; align-items: center; gap: 9px; padding: 0 13px; border: 1px solid var(--astrbot-border); border-radius: 14px; background: color-mix(in srgb, var(--astrbot-text) 4%, transparent); }
 .component-panel__toolbar > label input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--astrbot-text); font: inherit; }
@@ -117,7 +117,8 @@
 .component-panel__table tr.is-subcommand { background: color-mix(in srgb, var(--astrbot-primary) 5%, transparent); }
 .component-panel__table > footer { display: flex; min-height: 54px; align-items: center; justify-content: flex-end; gap: 12px; padding: 8px 14px; }
 .component-panel__table > footer label { display: flex; align-items: center; gap: 8px; }
-.component-panel__table > footer select { height: 36px; padding: 0 24px 0 10px; border: 1px solid var(--astrbot-border); border-radius: 7px; background: var(--astrbot-surface); color: var(--astrbot-text); }
+.component-panel__table > footer .ui-select-menu { width: auto; min-width: 76px; }
+.component-panel__table > footer .ui-select-menu > button { min-height: 36px; padding: 0 10px; border-radius: 7px; }
 .component-panel__table > footer button { display: grid; width: 32px; height: 32px; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--astrbot-text); cursor: pointer; }
 .component-panel__table > footer button:disabled { opacity: .3; }
 .component-command-name { display: flex; align-items: center; }
@@ -203,7 +204,7 @@
 .extension-market__random header button { background: color-mix(in srgb, var(--astrbot-primary) 12%, transparent); color: var(--astrbot-primary); }
 .extension-market__section-title label { position: relative; display: flex; min-width: 190px; height: 42px; align-items: center; gap: 5px; padding: 0 8px; border: 1px solid var(--astrbot-border); border-radius: 8px; }
 .extension-market__section-title label > span { position: absolute; top: -8px; left: 10px; padding: 0 4px; background: var(--astrbot-surface); color: var(--astrbot-muted); font-size: 12px; }
-.extension-market__section-title select { width: 100%; border: 0; outline: 0; background: transparent; color: var(--astrbot-text); font: inherit; font-size: 14px; }
+.extension-market__section-title .ui-select-menu > button { min-height: 40px; border: 0; background: transparent; font-size: 14px; }
 .extension-market-card { display: flex; min-width: 0; min-height: 176px; flex-direction: column; overflow: hidden; border: 1px solid var(--astrbot-border); border-radius: 12px; background: var(--astrbot-surface); cursor: pointer; transition: background .16s; }
 .extension-market-card:hover { background: var(--astrbot-hover); }
 .extension-market-card__body { display: grid; min-height: 0; flex: 1; grid-template-columns: 76px minmax(0, 1fr); gap: 12px; padding: 12px 12px 8px; }
@@ -257,7 +258,7 @@
 .headless-dialog__content:has(.mcp-editor) { width: min(750px, calc(100vw - 32px)); }
 .mcp-editor { display: grid; gap: 12px; margin-top: 12px; }
 .mcp-editor > label, .mcp-sync > label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; }
-.mcp-editor input, .mcp-sync input, .mcp-sync select { width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: inherit; font: inherit; }
+.mcp-editor input, .mcp-sync input, .mcp-sync .ui-select-menu > button { width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: inherit; font: inherit; }
 .mcp-editor > header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .mcp-editor > header > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
 .mcp-editor > header button { padding: 5px 8px; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--astrbot-primary) 10%, transparent); color: var(--astrbot-primary); cursor: pointer; }
@@ -326,7 +327,7 @@
 .neo-skills__filters header { display: grid; gap: 4px; }
 .neo-skills__filters small { color: var(--astrbot-muted); }
 .neo-skills__filters label { display: grid; gap: 5px; font-size: 12px; font-weight: 600; }
-.neo-skills__filters input, .neo-skills__filters select { min-height: 40px; padding: 7px 9px; border: 1px solid var(--astrbot-border); border-radius: 7px; background: var(--astrbot-surface); color: inherit; }
+.neo-skills__filters input, .neo-skills__filters .ui-select-menu > button { min-height: 40px; padding: 7px 9px; border: 1px solid var(--astrbot-border); border-radius: 7px; background: var(--astrbot-surface); color: inherit; }
 .neo-skills__stats { display: flex; flex-wrap: wrap; gap: 7px; }
 .neo-skills__stats span { padding: 4px 9px; border-radius: 999px; background: color-mix(in srgb, var(--astrbot-primary) 10%, transparent); color: var(--astrbot-primary); font-size: 11px; }
 .neo-skills__table { overflow: hidden; border: 1px solid var(--astrbot-border); border-radius: 10px; }

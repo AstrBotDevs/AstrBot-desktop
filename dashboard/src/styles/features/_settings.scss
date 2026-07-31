@@ -181,7 +181,7 @@
 .settings-two-factor .settings-alert { margin: 0; }
 .api-key-create { padding: 16px 20px; }
 .api-key-create input,
-.api-key-create select { min-height: 40px; padding: 8px 10px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: inherit; }
+.api-key-create .ui-select-menu > button { min-height: 40px; padding: 8px 10px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: inherit; }
 .api-key-create input { flex: 1; min-width: 220px; }
 .api-key-scopes { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 0 20px 16px; }
 .api-key-scopes > span { margin-right: 4px; font-weight: 600; }
@@ -197,7 +197,7 @@
 .settings-list-card:has(> .api-key-create) > header p { font-size: 14px; }
 .settings-list-card:has(> .api-key-create) > .api-key-create { display: grid; grid-template-columns: minmax(260px, 1fr) 112px 190px; padding: 24px 0 14px; }
 .settings-list-card:has(> .api-key-create) > .api-key-create input,
-.settings-list-card:has(> .api-key-create) > .api-key-create select,
+.settings-list-card:has(> .api-key-create) > .api-key-create .ui-select-menu > button,
 .settings-list-card:has(> .api-key-create) > .api-key-create button { min-height: 48px; border-radius: 10px; }
 .settings-list-card:has(> .api-key-create) > .api-key-scopes { padding: 0 0 20px; }
 .settings-list-card:has(> .api-key-create) > .api-key-scopes label { padding: 6px 12px; font-size: 13px; }
@@ -210,7 +210,8 @@
 .t2i-editor { display: flex; min-height: 0; flex: 1; flex-direction: column; margin: 0 -24px -24px; }
 .t2i-editor__toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 18px; border-bottom: 1px solid var(--astrbot-border); background: color-mix(in srgb, var(--astrbot-text) 4%, var(--astrbot-surface)); }
 .t2i-editor__toolbar input,
-.t2i-editor__toolbar select { min-width: 260px; min-height: 38px; flex: 1; padding: 7px 10px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: inherit; }
+.t2i-editor__toolbar .ui-select-menu { min-width: 260px; flex: 1; }
+.t2i-editor__toolbar .ui-select-menu > button { min-height: 38px; padding: 7px 10px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: inherit; }
 .t2i-editor__toolbar button { display: inline-flex; min-height: 34px; align-items: center; gap: 5px; padding: 6px 9px; border: 0; border-radius: 7px; background: transparent; color: inherit; cursor: pointer; }
 .t2i-editor__toolbar button:hover { background: var(--astrbot-hover); }
 .t2i-editor__workspace { display: grid; min-height: 0; flex: 1; grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Dialog } from '@/components/headless/Dialog';
 import { Button } from '@/components/ui/Button';
 import { DialogActions } from '@/components/ui/DialogActions';
+import { SelectControl } from '@/components/ui/SelectControl';
 
 export type ChatProjectForm = {
   description: string;
@@ -109,7 +110,7 @@ export function ChatProjectDialog({
         <div className="chat-project-dialog__divider" />
         <label className="chat-project-field">
           <span>{t('features.chat.project.workspace.type')}</span>
-          <select
+          <SelectControl
             aria-label={t('features.chat.project.workspace.type')}
             onChange={(event) => set('workspace_type', event.target.value as ChatProjectForm['workspace_type'])}
             value={form.workspace_type}
@@ -117,7 +118,7 @@ export function ChatProjectDialog({
             <option value="project">{t('features.chat.project.workspace.project')}</option>
             <option value="session">{t('features.chat.project.workspace.session')}</option>
             <option value="custom">{t('features.chat.project.workspace.custom')}</option>
-          </select>
+          </SelectControl>
         </label>
         {form.workspace_type === 'custom' && (
           <label className="chat-project-field">

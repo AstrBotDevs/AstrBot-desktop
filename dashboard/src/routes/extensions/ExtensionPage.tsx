@@ -33,6 +33,7 @@ import { AsyncState } from '@/components/ui/AsyncState';
 import { FormDialog } from '@/components/ui/FormDialog';
 import { Pagination } from '@/components/ui/Pagination';
 import { SearchField } from '@/components/ui/SearchField';
+import { SelectControl } from '@/components/ui/SelectControl';
 import { confirmDestructiveAction } from '@/components/ui/confirm';
 import { confirmAction, toast } from '@/stores/feedback';
 import { errorMessage, isObject, type JsonObject, recordId, responseData } from '@/routes/configuration/model';
@@ -1261,7 +1262,7 @@ function PluginMarket() {
         <div>
           <label>
             <span>{e('market.category')}</span>
-            <select
+            <SelectControl
               onChange={(event) => {
                 setCategory(event.target.value);
                 setPage(1);
@@ -1273,12 +1274,12 @@ function PluginMarket() {
                   {item.label} ({item.count})
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </label>
           <label>
             <MdiIcon name="mdi-sort" />
             <span>{e('sort.by')}</span>
-            <select
+            <SelectControl
               onChange={(event) => {
                 setSort(event.target.value as typeof sort);
                 setPage(1);
@@ -1289,7 +1290,7 @@ function PluginMarket() {
               <option value="stars">{e('sort.stars')}</option>
               <option value="author">{e('sort.author')}</option>
               <option value="updated">{e('sort.updated')}</option>
-            </select>
+            </SelectControl>
           </label>
           {sort !== 'default' && (
             <button

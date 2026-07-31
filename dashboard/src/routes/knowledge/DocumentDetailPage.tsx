@@ -15,6 +15,7 @@ import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { DialogCancel } from '@/components/ui/Button';
 import { DialogActions } from '@/components/ui/DialogActions';
+import { SelectControl } from '@/components/ui/SelectControl';
 import { confirmAction, toast } from '@/stores/feedback';
 import { errorMessage, recordId } from '@/routes/configuration/model';
 import { chunkCount, documentName, formatFileSize, formatKnowledgeDate } from './knowledgeModel';
@@ -218,7 +219,7 @@ export default function DocumentDetailPage() {
               {k('chunks.showing')} {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} / {total}
             </span>
             <div>
-              <select
+              <SelectControl
                 onChange={(event) => {
                   setPageSize(Number(event.target.value));
                   setPage(1);
@@ -228,7 +229,7 @@ export default function DocumentDetailPage() {
                 {[10, 25, 50, 100].map((size) => (
                   <option key={size}>{size}</option>
                 ))}
-              </select>
+              </SelectControl>
               <button disabled={page <= 1} onClick={() => setPage((value) => value - 1)} type="button">
                 ‹
               </button>

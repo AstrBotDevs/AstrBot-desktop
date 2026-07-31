@@ -137,9 +137,8 @@
   cursor: pointer;
 }
 
-.onboarding-list select {
+.onboarding-list .ui-select-menu {
   width: min(240px, 100%);
-  min-height: 44px;
 }
 
 .headless-dialog__content:has(.welcome-onboarding-dialog) {

@@ -21,6 +21,7 @@ import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { DialogActions } from '@/components/ui/DialogActions';
 import { Pagination } from '@/components/ui/Pagination';
 import { SearchField } from '@/components/ui/SearchField';
+import { SelectControl } from '@/components/ui/SelectControl';
 import { confirmDestructiveAction } from '@/components/ui/confirm';
 import { toast } from '@/stores/feedback';
 import {
@@ -305,7 +306,7 @@ export default function ConversationPage() {
               placeholder={t(`${prefix}.filters.platform`)}
               value={platform}
             />
-            <select
+            <SelectControl
               onChange={(event) => {
                 setMessageType(event.target.value);
                 setPage(1);
@@ -315,7 +316,7 @@ export default function ConversationPage() {
               <option value="">{t(`${prefix}.filters.type`)}</option>
               <option value="GroupMessage">{t(`${prefix}.messageTypes.group`)}</option>
               <option value="FriendMessage">{t(`${prefix}.messageTypes.friend`)}</option>
-            </select>
+            </SelectControl>
             <SearchField
               label={t(`${prefix}.filters.search`)}
               onChange={(value) => {

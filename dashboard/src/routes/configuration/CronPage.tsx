@@ -15,6 +15,7 @@ import { MdiIcon } from '@/components/icons/MdiIcon';
 import { Menu, MenuItem } from '@/components/headless/Menu';
 import { Button, DialogCancel } from '@/components/ui/Button';
 import { DialogActions } from '@/components/ui/DialogActions';
+import { SelectControl } from '@/components/ui/SelectControl';
 import { toast } from '@/stores/feedback';
 import {
   buildCronExpression,
@@ -453,7 +454,7 @@ export default function CronPage() {
               </label>
               <label>
                 <MdiIcon name="mdi-send-outline" />
-                <select onChange={(event) => setTargetFilter(event.target.value)} value={targetFilter}>
+                <SelectControl onChange={(event) => setTargetFilter(event.target.value)} value={targetFilter}>
                   <option value="">{k('filters.umo')}</option>
                   {jobs.some((job) => !jobSession(job)) && (
                     <option value={NO_DELIVERY_TARGET}>{k('filters.noDeliveryTarget')}</option>
@@ -463,7 +464,7 @@ export default function CronPage() {
                       {target}
                     </option>
                   ))}
-                </select>
+                </SelectControl>
               </label>
             </div>
           )}
@@ -617,7 +618,7 @@ export default function CronPage() {
           <div className="cron-form__schedule">
             <label>
               <span>{k('form.scheduleMode')}</span>
-              <select
+              <SelectControl
                 onChange={(event) => updateForm('scheduleMode', event.target.value as ScheduleMode)}
                 value={form.scheduleMode}
               >
@@ -626,7 +627,7 @@ export default function CronPage() {
                     {k(`form.scheduleModes.${mode}`)}
                   </option>
                 ))}
-              </select>
+              </SelectControl>
             </label>
             <ScheduleFields form={form} k={k} updateForm={updateForm} />
           </div>
@@ -680,7 +681,7 @@ function ScheduleFields({ form, k, updateForm }: ScheduleFieldsProps) {
         </label>
         <label>
           <span>{k('form.intervalUnit')}</span>
-          <select
+          <SelectControl
             onChange={(event) => updateForm('intervalUnit', event.target.value as IntervalUnit)}
             value={form.intervalUnit}
           >
@@ -689,7 +690,7 @@ function ScheduleFields({ form, k, updateForm }: ScheduleFieldsProps) {
                 {k(`form.intervalUnits.${unit}`)}
               </option>
             ))}
-          </select>
+          </SelectControl>
         </label>
       </div>
     );
@@ -705,13 +706,16 @@ function ScheduleFields({ form, k, updateForm }: ScheduleFieldsProps) {
       <div className="cron-form__inline">
         <label>
           <span>{k('form.weeklyDay')}</span>
-          <select onChange={(event) => updateForm('weeklyDay', Number(event.target.value))} value={form.weeklyDay}>
+          <SelectControl
+            onChange={(event) => updateForm('weeklyDay', Number(event.target.value))}
+            value={form.weeklyDay}
+          >
             {['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].map((day, index) => (
               <option key={day} value={index}>
                 {k(`form.weekdays.${day}`)}
               </option>
             ))}
-          </select>
+          </SelectControl>
         </label>
         <label>
           <span>{k('form.weeklyTime')}</span>

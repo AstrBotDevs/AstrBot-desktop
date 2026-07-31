@@ -70,7 +70,7 @@
 .knowledge-form textarea,
 .knowledge-url-field input,
 .knowledge-settings input,
-.knowledge-settings select { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: var(--astrbot-text); }
+.knowledge-settings .ui-select-menu > button { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: var(--astrbot-text); }
 .knowledge-provider-select__trigger { display: flex; width: 100%; min-height: 48px; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: var(--astrbot-text); cursor: pointer; text-align: left; }
 .knowledge-provider-select__trigger > span { display: grid; min-width: 0; flex: 1; gap: 2px; }
 .knowledge-provider-select__trigger strong { overflow-wrap: anywhere; font-size: 13px; }
@@ -180,7 +180,7 @@
 .knowledge-upload__settings { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; border-radius: 8px; background: var(--astrbot-hover); }
 .knowledge-upload__settings > h3 { width: 100%; margin: 4px 0; }
 .knowledge-upload__settings > label { display: grid; min-width: 145px; flex: 1; gap: 5px; font-size: 12px; font-weight: 650; }
-.knowledge-upload__settings input, .knowledge-upload__cleaning select { min-width: 0; padding: 8px 9px; border: 1px solid var(--astrbot-border); border-radius: 7px; background: var(--astrbot-surface); color: inherit; }
+.knowledge-upload__settings input, .knowledge-upload__cleaning .ui-select-menu > button { min-width: 0; padding: 8px 9px; border: 1px solid var(--astrbot-border); border-radius: 7px; background: var(--astrbot-surface); color: inherit; }
 .knowledge-upload__cleaning { display: grid; gap: 10px; padding: 11px; border: 1px solid var(--astrbot-border); border-radius: 9px; }
 .knowledge-upload__cleaning h3 { margin: 0; }
 .knowledge-upload__cleaning > label { display: grid; gap: 5px; }
@@ -243,7 +243,8 @@
 .knowledge-pagination { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 13px; color: color-mix(in srgb, var(--astrbot-text) 55%, transparent); font-size: 11px; }
 .knowledge-pagination > div { display: flex; align-items: center; gap: 5px; }
 .knowledge-pagination button,
-.knowledge-pagination select { min-height: 32px; padding: 4px 8px; border: 1px solid var(--astrbot-border); border-radius: 7px; background: var(--astrbot-surface); color: inherit; }
+.knowledge-pagination .ui-select-menu { width: auto; min-width: 72px; }
+.knowledge-pagination .ui-select-menu > button { min-height: 32px; padding: 4px 8px; border: 1px solid var(--astrbot-border); border-radius: 7px; background: var(--astrbot-surface); color: inherit; }
 .knowledge-chunk-dialog { margin-top: 14px; }
 .knowledge-chunk-dialog dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
 .knowledge-chunk-dialog dl div { padding: 8px; border-radius: 7px; background: var(--astrbot-hover); }

@@ -3,6 +3,7 @@ import { type ReactNode } from 'react';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { paginationDefaults } from '@/config/defaults';
 import { IconButton } from './IconButton';
+import { SelectControl } from './SelectControl';
 
 export type PaginationLabels = {
   navigation: string;
@@ -45,13 +46,13 @@ export function Pagination({
       {onPageSizeChange ? (
         <label className="ui-pagination__size">
           <span>{labels.pageSize}</span>
-          <select onChange={(event) => onPageSizeChange(Number(event.target.value))} value={pageSize}>
+          <SelectControl onChange={(event) => onPageSizeChange(Number(event.target.value))} value={pageSize}>
             {pageSizeOptions.map((size) => (
               <option key={size} value={size}>
                 {size}
               </option>
             ))}
-          </select>
+          </SelectControl>
         </label>
       ) : null}
       {labels.range ? <span className="ui-pagination__range">{labels.range}</span> : null}

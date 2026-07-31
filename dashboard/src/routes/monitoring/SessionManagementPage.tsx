@@ -18,6 +18,7 @@ import { externalLinks } from '@/config/links';
 import { paginationDefaults } from '@/config/defaults';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { SelectControl } from '@/components/ui/SelectControl';
 import { confirmAction, toast } from '@/stores/feedback';
 import { EditorSection, MultiSelect, ProviderSelect, TransferList, UmoDisplay } from './SessionManagementControls';
 import {
@@ -626,7 +627,7 @@ export default function SessionManagementPage() {
         <footer className="session-rules-pagination">
           <label>
             {t('core.common.itemsPerPage')}:{' '}
-            <select
+            <SelectControl
               onChange={(event) => {
                 setPageSize(Number(event.target.value));
                 setPage(1);
@@ -636,7 +637,7 @@ export default function SessionManagementPage() {
               {[10, 20, 50].map((size) => (
                 <option key={size}>{size}</option>
               ))}
-            </select>
+            </SelectControl>
           </label>
           <span>
             {t('core.common.paginationRange', {
@@ -668,7 +669,7 @@ export default function SessionManagementPage() {
         <div className="session-batch-grid">
           <label>
             <span>{text('batchOperations.scope')}</span>
-            <select onChange={(event) => setBatchScope(event.target.value as BatchScope)} value={batchScope}>
+            <SelectControl onChange={(event) => setBatchScope(event.target.value as BatchScope)} value={batchScope}>
               <option value="selected">{text('batchOperations.scopeSelected')}</option>
               <option value="all">{text('batchOperations.scopeAll')}</option>
               <option value="group">{text('batchOperations.scopeGroup')}</option>
@@ -681,27 +682,27 @@ export default function SessionManagementPage() {
                   })}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </label>
           <label>
             <span>{text('batchOperations.llmStatus')}</span>
-            <select onChange={(event) => setBatchLlm(event.target.value)} value={batchLlm}>
+            <SelectControl onChange={(event) => setBatchLlm(event.target.value)} value={batchLlm}>
               <option value="">{text('batchOperations.llmStatus')}</option>
               <option value="true">{text('status.enabled')}</option>
               <option value="false">{text('status.disabled')}</option>
-            </select>
+            </SelectControl>
           </label>
           <label>
             <span>{text('batchOperations.ttsStatus')}</span>
-            <select onChange={(event) => setBatchTts(event.target.value)} value={batchTts}>
+            <SelectControl onChange={(event) => setBatchTts(event.target.value)} value={batchTts}>
               <option value="">{text('batchOperations.ttsStatus')}</option>
               <option value="true">{text('status.enabled')}</option>
               <option value="false">{text('status.disabled')}</option>
-            </select>
+            </SelectControl>
           </label>
           <label>
             <span>{text('batchOperations.chatProvider')}</span>
-            <select onChange={(event) => setBatchChatProvider(event.target.value)} value={batchChatProvider}>
+            <SelectControl onChange={(event) => setBatchChatProvider(event.target.value)} value={batchChatProvider}>
               <option value="">{text('batchOperations.chatProvider')}</option>
               <option value={FOLLOW_CONFIG_VALUE}>{text('provider.followConfig')}</option>
               {chatProviders.map((provider) => (
@@ -709,7 +710,7 @@ export default function SessionManagementPage() {
                   {providerLabel(provider)}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </label>
         </div>
         <div className="session-batch-actions">
@@ -734,7 +735,7 @@ export default function SessionManagementPage() {
             {selected.size > 0 && groups.length > 0 && (
               <label className="session-group-add">
                 <MdiIcon name="mdi-folder-plus" />
-                <select
+                <SelectControl
                   onChange={(event) => {
                     if (event.target.value) void addSelectedToGroup(event.target.value);
                     event.target.value = '';
@@ -750,7 +751,7 @@ export default function SessionManagementPage() {
                       })}
                     </option>
                   ))}
-                </select>
+                </SelectControl>
               </label>
             )}
             <button onClick={() => void openGroupEditor()} type="button">
@@ -801,14 +802,14 @@ export default function SessionManagementPage() {
           </div>
           <label>
             <span>{text('addRule.selectUmo')}</span>
-            <select disabled={loadingUmos} onChange={(event) => setNewUmo(event.target.value)} value={newUmo}>
+            <SelectControl disabled={loadingUmos} onChange={(event) => setNewUmo(event.target.value)} value={newUmo}>
               <option value="">{loadingUmos ? '…' : text('addRule.noUmos')}</option>
               {availableNewUmos.map((umo) => (
                 <option key={umo} value={umo}>
                   {displayName(infoFor(umo))} · {umo}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </label>
           <div className="dialog-actions">
             <DialogClose asChild>
@@ -932,7 +933,7 @@ export default function SessionManagementPage() {
             >
               <label>
                 <span>{text('ruleEditor.personaConfig.selectPersona')}</span>
-                <select
+                <SelectControl
                   onChange={(event) =>
                     updateEditor('service', { ...editor.service, persona_id: event.target.value || null })
                   }
@@ -944,7 +945,7 @@ export default function SessionManagementPage() {
                       {persona.name}
                     </option>
                   ))}
-                </select>
+                </SelectControl>
               </label>
               <div className="session-rule-alert">
                 <MdiIcon name="mdi-information-outline" />

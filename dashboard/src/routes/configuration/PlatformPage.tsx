@@ -21,6 +21,8 @@ import type { ConfigGroupMetadata, ConfigRecord } from '@/components/config/conf
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { DisclosureButton } from '@/components/ui/DisclosureButton';
+import { SelectMenu } from '@/components/ui/SelectMenu';
+import { SelectControl } from '@/components/ui/SelectControl';
 import { DEFAULT_CONFIG_ID } from '@/config/defaults';
 import { useBrowserCapabilities } from '@/platform/BrowserCapabilitiesProvider';
 import { i18n } from '@/i18n';
@@ -499,73 +501,6 @@ function PlatformCard({
   );
 }
 
-function PlatformSelect({
-  ariaLabel,
-  imageForValue,
-  onChange,
-  options,
-  placeholder,
-  value,
-}: {
-  ariaLabel: string;
-  imageForValue?: (value: string) => string | undefined;
-  onChange: (value: string) => void;
-  options: ConfigProfileOption[];
-  placeholder: string;
-  value: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  const selected = options.find((option) => option.id === value);
-  useEffect(() => {
-    if (!open) return undefined;
-    const close = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener('pointerdown', close);
-    return () => document.removeEventListener('pointerdown', close);
-  }, [open]);
-  return (
-    <div className="platform-select" ref={root}>
-      <button
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        aria-label={ariaLabel}
-        className={!selected ? 'is-placeholder' : ''}
-        onClick={() => setOpen((current) => !current)}
-        type="button"
-      >
-        <span>{selected ? selected.name : placeholder}</span>
-        <MdiIcon name={open ? 'mdi-chevron-up' : 'mdi-chevron-down'} />
-      </button>
-      {open && (
-        <div className="platform-select__menu" role="listbox">
-          {options.map((option) => {
-            const image = imageForValue?.(option.id);
-            return (
-              <button
-                aria-selected={option.id === value}
-                className={option.id === value ? 'is-selected' : ''}
-                key={option.id}
-                onClick={() => {
-                  onChange(option.id);
-                  setOpen(false);
-                }}
-                role="option"
-                type="button"
-              >
-                {image && <img alt="" src={image} />}
-                <span>{option.name}</span>
-                {option.id === value && <MdiIcon name="mdi-check" />}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function PlatformEditor({
   configMode,
   configProfiles,
@@ -662,7 +597,7 @@ function PlatformEditor({
                 <p>{t('createDialog.step1Hint')}</p>
                 {!editing && (
                   <div className="platform-editor__type">
-                    <PlatformSelect
+                    <SelectMenu
                       ariaLabel={t('createDialog.platformTypeLabel')}
                       imageForValue={(key) => platformLogo(String(templates[key]?.type || key), templates[key])}
                       onChange={onTypeChange}
@@ -776,7 +711,7 @@ function PlatformEditor({
                         <div className="platform-editor__profile-select">
                           <label>
                             <span>{t('createDialog.selectConfigLabel')}</span>
-                            <PlatformSelect
+                            <SelectMenu
                               ariaLabel={t('createDialog.selectConfigLabel')}
                               onChange={onSelectedConfigChange}
                               options={configProfiles}
@@ -894,7 +829,7 @@ function PlatformRoutesEditor({
       ) : (
         routes.map((route, index) => (
           <div className="platform-route-row" key={`${index}-${route.messageType}-${route.sessionId}`}>
-            <select
+            <SelectControl
               aria-label={t('createDialog.routeSource.selectPlaceholder')}
               onChange={(event) => {
                 const parsed = parsePlatformUmo(event.target.value);
@@ -913,8 +848,8 @@ function PlatformRoutesEditor({
                   {umo}
                 </option>
               ))}
-            </select>
-            <select
+            </SelectControl>
+            <SelectControl
               aria-label={t('createDialog.routeTableHeaders.source')}
               onChange={(event) => update(index, { messageType: event.target.value, sourceUmo: '' })}
               value={route.messageType}
@@ -922,14 +857,14 @@ function PlatformRoutesEditor({
               <option value="*">{t('createDialog.messageTypeOptions.all')}</option>
               <option value="GroupMessage">{t('createDialog.messageTypeOptions.group')}</option>
               <option value="FriendMessage">{t('createDialog.messageTypeOptions.friend')}</option>
-            </select>
+            </SelectControl>
             <input
               aria-label={t('createDialog.sessionIdPlaceholder')}
               onChange={(event) => update(index, { sessionId: event.target.value || '*', sourceUmo: '' })}
               placeholder={t('createDialog.sessionIdPlaceholder')}
               value={route.sessionId}
             />
-            <select
+            <SelectControl
               aria-label={t('createDialog.routeTableHeaders.config')}
               onChange={(event) => update(index, { configId: event.target.value })}
               value={route.configId}
@@ -939,7 +874,7 @@ function PlatformRoutesEditor({
                   {profile.name}
                 </option>
               ))}
-            </select>
+            </SelectControl>
             <div className="platform-route-row__actions">
               <button disabled={index === 0} onClick={() => move(index, -1)} type="button">
                 <MdiIcon name="mdi-arrow-up" />

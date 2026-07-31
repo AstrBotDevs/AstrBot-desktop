@@ -14,6 +14,7 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { SelectControl } from '@/components/ui/SelectControl';
 
 import './ChatComposer.scss';
 
@@ -445,7 +446,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
                 <label className="chat-composer-v2__config">
                   <MdiIcon name="mdi-tune" />
                   <span>{labels.config}</span>
-                  <select
+                  <SelectControl
                     aria-label={labels.config}
                     disabled={actionsDisabled}
                     onChange={(event) => onConfigChange(event.target.value)}
@@ -456,7 +457,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
                         {config.name}
                       </option>
                     ))}
-                  </select>
+                  </SelectControl>
                   {configs.find((config) => config.id === configId)?.description && (
                     <small>{configs.find((config) => config.id === configId)?.description}</small>
                   )}
