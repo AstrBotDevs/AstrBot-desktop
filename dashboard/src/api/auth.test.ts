@@ -31,7 +31,10 @@ describe('TOTP account security API', () => {
 
     await authApi.recoverTotp();
 
-    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/v1/auth/totp/recovery', '/api/auth/totp/recovery']);
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+      '/api/v1/auth/totp/recovery',
+      '/api/auth/totp/recovery',
+    ]);
     expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual(['POST', 'POST']);
     expect(fetchMock.mock.calls.map(([, init]) => init?.body)).toEqual([undefined, undefined]);
   });

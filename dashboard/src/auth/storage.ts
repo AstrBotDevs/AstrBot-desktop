@@ -1,9 +1,6 @@
 import { storageKeys } from '@/config/storageKeys';
 
-export const AUTH_STORAGE_KEYS = [
-  storageKeys.auth.username,
-  storageKeys.auth.token,
-] as const;
+export const AUTH_STORAGE_KEYS = [storageKeys.auth.username, storageKeys.auth.token] as const;
 
 export type AuthSession = {
   token: string;
