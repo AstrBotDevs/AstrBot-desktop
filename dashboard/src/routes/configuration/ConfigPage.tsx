@@ -17,6 +17,7 @@ import { DEFAULT_CONFIG_ID } from '@/config/defaults';
 import { MetadataConfigEditor } from '@/components/config/DynamicConfigForm';
 import { isConfigRecord, type ConfigRecord } from '@/components/config/configFormModel';
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { SelectControl } from '@/components/ui/SelectControl';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { confirmAction, toast } from '@/stores/feedback';
 import { JsonConfigDialog, LoadingState } from './ConfigurationUi';
@@ -295,7 +296,7 @@ export default function ConfigPage() {
         <div className="visual-config-toolbar">
           <label className="visual-config-profile">
             <span>{t('features.config.configSelection.selectConfig')}</span>
-            <select
+            <SelectControl
               aria-label={t('features.config.configSelection.selectConfig')}
               onChange={(event) => void chooseProfile(event.target.value)}
               value={selected}
@@ -306,7 +307,7 @@ export default function ConfigPage() {
                 </option>
               ))}
               <option value="__manage__">{t('features.config.configManagement.manageConfigs')}</option>
-            </select>
+            </SelectControl>
           </label>
           <label className="visual-config-search">
             <MdiIcon name="mdi-magnify" />

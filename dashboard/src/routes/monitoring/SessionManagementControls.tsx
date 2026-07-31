@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { SelectControl } from '@/components/ui/SelectControl';
 import { FOLLOW_CONFIG_VALUE, sessionDisplayName, type ProviderOption, type UmoInfo } from './sessionManagementModel';
 
 export function UmoDisplay({
@@ -82,14 +83,14 @@ export function ProviderSelect({
   return (
     <label>
       <span>{label}</span>
-      <select disabled={disabled} onChange={(event) => onChange(event.target.value)} value={value}>
+      <SelectControl disabled={disabled} onChange={(event) => onChange(event.target.value)} value={value}>
         <option value={FOLLOW_CONFIG_VALUE}>{followText}</option>
         {options.map((provider) => (
           <option key={provider.id} value={provider.id}>
             {provider.model ? `${provider.name || provider.id} (${provider.model})` : provider.name || provider.id}
           </option>
         ))}
-      </select>
+      </SelectControl>
     </label>
   );
 }

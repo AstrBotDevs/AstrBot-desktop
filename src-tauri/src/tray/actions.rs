@@ -3,7 +3,6 @@ pub const TRAY_MENU_RELOAD_WINDOW: &str = "tray_reload_window";
 pub const TRAY_MENU_RESTART_BACKEND: &str = "tray_restart_backend";
 pub const TRAY_MENU_LAUNCH_AT_LOGIN: &str = "tray_launch_at_login";
 pub const TRAY_MENU_SILENT_LAUNCH: &str = "tray_silent_launch";
-pub const TRAY_MENU_CLOSE_TO_TRAY: &str = "tray_close_to_tray";
 pub const TRAY_MENU_QUIT: &str = "tray_quit";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -13,7 +12,6 @@ pub enum TrayMenuAction {
     RestartBackend,
     LaunchAtLogin,
     SilentLaunch,
-    CloseToTray,
     Quit,
 }
 
@@ -24,7 +22,6 @@ pub fn action_from_menu_id(menu_id: &str) -> Option<TrayMenuAction> {
         TRAY_MENU_RESTART_BACKEND => Some(TrayMenuAction::RestartBackend),
         TRAY_MENU_LAUNCH_AT_LOGIN => Some(TrayMenuAction::LaunchAtLogin),
         TRAY_MENU_SILENT_LAUNCH => Some(TrayMenuAction::SilentLaunch),
-        TRAY_MENU_CLOSE_TO_TRAY => Some(TrayMenuAction::CloseToTray),
         TRAY_MENU_QUIT => Some(TrayMenuAction::Quit),
         _ => None,
     }
@@ -59,10 +56,6 @@ mod tests {
         assert_eq!(
             action_from_menu_id(TRAY_MENU_SILENT_LAUNCH),
             Some(TrayMenuAction::SilentLaunch)
-        );
-        assert_eq!(
-            action_from_menu_id(TRAY_MENU_CLOSE_TO_TRAY),
-            Some(TrayMenuAction::CloseToTray)
         );
     }
 

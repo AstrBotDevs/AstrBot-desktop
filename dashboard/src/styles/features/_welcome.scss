@@ -137,8 +137,41 @@
   cursor: pointer;
 }
 
-.onboarding-list select {
+.onboarding-list .ui-select-menu {
   width: min(240px, 100%);
-  min-height: 44px;
+}
+
+.headless-dialog__content:has(.welcome-onboarding-dialog) {
+  display: flex;
+  width: min(1440px, calc(100vw - 48px));
+  height: min(900px, calc(100vh - 48px));
+  max-height: calc(100vh - 48px);
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.welcome-onboarding-dialog {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+
+.welcome-onboarding-dialog > .provider-page,
+.welcome-onboarding-dialog > .platform-page-react {
+  min-height: 100%;
+}
+
+.welcome-onboarding-dialog .route-page__heading {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .headless-dialog__content:has(.welcome-onboarding-dialog) {
+    width: calc(100vw - 16px);
+    height: calc(100vh - 16px);
+    max-height: calc(100vh - 16px);
+    padding: 16px;
+  }
 }
 

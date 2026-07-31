@@ -31,6 +31,7 @@ import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { Button, DialogCancel } from '@/components/ui/Button';
 import { DialogActions } from '@/components/ui/DialogActions';
+import { SelectControl } from '@/components/ui/SelectControl';
 import { confirmAction, toast } from '@/stores/feedback';
 import { errorMessage, isObject, JsonObject, responseData } from '@/routes/configuration/model';
 import {
@@ -540,7 +541,7 @@ function Documents({
                 </label>
                 <label>
                   {t('upload.cleaningProvider')}
-                  <select
+                  <SelectControl
                     disabled={!uploadSettings.enable_cleaning}
                     onChange={(event) =>
                       setUploadSettings({ ...uploadSettings, cleaning_provider_id: event.target.value })
@@ -553,7 +554,7 @@ function Documents({
                         {String(provider.id)}
                       </option>
                     ))}
-                  </select>
+                  </SelectControl>
                   <small>{t('upload.cleaningProviderHint')}</small>
                 </label>
               </div>
@@ -802,7 +803,7 @@ function KnowledgeDocumentList({
       </div>
       {total > pageSize && (
         <div className="pagination">
-          <select
+          <SelectControl
             onChange={(event) => {
               onPageSizeChange(Number(event.target.value));
               onPageChange(1);
@@ -812,7 +813,7 @@ function KnowledgeDocumentList({
             {[10, 20, 50].map((size) => (
               <option key={size}>{size}</option>
             ))}
-          </select>
+          </SelectControl>
           <button disabled={page <= 1} onClick={() => onPageChange((value) => value - 1)} type="button">
             ‹
           </button>
@@ -1015,7 +1016,7 @@ function KnowledgeSettings({
           <NumberField field="top_m_final" form={form} label={t('settings.topMFinal')} setForm={setForm} />
           <label>
             {t('settings.rerankProvider')}
-            <select
+            <SelectControl
               onChange={(event) => setForm({ ...form, rerank_provider_id: event.target.value })}
               value={form.rerank_provider_id}
             >
@@ -1025,7 +1026,7 @@ function KnowledgeSettings({
                   {String(provider.rerank_model || provider.model || provider.id)}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </label>
         </div>
       </div>

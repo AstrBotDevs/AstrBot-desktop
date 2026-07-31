@@ -19,6 +19,7 @@ import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { Button } from '@/components/ui/Button';
 import { DialogActions } from '@/components/ui/DialogActions';
+import { SelectControl } from '@/components/ui/SelectControl';
 import { confirmAction, toast } from '@/stores/feedback';
 import { normalizeT2iPreview } from './configSpecialEditorsModel';
 import { isConfigRecord, setConfigValue, type ConfigRecord } from './configFormModel';
@@ -229,14 +230,14 @@ export function T2ITemplateEditor() {
                 value={name}
               />
             ) : (
-              <select disabled={loading} onChange={(event) => setSelected(event.target.value)} value={selected}>
+              <SelectControl disabled={loading} onChange={(event) => setSelected(event.target.value)} value={selected}>
                 {templates.map((template) => (
                   <option key={template.name} value={template.name}>
                     {template.name}
                     {template.name === active ? ` · ${label('applied')}` : ''}
                   </option>
                 ))}
-              </select>
+              </SelectControl>
             )}
             <button onClick={startNew} type="button">
               <MdiIcon name="mdi-plus" />

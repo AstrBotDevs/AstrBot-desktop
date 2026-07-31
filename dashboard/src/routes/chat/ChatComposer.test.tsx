@@ -32,7 +32,9 @@ describe('ChatComposer', () => {
       />,
     );
 
-    expect(markup).toContain('<select aria-label="Configuration" disabled=""');
+    expect(markup).toContain('aria-haspopup="listbox"');
+    expect(markup).toContain('aria-label="Configuration"');
+    expect(markup).toContain('disabled=""');
     expect(markup).toContain('<textarea aria-label=""');
     expect(markup).not.toContain('<textarea aria-label="" disabled=""');
   });

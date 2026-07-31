@@ -5,6 +5,7 @@ import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { Button } from '@/components/ui/Button';
 import { DialogActions } from '@/components/ui/DialogActions';
+import { SelectControl } from '@/components/ui/SelectControl';
 import { toast } from '@/stores/feedback';
 import { isConfigRecord, type ConfigItemMetadata, type ConfigRecord } from './configFormModel';
 
@@ -300,12 +301,12 @@ export function ObjectConfigControl({
             />
             <label>
               <span>{t('core.common.objectEditor.valueTypeLabel')}</span>
-              <select onChange={(event) => setNewType(event.target.value as ObjectValueType)} value={newType}>
+              <SelectControl onChange={(event) => setNewType(event.target.value as ObjectValueType)} value={newType}>
                 <option value="string">string</option>
                 <option value="number">number</option>
                 <option value="boolean">boolean</option>
                 <option value="json">json</option>
-              </select>
+              </SelectControl>
             </label>
             <button className="dynamic-editor-button--tonal" disabled={!newKey.trim()} onClick={addPair} type="button">
               <MdiIcon name="mdi-plus" />

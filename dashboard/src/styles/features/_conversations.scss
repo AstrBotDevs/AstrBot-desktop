@@ -6,10 +6,10 @@
 .conversation-panel__title > span { display: inline-grid; min-width: 26px; height: 26px; padding: 0 8px; place-items: center; border-radius: 999px; background: color-mix(in srgb, var(--astrbot-primary) 13%, transparent); color: var(--astrbot-primary); font-size: 12px; font-weight: 700; }
 .conversation-filters { display: flex; min-width: 420px; flex: 1 1 520px; align-items: center; gap: 8px; }
 .conversation-filters > input,
-.conversation-filters > select,
+.conversation-filters > .ui-select-menu > button,
 .conversation-filters > label { min-height: 38px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: color-mix(in srgb, var(--astrbot-text) 2%, var(--astrbot-surface)); color: inherit; }
 .conversation-filters > input,
-.conversation-filters > select { width: 132px; padding: 0 10px; }
+.conversation-filters > .ui-select-menu { width: 132px; }
 .conversation-filters > label { display: flex; min-width: 210px; flex: 1; align-items: center; gap: 7px; padding: 0 10px; }
 .conversation-filters > label .mdi { color: color-mix(in srgb, var(--astrbot-text) 55%, transparent); }
 .conversation-filters > label input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: inherit; }
@@ -55,9 +55,10 @@
 .conversation-pagination { display: flex; min-height: 56px; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 16px; border-top: 1px solid var(--astrbot-border); color: color-mix(in srgb, var(--astrbot-text) 65%, transparent); font-size: 12px; }
 .conversation-pagination label,
 .conversation-pagination > div { display: flex; align-items: center; gap: 7px; }
-.conversation-pagination select,
+.conversation-pagination .ui-select-menu > button,
 .conversation-pagination button { height: 32px; border: 1px solid var(--astrbot-border); border-radius: 7px; background: var(--astrbot-surface); color: inherit; }
-.conversation-pagination select { padding: 0 24px 0 8px; }
+.conversation-pagination .ui-select-menu { width: auto; min-width: 72px; }
+.conversation-pagination .ui-select-menu > button { min-height: 32px; padding: 0 8px; }
 .conversation-pagination button { width: 32px; padding: 0; font-size: 18px; }
 .conversation-history { display: flex; max-height: 65vh; flex-direction: column; gap: 10px; overflow: auto; margin: 16px 0; padding: 16px; border-radius: 12px; background: color-mix(in srgb, var(--astrbot-text) 3%, var(--astrbot-surface)); }
 .conversation-history__message { width: min(78%, 720px); padding: 10px 12px; border: 1px solid var(--astrbot-border); border-radius: 12px; background: var(--astrbot-surface); }

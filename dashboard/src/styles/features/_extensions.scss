@@ -34,9 +34,9 @@
 .extension-controls > input { width: min(360px, 100%); margin-right: auto; }
 .extension-controls input,
 .extension-market-controls input,
-.extension-market-controls select,
+.extension-market-controls .ui-select-menu > button,
 .extension-table input,
-.extension-table select,
+.extension-table .ui-select-menu > button,
 .extension-install-form input,
 .extension-source-manager input { min-height: 39px; padding: 8px 11px; border: 1px solid var(--astrbot-border); border-radius: 9px; background: var(--astrbot-surface); color: inherit; }
 .extension-state { display: grid; min-height: 300px; place-items: center; color: var(--astrbot-primary); font-size: 34px; }
@@ -87,9 +87,9 @@
 .component-panel__tabs button { display: inline-flex; min-height: 42px; align-items: center; gap: 7px; padding: 8px 18px; border: 0; background: transparent; color: var(--astrbot-muted); cursor: pointer; font: inherit; }
 .component-panel__tabs button[aria-pressed='true'] { background: color-mix(in srgb, var(--astrbot-primary) 12%, transparent); color: var(--astrbot-primary); font-weight: 700; }
 .component-panel__filters { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 18px; }
-.component-panel__filters label { position: relative; display: block; min-width: 0; }
-.component-panel__filters label > span { position: absolute; z-index: 1; top: -8px; left: 11px; padding: 0 5px; background: var(--astrbot-surface); color: var(--astrbot-muted); font-size: 12px; line-height: 16px; pointer-events: none; }
-.component-panel__filters select { width: 100%; min-width: 0; height: 46px; padding: 0 13px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: var(--astrbot-text); font: inherit; }
+.component-panel__filter { position: relative; min-width: 0; }
+.component-panel__filter > span { position: absolute; z-index: 201; top: -8px; left: 11px; padding: 0 5px; background: var(--astrbot-surface); color: var(--astrbot-muted); font-size: 12px; line-height: 16px; pointer-events: none; }
+.component-panel__filter .ui-select-menu > button { min-height: 46px; padding: 8px 13px; }
 .component-panel__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
 .component-panel__toolbar > label { display: flex; width: min(350px, 100%); min-height: 42px; align-items: center; gap: 9px; padding: 0 13px; border: 1px solid var(--astrbot-border); border-radius: 14px; background: color-mix(in srgb, var(--astrbot-text) 4%, transparent); }
 .component-panel__toolbar > label input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--astrbot-text); font: inherit; }
@@ -115,11 +115,14 @@
 .component-panel__table tr.is-conflict { border-left: 3px solid var(--astrbot-warning); background: color-mix(in srgb, var(--astrbot-warning) 10%, transparent); }
 .component-panel__table tr.is-group,
 .component-panel__table tr.is-subcommand { background: color-mix(in srgb, var(--astrbot-primary) 5%, transparent); }
-.component-panel__table > footer { display: flex; min-height: 54px; align-items: center; justify-content: flex-end; gap: 12px; padding: 8px 14px; }
-.component-panel__table > footer label { display: flex; align-items: center; gap: 8px; }
-.component-panel__table > footer select { height: 36px; padding: 0 24px 0 10px; border: 1px solid var(--astrbot-border); border-radius: 7px; background: var(--astrbot-surface); color: var(--astrbot-text); }
-.component-panel__table > footer button { display: grid; width: 32px; height: 32px; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--astrbot-text); cursor: pointer; }
-.component-panel__table > footer button:disabled { opacity: .3; }
+.component-panel__table > footer { display: flex; min-height: 58px; align-items: center; justify-content: flex-end; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--astrbot-border); background: color-mix(in srgb, var(--astrbot-text) 1.5%, var(--astrbot-surface)); }
+.component-panel__table > footer label { display: flex; align-items: center; gap: 8px; color: var(--astrbot-muted); font-size: 13px; white-space: nowrap; }
+.component-panel__table > footer .component-panel__page-size { width: 68px; min-width: 68px; }
+.component-panel__table > footer .component-panel__page-size > button { width: 100%; height: 36px; min-height: 36px; padding: 0 9px; border-radius: 8px; background: var(--astrbot-surface); }
+.component-panel__table > footer > span { min-width: 104px; text-align: center; white-space: nowrap; }
+.component-panel__table > footer > button { display: grid; width: 32px; height: 32px; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--astrbot-text); cursor: pointer; }
+.component-panel__table > footer > button:hover:not(:disabled) { background: var(--astrbot-hover); color: var(--astrbot-primary); }
+.component-panel__table > footer > button:disabled { opacity: .3; }
 .component-command-name { display: flex; align-items: center; }
 .component-command-name .ui-disclosure-button,
 .component-expand { margin: -2px 0; }
@@ -192,7 +195,6 @@
 .extension-market__header > label { display: flex; width: min(340px, 100%); min-height: 42px; align-items: center; gap: 8px; padding: 0 12px; border-radius: 8px; background: color-mix(in srgb, var(--astrbot-text) 5%, transparent); }
 .extension-market__header > label input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--astrbot-text); font: inherit; }
 .extension-market__header > label button { display: grid; width: 28px; height: 28px; place-items: center; border: 0; background: transparent; color: var(--astrbot-muted); cursor: pointer; }
-.extension-market__fab { position: fixed; z-index: 20; right: 52px; bottom: 52px; display: grid; width: 64px; height: 64px; place-items: center; border: 0; border-radius: 16px; background: var(--astrbot-primary); color: #fff; box-shadow: 0 7px 18px rgb(0 0 0 / 24%); cursor: pointer; font-size: 30px; }
 .extension-market__section-title,
 .extension-market__random > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .extension-market__section-title > div,
@@ -203,7 +205,7 @@
 .extension-market__random header button { background: color-mix(in srgb, var(--astrbot-primary) 12%, transparent); color: var(--astrbot-primary); }
 .extension-market__section-title label { position: relative; display: flex; min-width: 190px; height: 42px; align-items: center; gap: 5px; padding: 0 8px; border: 1px solid var(--astrbot-border); border-radius: 8px; }
 .extension-market__section-title label > span { position: absolute; top: -8px; left: 10px; padding: 0 4px; background: var(--astrbot-surface); color: var(--astrbot-muted); font-size: 12px; }
-.extension-market__section-title select { width: 100%; border: 0; outline: 0; background: transparent; color: var(--astrbot-text); font: inherit; font-size: 14px; }
+.extension-market__section-title .ui-select-menu > button { min-height: 40px; border: 0; background: transparent; font-size: 14px; }
 .extension-market-card { display: flex; min-width: 0; min-height: 176px; flex-direction: column; overflow: hidden; border: 1px solid var(--astrbot-border); border-radius: 12px; background: var(--astrbot-surface); cursor: pointer; transition: background .16s; }
 .extension-market-card:hover { background: var(--astrbot-hover); }
 .extension-market-card__body { display: grid; min-height: 0; flex: 1; grid-template-columns: 76px minmax(0, 1fr); gap: 12px; padding: 12px 12px 8px; }
@@ -251,13 +253,10 @@
 .resource-empty { display: grid; min-height: 300px; place-items: center; align-content: center; gap: 10px; color: color-mix(in srgb, var(--astrbot-text) 42%, transparent); text-align: center; }
 .resource-empty > .mdi { font-size: 64px; }
 .resource-empty p, .resource-empty small { margin: 0; }
-.resource-fab-stack { position: fixed; right: 52px; bottom: 52px; z-index: 50; display: flex; flex-direction: column; gap: 16px; }
-.resource-fab-stack button { display: grid; width: 58px; height: 58px; padding: 0; place-items: center; border: 0; border-radius: 16px; background: var(--astrbot-dark-primary, #2578a5); box-shadow: 0 4px 7px rgba(0,0,0,.16); color: #fff; cursor: pointer; font-size: 25px; transition: transform .2s, box-shadow .2s; }
-.resource-fab-stack button:hover { transform: translateY(-3px) scale(1.04); box-shadow: 0 10px 20px color-mix(in srgb, var(--astrbot-primary) 35%, transparent); }
 .headless-dialog__content:has(.mcp-editor) { width: min(750px, calc(100vw - 32px)); }
 .mcp-editor { display: grid; gap: 12px; margin-top: 12px; }
 .mcp-editor > label, .mcp-sync > label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; }
-.mcp-editor input, .mcp-sync input, .mcp-sync select { width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: inherit; font: inherit; }
+.mcp-editor input, .mcp-sync input, .mcp-sync .ui-select-menu > button { width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: inherit; font: inherit; }
 .mcp-editor > header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .mcp-editor > header > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
 .mcp-editor > header button { padding: 5px 8px; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--astrbot-primary) 10%, transparent); color: var(--astrbot-primary); cursor: pointer; }
@@ -326,7 +325,7 @@
 .neo-skills__filters header { display: grid; gap: 4px; }
 .neo-skills__filters small { color: var(--astrbot-muted); }
 .neo-skills__filters label { display: grid; gap: 5px; font-size: 12px; font-weight: 600; }
-.neo-skills__filters input, .neo-skills__filters select { min-height: 40px; padding: 7px 9px; border: 1px solid var(--astrbot-border); border-radius: 7px; background: var(--astrbot-surface); color: inherit; }
+.neo-skills__filters input, .neo-skills__filters .ui-select-menu > button { min-height: 40px; padding: 7px 9px; border: 1px solid var(--astrbot-border); border-radius: 7px; background: var(--astrbot-surface); color: inherit; }
 .neo-skills__stats { display: flex; flex-wrap: wrap; gap: 7px; }
 .neo-skills__stats span { padding: 4px 9px; border-radius: 999px; background: color-mix(in srgb, var(--astrbot-primary) 10%, transparent); color: var(--astrbot-primary); font-size: 11px; }
 .neo-skills__table { overflow: hidden; border: 1px solid var(--astrbot-border); border-radius: 10px; }
@@ -341,7 +340,6 @@
 .neo-skills__actions .button--danger { background: color-mix(in srgb, var(--astrbot-error) 10%, transparent); color: var(--astrbot-error); }
 
 @media (max-width: 900px) {
-  .resource-fab-stack { right: 24px; bottom: 24px; }
   .resource-list-item { align-items: stretch; flex-direction: column; }
   .resource-list-item__actions { justify-content: flex-end; margin-left: 0; }
   .skills-upload__abilities, .neo-skills__filters { grid-template-columns: 1fr; }
@@ -478,10 +476,6 @@
 .extension-installed__empty > .mdi { color: color-mix(in srgb, #1687c4 72%, var(--astrbot-text)); font-size: 64px; }
 .extension-installed__empty h3 { margin: 13px 0 5px; color: var(--astrbot-text); font-size: 20px; }
 .extension-installed__empty p { margin: 0; }
-.extension-installed__fabs { position: fixed; z-index: 30; right: 52px; bottom: 52px; display: flex; align-items: center; flex-direction: column; gap: 16px; }
-.extension-installed__fabs button { display: grid; width: 56px; height: 56px; place-items: center; padding: 0; border: 0; border-radius: 16px; background: color-mix(in srgb, var(--astrbot-primary) 72%, #17202a); color: #fff; cursor: pointer; font-size: 26px; box-shadow: 0 4px 6px rgb(0 0 0 / 10%); transition: box-shadow .3s ease, transform .3s ease; }
-.extension-installed__fabs button:hover { box-shadow: 0 12px 20px color-mix(in srgb, var(--astrbot-primary) 40%, transparent); transform: translateY(-4px) scale(1.05); }
-.extension-installed__fabs button:disabled { cursor: wait; opacity: .6; transform: none; }
 .extension-update-result { display: grid; min-height: 190px; place-items: center; align-content: center; gap: 18px; padding: 24px; text-align: center; }
 .extension-update-result > i { font-size: 82px; color: var(--astrbot-primary); }
 .extension-update-result.is-success > i { color: var(--astrbot-success); }
@@ -533,7 +527,6 @@
   .extension-market__section-title { align-items: flex-start; flex-direction: column; }
   .extension-market__section-title > div:last-child { width: 100%; justify-content: flex-start; }
   .extension-market__section-title label { min-width: min(190px, 100%); }
-  .extension-market__fab { right: 22px; bottom: 22px; width: 56px; height: 56px; }
   .extension-detail__info dl { grid-template-columns: 1fr; }
   .extension-detail__info dt { padding-bottom: 3px; border-bottom: 0; }
   .extension-detail__info dd { padding-top: 3px; }
@@ -541,7 +534,6 @@
   .extension-installed__search { width: 100%; }
   .extension-installed .extension-failed article { grid-template-columns: 1fr; }
   .extension-installed .extension-failed article > span { justify-content: flex-end; }
-  .extension-installed__fabs { right: 20px; bottom: 20px; }
   .extension-detail__components > div { grid-template-columns: 1fr; }
 }
 .knowledge-card__title { display: flex; align-items: flex-start; gap: 12px; }

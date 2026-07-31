@@ -67,6 +67,7 @@ import {
 } from './configBinding';
 import { createStreamRenderScheduler } from './streamRenderScheduler';
 import { runChatStream } from './chatTransport';
+import { chatStreamRegistry } from './chatStreamRegistry';
 import { useChatPreferences } from './useChatPreferences';
 import {
   agentRunnerTypeFromProfile,
@@ -187,8 +188,8 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const agentRunnerCacheRef = useRef(new Map<string, string>());
   const agentRunnerRequestsRef = useRef(new Map<string, Promise<string>>());
   const agentRunnerRequestIdRef = useRef(0);
-  const activeStreamsRef = useRef<Map<string, AbortController>>(new Map());
-  const messageCacheRef = useRef<Record<string, ChatRecord[]>>({});
+  const activeStreamsRef = useRef(chatStreamRegistry.activeStreams);
+  const messageCacheRef = useRef(chatStreamRegistry.messageCache);
   const activeConversationRef = useRef(conversationId);
   const audioRecorderRef = useRef(new AudioRecorder());
   const activeSessionRef = useRef('');
@@ -428,14 +429,17 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       setProviderMetadata(
         isObject(envelope.model_metadata) ? (envelope.model_metadata as Record<string, JsonObject>) : {},
       );
-      const selected = items.find((item) => item.id === provider);
-      if (selected?.model) setModel(selected.model);
+      const selected = items.find((item) => item.id === provider) || items[0];
+      const selectedProvider = selected?.id || '';
+      const selectedModel = selected?.model || '';
+      if (provider !== selectedProvider) setProvider(selectedProvider);
+      setModel(selectedModel);
     } catch (cause) {
       toast.error(errorMessage(cause, 'Failed to load models.'));
     } finally {
       setProvidersLoading(false);
     }
-  }, [provider]);
+  }, [provider, setModel, setProvider]);
 
   const loadMessages = useCallback(async () => {
     const requestId = ++messageLoadRequestRef.current;
@@ -554,10 +558,17 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     void loadMessages();
   }, [conversationId, loadMessages]);
 
+  useEffect(() => {
+    if (!conversationId) return;
+    return chatStreamRegistry.subscribe(conversationId, () => {
+      const cached = messageCacheRef.current[conversationId];
+      if (cached) setMessages([...cached]);
+      markSessionRunning(conversationId, activeStreamsRef.current.has(conversationId));
+    });
+  }, [conversationId, markSessionRunning]);
+
   useEffect(
     () => () => {
-      activeStreamsRef.current.forEach((controller) => controller.abort());
-      activeStreamsRef.current.clear();
       audioRecorderRef.current.cancel();
       if (settingsSubmenuTimer.current != null) window.clearTimeout(settingsSubmenuTimer.current);
       if (messageScrollFrame.current != null) window.cancelAnimationFrame(messageScrollFrame.current);
@@ -965,6 +976,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       abort = new AbortController();
       abortRef.current = abort;
       activeStreamsRef.current.set(sessionId, abort);
+      chatStreamRegistry.notify(sessionId);
       activeSessionRef.current = sessionId;
       const messagePayload = serializeChatParts(outgoing);
       const applyPayloads = (payloads: unknown[]) => {
@@ -976,8 +988,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
         if (changed) streamRender?.schedule();
       };
       streamRender = createStreamRenderScheduler(() => {
-        const cached = messageCacheRef.current[sessionId];
-        if (activeConversationRef.current === sessionId && cached?.includes(bot!)) setMessages([...cached]);
+        chatStreamRegistry.notify(sessionId);
       });
       await runChatStream(
         {
@@ -986,8 +997,8 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
           enableStreaming: streaming,
           message: messagePayload,
           messageId,
-          selectedModel: providerOverrideEnabled ? model : '',
-          selectedProvider: providerOverrideEnabled ? provider : '',
+          selectedModel: providerOverrideEnabled ? currentProvider?.model || '' : '',
+          selectedProvider: providerOverrideEnabled ? currentProvider?.id || '' : '',
           sessionId,
           transport: transportMode,
         },
@@ -1012,12 +1023,12 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
           streamRender.schedule();
           streamRender.flush();
         } else {
-          const cached = messageCacheRef.current[sessionId];
-          if (activeConversationRef.current === sessionId && cached?.includes(bot)) setMessages([...cached]);
+          chatStreamRegistry.notify(sessionId);
         }
       }
       if (!abort || abortRef.current === abort) abortRef.current = null;
       if (sessionId) activeStreamsRef.current.delete(sessionId);
+      if (sessionId) chatStreamRegistry.notify(sessionId);
       if (!sessionId || activeSessionRef.current === sessionId) activeSessionRef.current = '';
       if (sessionId) markSessionRunning(sessionId, false);
       setPendingSessionSending(false);
@@ -1026,7 +1037,11 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     }
   };
 
-  const regenerate = async (target: ChatRecord, selectedProvider = provider, selectedModel = model) => {
+  const regenerate = async (
+    target: ChatRecord,
+    selectedProvider = currentProvider?.id || '',
+    selectedModel = currentProvider?.model || '',
+  ) => {
     if (!conversationId || target.id == null || sending) return;
     const targetId = String(target.id);
     const index = messages.findIndex((item) => item === target || String(item.id) === targetId);
@@ -1046,11 +1061,11 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     setError('');
     const abort = new AbortController();
     const streamRender = createStreamRenderScheduler(() => {
-      const cached = messageCacheRef.current[conversationId];
-      if (activeConversationRef.current === conversationId && cached?.includes(regenerated)) setMessages([...cached]);
+      chatStreamRegistry.notify(conversationId);
     });
     abortRef.current = abort;
     activeStreamsRef.current.set(conversationId, abort);
+    chatStreamRegistry.notify(conversationId);
     activeSessionRef.current = conversationId;
     try {
       await runChatStream(
@@ -1083,6 +1098,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       streamRender.flush();
       if (abortRef.current === abort) abortRef.current = null;
       activeStreamsRef.current.delete(conversationId);
+      chatStreamRegistry.notify(conversationId);
       if (activeSessionRef.current === conversationId) activeSessionRef.current = '';
       markSessionRunning(conversationId, false);
     }
@@ -1112,8 +1128,9 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     markSessionRunning(conversationId, true);
     const abort = new AbortController();
     activeStreamsRef.current.set(conversationId, abort);
+    chatStreamRegistry.notify(conversationId);
     const scheduler = createStreamRenderScheduler(() => {
-      if (activeConversationRef.current === conversationId) setMessages([...messageCacheRef.current[conversationId]]);
+      chatStreamRegistry.notify(conversationId);
     });
     try {
       await runChatStream(
@@ -1123,8 +1140,8 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
           enableStreaming: streaming,
           llmCheckpointId: String(source.llm_checkpoint_id || ''),
           message: serializeChatParts(source.content.message),
-          selectedModel: providerOverrideEnabled ? model : '',
-          selectedProvider: providerOverrideEnabled ? provider : '',
+          selectedModel: providerOverrideEnabled ? currentProvider?.model || '' : '',
+          selectedProvider: providerOverrideEnabled ? currentProvider?.id || '' : '',
           sessionId: conversationId,
         },
         abort.signal,
@@ -1145,6 +1162,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       scheduler.schedule();
       scheduler.flush();
       activeStreamsRef.current.delete(conversationId);
+      chatStreamRegistry.notify(conversationId);
       markSessionRunning(conversationId, false);
     }
   };
@@ -1273,8 +1291,8 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
           kind: 'thread',
           enableStreaming: streaming,
           message: [{ type: 'plain', text }],
-          selectedModel: providerOverrideEnabled ? model : '',
-          selectedProvider: providerOverrideEnabled ? provider : '',
+          selectedModel: providerOverrideEnabled ? currentProvider?.model || '' : '',
+          selectedProvider: providerOverrideEnabled ? currentProvider?.id || '' : '',
           threadId,
         },
         abort.signal,
@@ -1353,6 +1371,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     if (sessionId) await stopChatSession({ path: { session_id: sessionId } }).catch(() => undefined);
     if (sessionId) {
       activeStreamsRef.current.delete(sessionId);
+      chatStreamRegistry.notify(sessionId);
       markSessionRunning(sessionId, false);
     }
     setPendingSessionSending(false);
@@ -1590,7 +1609,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
                               </button>
                             </span>
                             {runningSessionIds.has(session.session_id) && (
-                              <MdiIcon className="chat-project-session-progress" name="mdi-loading" />
+                              <span aria-hidden="true" className="chat-project-session-progress" />
                             )}
                           </div>
                         ))
@@ -1610,7 +1629,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
                 <button onClick={() => selectSession(session.session_id)} type="button">
                   <span>{session.display_name || session.session_id}</span>
                   {runningSessionIds.has(session.session_id) && (
-                    <MdiIcon className="chat-session-progress" name="mdi-loading" />
+                    <span aria-hidden="true" className="chat-session-progress" />
                   )}
                 </button>
                 <div>

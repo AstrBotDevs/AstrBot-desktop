@@ -9,6 +9,8 @@ import { DisclosureButton } from './DisclosureButton';
 import { DialogActions } from './DialogActions';
 import { Pagination } from './Pagination';
 import { SearchField } from './SearchField';
+import { SelectMenu } from './SelectMenu';
+import { SelectControl } from './SelectControl';
 import { StatusChip } from './StatusChip';
 
 const primitiveStyles = readFileSync(new URL('../../styles/components/_primitives.scss', import.meta.url), 'utf8');
@@ -44,6 +46,60 @@ describe('shared UI primitives', () => {
     expect(primitiveStyles).toContain(':where(.dialog-actions) > button');
     expect(primitiveStyles).toContain('.button--danger');
     expect(primitiveStyles).toContain('.button--warning');
+  });
+
+  it('gives native form controls a theme-aware baseline', () => {
+    expect(primitiveStyles).toContain("input[type='text']");
+    expect(primitiveStyles).toContain("input[type='checkbox']");
+    expect(primitiveStyles).toContain('select,');
+    expect(primitiveStyles).toContain('textarea');
+    expect(primitiveStyles).toContain('var(--astrbot-radius-control)');
+    expect(primitiveStyles).toContain(':focus');
+  });
+
+  it('styles expanded native select pickers with a themed fallback', () => {
+    expect(primitiveStyles).toContain(':where(select option:checked)');
+    expect(primitiveStyles).toContain('@supports (appearance: base-select)');
+    expect(primitiveStyles).toContain('::picker(select)');
+    expect(primitiveStyles).toContain('::picker-icon');
+    expect(primitiveStyles).toContain('::checkmark');
+    expect(primitiveStyles).toContain(':where(select:not(:disabled))');
+    expect(primitiveStyles).toContain(':where(select:active, select:focus, select:focus-visible, select:open)');
+    expect(primitiveStyles).toContain('border-color: transparent');
+  });
+
+  it('shares the custom select menu used by feature pages', () => {
+    const markup = renderToStaticMarkup(
+      <SelectMenu
+        ariaLabel="Computer access"
+        onChange={() => undefined}
+        options={[
+          { id: 'local', name: 'Allow' },
+          { id: 'none', name: 'Deny' },
+        ]}
+        placeholder="Choose access"
+        value="none"
+      />,
+    );
+
+    expect(markup).toContain('ui-select-menu');
+    expect(markup).toContain('aria-haspopup="listbox"');
+    expect(markup).toContain('Deny');
+    expect(markup).not.toContain('Choose access');
+  });
+
+  it('adapts native option markup to the shared select menu', () => {
+    const markup = renderToStaticMarkup(
+      <SelectControl aria-label="Page size" value={20} onChange={() => undefined}>
+        <option value={10}>10</option>
+        <option value={20}>20</option>
+      </SelectControl>,
+    );
+
+    expect(markup).toContain('ui-select-control__native');
+    expect(markup).toContain('aria-label="Page size"');
+    expect(markup).toContain('aria-haspopup="listbox"');
+    expect(markup).toContain('>20<');
   });
 
   it('gives search and status controls consistent accessible markup', () => {

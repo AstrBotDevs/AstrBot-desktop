@@ -19,7 +19,8 @@ describe('ObjectConfigControl', () => {
     await user.clear(existingValue);
     await user.type(existingValue, 'after');
     await user.type(screen.getByPlaceholderText('core.common.objectEditor.newKeyLabel'), 'retries');
-    await user.selectOptions(screen.getByRole('combobox'), 'number');
+    await user.click(screen.getByRole('button', { name: 'string' }));
+    await user.click(screen.getByRole('option', { name: 'number' }));
     await user.click(screen.getByRole('button', { name: /core\.common\.add/ }));
 
     const numberValue = screen.getByPlaceholderText('core.common.objectEditor.placeholders.numberValue');

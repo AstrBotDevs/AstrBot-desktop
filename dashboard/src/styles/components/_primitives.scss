@@ -1,3 +1,342 @@
+:where(
+  input:not([type]),
+  input[type='date'],
+  input[type='datetime-local'],
+  input[type='email'],
+  input[type='month'],
+  input[type='number'],
+  input[type='password'],
+  input[type='search'],
+  input[type='tel'],
+  input[type='text'],
+  input[type='time'],
+  input[type='url'],
+  input[type='week'],
+  select,
+  textarea
+) {
+  min-height: 40px;
+  padding: 8px 11px;
+  border: 1px solid var(--astrbot-border);
+  border-radius: var(--astrbot-radius-control);
+  outline: 0;
+  background-color: var(--astrbot-surface);
+  color: var(--astrbot-text);
+  font: inherit;
+  transition: border-color .15s ease, outline-color .15s ease, background-color .15s ease;
+}
+
+:where(
+  input:not([type]),
+  input[type='date'],
+  input[type='datetime-local'],
+  input[type='email'],
+  input[type='month'],
+  input[type='number'],
+  input[type='password'],
+  input[type='search'],
+  input[type='tel'],
+  input[type='text'],
+  input[type='time'],
+  input[type='url'],
+  input[type='week'],
+  select,
+  textarea
+):focus {
+  border-color: var(--astrbot-primary);
+  outline: 2px solid color-mix(in srgb, var(--astrbot-primary) 24%, transparent);
+  outline-offset: 1px;
+}
+
+:where(input, select, textarea):disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+:where(input, textarea)::placeholder {
+  color: color-mix(in srgb, var(--astrbot-text) 46%, transparent);
+}
+
+:where(input[aria-invalid='true'], select[aria-invalid='true'], textarea[aria-invalid='true']) {
+  border-color: var(--astrbot-error);
+}
+
+:where(input[type='checkbox'], input[type='radio']) {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--astrbot-primary);
+  cursor: pointer;
+}
+
+:where(input[type='range']) {
+  accent-color: var(--astrbot-primary);
+}
+
+:where(select) {
+  cursor: pointer;
+}
+
+:where(select option, select optgroup) {
+  background-color: var(--astrbot-surface);
+  color: var(--astrbot-text);
+}
+
+:where(select option:checked) {
+  background-color: color-mix(in srgb, var(--astrbot-primary) 16%, var(--astrbot-surface));
+  color: var(--astrbot-primary);
+}
+
+@supports (appearance: base-select) {
+  :where(select),
+  ::picker(select) {
+    appearance: base-select;
+  }
+
+  :where(select:not(:disabled)) {
+    color: var(--astrbot-primary);
+    font-weight: 650;
+  }
+
+  :where(select)::picker-icon {
+    color: color-mix(in srgb, var(--astrbot-text) 62%, transparent);
+    transition: transform .16s ease;
+  }
+
+  :where(select):open::picker-icon {
+    transform: rotate(180deg);
+  }
+
+  :where(select:active, select:focus, select:focus-visible, select:open) {
+    border-color: transparent;
+    outline: 2px solid color-mix(in srgb, var(--astrbot-primary) 28%, transparent);
+    outline-offset: 1px;
+    background-color: var(--astrbot-surface);
+    color: var(--astrbot-primary);
+    box-shadow: none;
+    filter: none;
+  }
+
+  ::picker(select) {
+    max-height: min(360px, 55vh);
+    margin-block-start: 5px;
+    padding: 6px;
+    border: 1px solid var(--astrbot-border);
+    border-radius: 10px;
+    background: var(--astrbot-surface);
+    box-shadow: 0 12px 30px rgb(0 0 0 / 16%);
+    color: var(--astrbot-text);
+  }
+
+  :where(select option) {
+    min-height: 38px;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--astrbot-text);
+    cursor: pointer;
+  }
+
+  :where(select option:hover, select option:focus) {
+    background: var(--astrbot-hover);
+  }
+
+  :where(select option:checked) {
+    background: color-mix(in srgb, var(--astrbot-primary) 13%, var(--astrbot-surface));
+    color: var(--astrbot-primary);
+    font-weight: 650;
+  }
+
+  :where(select option)::checkmark {
+    order: 1;
+    margin-left: auto;
+    color: var(--astrbot-primary);
+  }
+}
+
+:where(textarea) {
+  resize: vertical;
+}
+
+.ui-select-menu {
+  position: relative;
+  width: 100%;
+}
+
+.ui-select-control__native {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  overflow: hidden !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+}
+
+.ui-select-menu > button {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--astrbot-border);
+  border-radius: var(--astrbot-radius-control);
+  outline: 0;
+  background: var(--astrbot-surface);
+  color: var(--astrbot-text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.ui-select-menu > button:hover {
+  border-color: color-mix(in srgb, var(--astrbot-primary) 32%, var(--astrbot-border));
+}
+
+.ui-select-menu > button:focus-visible,
+.ui-select-menu > button[aria-expanded='true'] {
+  border-color: transparent;
+  outline: 2px solid color-mix(in srgb, var(--astrbot-primary) 28%, transparent);
+  outline-offset: 1px;
+  color: var(--astrbot-primary);
+}
+
+.ui-select-menu > button:active {
+  background: var(--astrbot-surface);
+  filter: none;
+}
+
+.ui-select-menu > button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.ui-select-menu > button.is-placeholder {
+  color: color-mix(in srgb, var(--astrbot-text) 52%, transparent);
+}
+
+.ui-select-menu > button > .mdi {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--astrbot-text) 58%, transparent);
+  font-size: 20px;
+}
+
+.ui-select-menu__menu {
+  position: absolute;
+  z-index: 200;
+  top: calc(100% + 5px);
+  right: 0;
+  left: 0;
+  max-height: min(360px, 55vh);
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--astrbot-border);
+  border-radius: 9px;
+  background: var(--astrbot-surface);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 16%);
+}
+
+.ui-select-menu__menu--portaled {
+  position: fixed;
+  z-index: 1300;
+  right: auto;
+  pointer-events: auto;
+}
+
+.ui-select-menu__menu > button {
+  display: grid;
+  width: 100%;
+  min-height: 42px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 7px;
+  outline: 0;
+  background: transparent;
+  color: var(--astrbot-text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.ui-select-menu__menu > button:hover,
+.ui-select-menu__menu > button:focus-visible,
+.ui-select-menu__menu > button.is-selected {
+  background: var(--astrbot-hover);
+}
+
+.ui-select-menu__menu > button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+.ui-floating-actions {
+  position: fixed;
+  z-index: 50;
+  right: 52px;
+  bottom: 52px;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ui-floating-action {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--astrbot-primary) 72%, #17202a);
+  box-shadow: 0 4px 6px rgb(0 0 0 / 10%);
+  color: #fff;
+  cursor: pointer;
+  font-size: 24px;
+  transition: box-shadow .3s ease, transform .3s ease;
+}
+
+.ui-floating-action:hover {
+  box-shadow: 0 12px 20px color-mix(in srgb, var(--astrbot-primary) 40%, transparent);
+  transform: translateY(-4px) scale(1.05);
+}
+
+.ui-floating-action:disabled {
+  cursor: wait;
+  opacity: .6;
+  transform: none;
+}
+
+@media (max-width: 760px) {
+  .ui-floating-actions {
+    right: 20px;
+    bottom: 20px;
+  }
+}
+
+.ui-select-menu__menu > button.is-selected {
+  color: var(--astrbot-primary);
+  font-weight: 650;
+}
+
+.ui-select-menu__menu > button > .mdi:last-child {
+  color: var(--astrbot-primary);
+}
+
+.ui-select-menu__menu > button > img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+
 .ui-button,
 .button--primary,
 .button--danger,
@@ -210,8 +549,10 @@
 }
 
 .ui-search-field > input {
+  min-height: 0;
   min-width: 0;
   flex: 1;
+  padding: 0;
   border: 0;
   outline: 0;
   background: transparent;
@@ -352,13 +693,14 @@
   gap: var(--astrbot-space-2);
 }
 
-.ui-pagination__size select {
+.ui-pagination__size .ui-select-menu {
+  width: auto;
+  min-width: 76px;
+}
+
+.ui-pagination__size .ui-select-menu > button {
   min-height: 34px;
   padding: var(--astrbot-space-1) var(--astrbot-space-2);
-  border: 1px solid var(--astrbot-border);
-  border-radius: var(--astrbot-radius-control);
-  background: var(--astrbot-surface);
-  color: var(--astrbot-text);
 }
 
 .ui-pagination__page {

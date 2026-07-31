@@ -135,7 +135,8 @@
 .session-rules-empty button { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; padding: 7px 12px; border: 0; border-radius: 7px; background: color-mix(in srgb, var(--astrbot-primary) 12%, var(--astrbot-surface)); color: var(--astrbot-primary); cursor: pointer; }
 .session-rules-pagination { display: flex; min-height: 54px; align-items: center; justify-content: flex-end; gap: 9px; padding: 8px 16px; color: color-mix(in srgb, var(--astrbot-text) 65%, transparent); font-size: 12px; }
 .session-rules-pagination label { display: flex; align-items: center; gap: 6px; margin-right: 10px; }
-.session-rules-pagination select { height: 32px; padding: 0 24px 0 8px; border: 1px solid var(--astrbot-border); border-radius: 7px; background: var(--astrbot-surface); color: inherit; }
+.session-rules-pagination .ui-select-menu { width: auto; min-width: 72px; }
+.session-rules-pagination .ui-select-menu > button { min-height: 32px; padding: 0 8px; border-radius: 7px; }
 .session-rules-pagination button { display: grid; width: 30px; height: 30px; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; }
 .session-rules-pagination button:hover:not(:disabled) { background: var(--astrbot-hover); color: var(--astrbot-primary); }
 .session-rules-pagination button:disabled { cursor: not-allowed; opacity: .35; }
@@ -144,7 +145,7 @@
 .session-rules-section-title h2 { margin: 0; font-size: 17px; }
 .session-rules-section-title--actions { justify-content: space-between; }
 .session-rules-section-title--actions > div { gap: 8px; }
-.session-group-add select { height: 30px; border: 0; outline: 0; background: transparent; color: inherit; cursor: pointer; }
+.session-group-add .ui-select-menu > button { min-height: 30px; border: 0; background: transparent; color: inherit; }
 
 .session-batch-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 8px 16px 4px; }
 .session-batch-grid label,
@@ -152,10 +153,10 @@
 .session-rule-editor label:not(.session-check),
 .session-quick-name label,
 .session-group-editor > label { display: grid; gap: 5px; color: color-mix(in srgb, var(--astrbot-text) 68%, transparent); font-size: 12px; }
-.session-batch-grid select,
-.session-add-rule select,
+.session-batch-grid .ui-select-menu > button,
+.session-add-rule .ui-select-menu > button,
 .session-rule-editor input:not([type='checkbox']),
-.session-rule-editor select,
+.session-rule-editor .ui-select-menu > button,
 .session-quick-name input,
 .session-group-editor > label input,
 .session-transfer-list__search {
@@ -343,7 +344,7 @@
   .conversation-page-react { padding: 10px; }
   .conversation-filters { flex-wrap: wrap; }
   .conversation-filters > input,
-  .conversation-filters > select { min-width: 120px; flex: 1; }
+  .conversation-filters > .ui-select-menu { min-width: 120px; flex: 1; }
   .conversation-filters > label { min-width: 100%; }
   .conversation-panel__actions { width: 100%; margin-left: 0; }
   .conversation-pagination { flex-wrap: wrap; justify-content: center; }

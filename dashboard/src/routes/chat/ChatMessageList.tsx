@@ -44,6 +44,7 @@ export type ChatMessageLabels = {
   replyTo: string;
   cachedTokens: string;
   inputTokens: string;
+  loading: string;
   outputTokens: string;
   ttft: string;
   duration: string;
@@ -127,6 +128,7 @@ export function ChatMessageList({
       duration: t('features.chat.stats.duration'),
       edit: t('core.common.edit'),
       inputTokens: t('features.chat.stats.inputTokens'),
+      loading: t('features.chat.message.loading'),
       outputTokens: t('features.chat.stats.outputTokens'),
       reasoning: t('features.chat.reasoning.thinking'),
       references: t('features.chat.refs.title'),
@@ -251,9 +253,7 @@ export function ChatMessageList({
                       </div>
                     </div>
                   ) : message.content.isLoading && bubbleParts.length === 0 ? (
-                    <span className="ab-chat-message-loading">
-                      <span className="ab-chat-message-spinner" /> {labels.running}
-                    </span>
+                    <span className="ab-chat-message-loading">{labels.loading}</span>
                   ) : (
                     bubbleParts.map((part, partIndex) => (
                       <MessagePart

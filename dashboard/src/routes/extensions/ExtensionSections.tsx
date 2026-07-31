@@ -44,6 +44,9 @@ import { MdiIcon } from '@/components/icons/MdiIcon';
 import { Dialog } from '@/components/headless/Dialog';
 import { MonacoEditor } from '@/components/editor/MonacoEditor';
 import { DisclosureButton } from '@/components/ui/DisclosureButton';
+import { FloatingActionButton, FloatingActions } from '@/components/ui/FloatingActions';
+import { SelectMenu } from '@/components/ui/SelectMenu';
+import { SelectControl } from '@/components/ui/SelectControl';
 import { useUnsavedChangesGuard } from '@/components/ui/useUnsavedChangesGuard';
 import { confirmAction, toast } from '@/stores/feedback';
 import { useBrowserCapabilities } from '@/platform/BrowserCapabilitiesProvider';
@@ -510,11 +513,16 @@ function ComponentPagination({
     <footer>
       <label>
         {t('core.common.itemsPerPage')}:{' '}
-        <select onChange={(event) => onPageSizeChange(Number(event.target.value))} value={pageSize}>
+        <SelectControl
+          aria-label={t('core.common.itemsPerPage')}
+          className="component-panel__page-size"
+          onChange={(event) => onPageSizeChange(Number(event.target.value))}
+          value={pageSize}
+        >
           <option>10</option>
           <option>25</option>
           <option>50</option>
-        </select>
+        </SelectControl>
       </label>
       <span>
         {t('core.common.paginationRange', {
@@ -580,41 +588,60 @@ function CommandFilters({
 }) {
   return (
     <div className="component-panel__filters">
-      <label>
+      <div className="component-panel__filter">
         <span>{t('filters.byPlugin')}</span>
-        <select onChange={(event) => onPluginChange(event.target.value)} value={plugin}>
-          <option value="all">{t('filters.all')}</option>
-          {plugins.map((item) => (
-            <option key={item}>{item}</option>
-          ))}
-        </select>
-      </label>
-      <label>
+        <SelectMenu
+          ariaLabel={t('filters.byPlugin')}
+          onChange={onPluginChange}
+          options={[{ id: 'all', name: t('filters.all') }, ...plugins.map((item) => ({ id: item, name: item }))]}
+          placeholder={t('filters.all')}
+          value={plugin}
+        />
+      </div>
+      <div className="component-panel__filter">
         <span>{t('filters.byType')}</span>
-        <select onChange={(event) => onTypeChange(event.target.value)} value={type}>
-          <option value="all">{t('filters.all')}</option>
-          <option value="group">{t('type.group')}</option>
-          <option value="command">{t('type.command')}</option>
-          <option value="sub_command">{t('type.subCommand')}</option>
-        </select>
-      </label>
-      <label>
+        <SelectMenu
+          ariaLabel={t('filters.byType')}
+          onChange={onTypeChange}
+          options={[
+            { id: 'all', name: t('filters.all') },
+            { id: 'group', name: t('type.group') },
+            { id: 'command', name: t('type.command') },
+            { id: 'sub_command', name: t('type.subCommand') },
+          ]}
+          placeholder={t('filters.all')}
+          value={type}
+        />
+      </div>
+      <div className="component-panel__filter">
         <span>{t('filters.byPermission')}</span>
-        <select onChange={(event) => onPermissionChange(event.target.value)} value={permission}>
-          <option value="all">{t('filters.all')}</option>
-          <option value="everyone">{t('permission.everyone')}</option>
-          <option value="admin">{t('permission.admin')}</option>
-        </select>
-      </label>
-      <label>
+        <SelectMenu
+          ariaLabel={t('filters.byPermission')}
+          onChange={onPermissionChange}
+          options={[
+            { id: 'all', name: t('filters.all') },
+            { id: 'everyone', name: t('permission.everyone') },
+            { id: 'admin', name: t('permission.admin') },
+          ]}
+          placeholder={t('filters.all')}
+          value={permission}
+        />
+      </div>
+      <div className="component-panel__filter">
         <span>{t('filters.byStatus')}</span>
-        <select onChange={(event) => onStatusChange(event.target.value)} value={status}>
-          <option value="all">{t('filters.all')}</option>
-          <option value="enabled">{t('filters.enabled')}</option>
-          <option value="disabled">{t('filters.disabled')}</option>
-          <option value="conflict">{t('filters.conflict')}</option>
-        </select>
-      </label>
+        <SelectMenu
+          ariaLabel={t('filters.byStatus')}
+          onChange={onStatusChange}
+          options={[
+            { id: 'all', name: t('filters.all') },
+            { id: 'enabled', name: t('filters.enabled') },
+            { id: 'disabled', name: t('filters.disabled') },
+            { id: 'conflict', name: t('filters.conflict') },
+          ]}
+          placeholder={t('filters.all')}
+          value={status}
+        />
+      </div>
     </div>
   );
 }
@@ -688,14 +715,14 @@ function CommandRow({
         </span>
       </td>
       <td>
-        <select
+        <SelectControl
           className={`component-permission is-${item.permission === 'admin' ? 'admin' : 'member'}`}
           onChange={(event) => void onPermission(item, event.target.value as 'admin' | 'member')}
           value={item.permission === 'admin' ? 'admin' : 'member'}
         >
           <option value="member">{t('permission.everyone')}</option>
           <option value="admin">{t('permission.admin')}</option>
-        </select>
+        </SelectControl>
       </td>
       <td>
         <span className={`component-status is-${status}`}>{t(`status.${status}`)}</span>
@@ -802,14 +829,14 @@ function ToolRow({
           {item.origin === 'builtin' ? (
             <span className="component-permission-builtin">{t('functionTools.table.permissionBuiltin')}</span>
           ) : (
-            <select
+            <SelectControl
               className={`component-permission is-${item.permission === 'admin' ? 'admin' : 'member'}`}
               onChange={(event) => void onPermission(item, event.target.value as 'admin' | 'member')}
               value={item.permission === 'admin' ? 'admin' : 'member'}
             >
               <option value="member">{t('functionTools.table.permissionEveryone')}</option>
               <option value="admin">{t('functionTools.table.permissionAdmin')}</option>
-            </select>
+            </SelectControl>
           )}
         </td>
         <td>
@@ -1435,9 +1462,9 @@ export function McpSection() {
         <div className="mcp-sync">
           <label>
             {m('dialogs.syncProvider.fields.provider')}
-            <select value="modelscope">
+            <SelectControl value="modelscope">
               <option value="modelscope">{m('dialogs.syncProvider.providers.modelscope')}</option>
-            </select>
+            </SelectControl>
           </label>
           <ol>
             <li>
@@ -1484,24 +1511,22 @@ export function McpSection() {
 
 function McpFloatingActions({ onAdd, onSync, t }: { onAdd: () => void; onSync: () => void; t: ModuleText }) {
   return (
-    <div className="resource-fab-stack">
-      <button
+    <FloatingActions>
+      <FloatingActionButton
         aria-label={t('mcpServers.buttons.sync')}
         onClick={onSync}
         title={t('mcpServers.buttons.sync')}
-        type="button"
       >
         <MdiIcon name="mdi-sync" />
-      </button>
-      <button
+      </FloatingActionButton>
+      <FloatingActionButton
         aria-label={t('mcpServers.buttons.add')}
         onClick={onAdd}
         title={t('mcpServers.buttons.add')}
-        type="button"
       >
         <MdiIcon name="mdi-plus" />
-      </button>
-    </div>
+      </FloatingActionButton>
+    </FloatingActions>
   );
 }
 
@@ -1939,21 +1964,20 @@ function SkillsFloatingActions({
   t: ModuleText;
 }) {
   return (
-    <div className="resource-fab-stack">
-      <button
+    <FloatingActions>
+      <FloatingActionButton
         aria-label={t('skills.refresh')}
         onClick={() => void onRefresh()}
         title={t('skills.refresh')}
-        type="button"
       >
         <MdiIcon name="mdi-refresh" />
-      </button>
+      </FloatingActionButton>
       {mode === 'local' && (
-        <button aria-label={t('skills.upload')} onClick={onUpload} title={t('skills.upload')} type="button">
+        <FloatingActionButton aria-label={t('skills.upload')} onClick={onUpload} title={t('skills.upload')}>
           <MdiIcon name="mdi-upload" />
-        </button>
+        </FloatingActionButton>
       )}
-    </div>
+    </FloatingActions>
   );
 }
 
@@ -2528,7 +2552,7 @@ function NeoSkills({
         </label>
         <label>
           {t('skills.neoStatus')}
-          <select
+          <SelectControl
             onChange={(event) => onFilters((current) => ({ ...current, status: event.target.value }))}
             value={filters.status}
           >
@@ -2538,18 +2562,18 @@ function NeoSkills({
                 <option key={value}>{value}</option>
               ),
             )}
-          </select>
+          </SelectControl>
         </label>
         <label>
           {t('skills.neoStage')}
-          <select
+          <SelectControl
             onChange={(event) => onFilters((current) => ({ ...current, stage: event.target.value }))}
             value={filters.stage}
           >
             <option value="">{t('skills.neoAll')}</option>
             <option>canary</option>
             <option>stable</option>
-          </select>
+          </SelectControl>
         </label>
       </section>
       {loading && <SectionState error="" loading />}

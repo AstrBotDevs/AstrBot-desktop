@@ -14,7 +14,8 @@
 .visual-config-search { min-height: 40px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: inherit; }
 .visual-config-profile { position: relative; width: 170px; flex: 0 0 auto; }
 .visual-config-profile > span { position: absolute; z-index: 1; top: -8px; left: 10px; padding: 0 4px; background: var(--astrbot-surface); color: color-mix(in srgb, var(--astrbot-text) 58%, transparent); font-size: 10px; }
-.visual-config-profile > select { width: 100%; height: 100%; min-height: 40px; padding: 7px 32px 7px 11px; border: 0; outline: 0; background: transparent; color: inherit; }
+.visual-config-profile > .ui-select-menu { height: 100%; }
+.visual-config-profile > .ui-select-menu > button { height: 100%; min-height: 40px; border: 0; background: transparent; }
 .visual-config-search { display: flex; width: min(360px, 100%); align-items: center; gap: 8px; padding: 0 11px; }
 .visual-config-search .mdi { flex: 0 0 auto; color: color-mix(in srgb, var(--astrbot-text) 62%, transparent); font-size: 19px; }
 .visual-config-search input { width: 100%; min-width: 0; padding: 8px 0; border: 0; outline: 0; background: transparent; color: inherit; }
@@ -109,7 +110,7 @@
 .plugin-file-config__drop { display: grid; justify-items: center; gap: 4px; margin-top: 10px; padding: 24px; border: 1px dashed var(--astrbot-primary); border-radius: 10px; background: transparent; color: var(--astrbot-primary); cursor: pointer; }
 .dynamic-config__control { min-width: 0; }
 .dynamic-config__control > input,
-.dynamic-config__control > select,
+.dynamic-config__control > .ui-select-menu > button,
 .dynamic-config__control > textarea { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: inherit; }
 .dynamic-config__control select[multiple] { min-height: 110px; }
 .dynamic-config__control textarea { resize: vertical; }
@@ -390,13 +391,13 @@
 .dynamic-list-dialog__add > input,
 .dynamic-list-dialog__items input,
 .dynamic-object-dialog input,
-.dynamic-object-dialog select,
+.dynamic-object-dialog .ui-select-menu > button,
 .dynamic-batch-dialog textarea { min-width: 0; min-height: 40px; padding: 8px 10px; border: 1px solid var(--astrbot-border); border-radius: 8px; outline: 0; background: var(--astrbot-surface); color: inherit; }
 .dynamic-list-dialog__add > input { flex: 1; }
 .dynamic-list-dialog__add > input:focus,
 .dynamic-list-dialog__items input:focus,
 .dynamic-object-dialog input:focus,
-.dynamic-object-dialog select:focus,
+.dynamic-object-dialog .ui-select-menu > button:focus-visible,
 .dynamic-batch-dialog textarea:focus { border-color: var(--astrbot-text); box-shadow: 0 0 0 1px var(--astrbot-text); }
 .dynamic-list-dialog__items { display: grid; max-height: 400px; min-height: 180px; gap: 2px; overflow: auto; }
 .dynamic-list-dialog__item { display: flex; min-height: 44px; align-items: center; gap: 6px; padding: 4px 5px 4px 10px; border-radius: 8px; cursor: pointer; transition: background .18s ease; }
@@ -429,7 +430,7 @@
 .dynamic-object-dialog__add { display: grid; grid-template-columns: minmax(0, 1fr) 125px auto; align-items: center; gap: 8px; padding-top: 12px; border-top: 1px solid var(--astrbot-border); }
 .dynamic-object-dialog__add > label { position: relative; }
 .dynamic-object-dialog__add > label > span { position: absolute; z-index: 1; top: -7px; left: 10px; padding: 0 4px; background: var(--astrbot-surface); color: color-mix(in srgb, var(--astrbot-text) 58%, transparent); font-size: 10px; }
-.dynamic-object-dialog__add select { width: 100%; }
+.dynamic-object-dialog__add .ui-select-menu { width: 100%; }
 @media (max-width: 600px) {
   .dynamic-list-dialog__add { align-items: stretch; flex-wrap: wrap; }
   .dynamic-list-dialog__add > input { flex-basis: 100%; }

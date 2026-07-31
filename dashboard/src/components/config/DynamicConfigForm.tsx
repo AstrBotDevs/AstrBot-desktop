@@ -8,6 +8,7 @@ import { MdiIcon } from '@/components/icons/MdiIcon';
 import { ExpandCollapse } from '@/components/motion/ExpandCollapse';
 import { Button } from '@/components/ui/Button';
 import { DialogActions } from '@/components/ui/DialogActions';
+import { SelectControl } from '@/components/ui/SelectControl';
 import { toast } from '@/stores/feedback';
 import { ConfigSpecialSelector, isConfigSelectorSpecial, PersonaQuickPreview } from './ConfigSpecialControls';
 import { DashboardTotpManager, T2ITemplateEditor } from './ConfigSpecialEditors';
@@ -594,7 +595,7 @@ function ConfigControl({
   if (metadata.options?.length) {
     const selectedIndex = metadata.options.findIndex((option) => Object.is(option, value));
     return (
-      <select
+      <SelectControl
         disabled={disabled}
         onChange={(event) => onChange(metadata.options?.[Number(event.target.value)])}
         value={selectedIndex < 0 ? '' : selectedIndex}
@@ -605,7 +606,7 @@ function ConfigControl({
             {String(labels[index] ?? option)}
           </option>
         ))}
-      </select>
+      </SelectControl>
     );
   }
 

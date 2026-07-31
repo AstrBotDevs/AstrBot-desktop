@@ -131,7 +131,24 @@ html[data-theme='dark'] .chat-shell {
 .chat-project-session-row > span button { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 6px; color: var(--chat-muted); }
 .chat-project-session-row > span button:hover { background: color-mix(in srgb, var(--astrbot-text) 7%, transparent); color: var(--astrbot-text); }
 .chat-project-session-row > span button:last-child:hover { color: var(--astrbot-error); }
-.chat-project-session-progress { position: absolute; right: 8px; color: var(--astrbot-primary); animation: chat-spin .8s linear infinite; }
+.chat-project-session-row > .chat-project-session-progress {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  color: var(--astrbot-primary);
+  opacity: 1;
+  pointer-events: none;
+  transform: none;
+  visibility: visible;
+  animation: chat-spin .8s linear infinite;
+}
 .chat-project-session-row:hover > .chat-project-session-progress,
 .chat-project-session-row:focus-within > .chat-project-session-progress { display: none; }
 .chat-project-session-empty { padding: 5px 10px; color: var(--chat-muted); font-size: 13px; }
@@ -142,11 +159,11 @@ html[data-theme='dark'] .chat-shell {
 .chat-project-field { position: relative; display: grid; }
 .chat-project-field > span { position: absolute; z-index: 1; top: -8px; left: 12px; max-width: calc(100% - 24px); overflow: hidden; padding: 0 5px; background: var(--astrbot-surface); color: color-mix(in srgb, var(--astrbot-text) 58%, transparent); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .chat-project-field > input,
-.chat-project-field > select,
+.chat-project-field > .ui-select-menu > button,
 .chat-project-field > textarea { width: 100%; min-height: 46px; padding: 10px 13px; border: 1px solid var(--astrbot-border); border-radius: 8px; outline: 0; background: var(--astrbot-surface); color: inherit; font: inherit; }
 .chat-project-field > textarea { min-height: 92px; resize: vertical; }
 .chat-project-field > input:focus,
-.chat-project-field > select:focus,
+.chat-project-field > .ui-select-menu > button:focus-visible,
 .chat-project-field > textarea:focus { border-color: var(--astrbot-text); box-shadow: 0 0 0 1px var(--astrbot-text); }
 .chat-project-dialog__divider { height: 1px; margin: 3px 0 1px; background: var(--astrbot-border); }
 .chat-project-dialog__error { padding: 9px 11px; border-radius: 8px; background: color-mix(in srgb, var(--astrbot-error) 10%, var(--astrbot-surface)); color: var(--astrbot-error); font-size: 13px; }
@@ -167,6 +184,24 @@ html[data-theme='dark'] .chat-shell {
 .chat-session-list > div > div button { display: grid; width: 27px; height: 27px; place-items: center; border-radius: 6px; color: var(--chat-muted); }
 .chat-session-list > div > div .chat-sidebar-icon { width: 15px; height: 15px; }
 .chat-session-list > div > div button:hover { background: color-mix(in srgb, var(--astrbot-text) 7%, transparent); color: var(--astrbot-text); }
+.chat-session-list > div > button > .chat-session-progress {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  color: var(--astrbot-primary);
+  font-size: 0;
+  pointer-events: none;
+  animation: chat-spin .8s linear infinite;
+}
+.chat-session-list > div:hover .chat-session-progress,
+.chat-session-list > div:focus-within .chat-session-progress { display: none; }
 .chat-sessions__footer { position: relative; margin-top: auto; padding: 10px 16px 14px; }
 .chat-settings-menu { position: relative; }
 .chat-settings-menu > summary::-webkit-details-marker { display: none; }
@@ -431,7 +466,8 @@ html[data-theme='dark'] .chat-composer { border-color: rgb(255 255 255 / 12%); b
 .chat-composer-menu__upload { position: relative; cursor: pointer; }
 .chat-composer-menu__upload input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .chat-composer-menu__config { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 8px; padding: 7px 8px; color: var(--chat-muted); font-size: 12px; }
-.chat-composer-menu__config select { grid-column: 1 / -1; width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid var(--astrbot-border); border-radius: 7px; background: var(--astrbot-surface); color: inherit; }
+.chat-composer-menu__config .ui-select-menu { grid-column: 1 / -1; min-width: 0; }
+.chat-composer-menu__config .ui-select-menu > button { min-height: 38px; padding: 7px 8px; border-radius: 7px; color: inherit; }
 .chat-composer-menu__config small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-record { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 50% !important; color: var(--astrbot-text); font-size: 20px; }
 .chat-record:hover { background: color-mix(in srgb, var(--astrbot-text) 5%, transparent) !important; }

@@ -17,6 +17,7 @@ import { MdiIcon } from '@/components/icons/MdiIcon';
 import { AsyncState } from '@/components/ui/AsyncState';
 import { Button, DialogCancel } from '@/components/ui/Button';
 import { DialogActions } from '@/components/ui/DialogActions';
+import { FloatingActionButton, FloatingActions } from '@/components/ui/FloatingActions';
 import { IconButton } from '@/components/ui/IconButton';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Pagination } from '@/components/ui/Pagination';
@@ -407,31 +408,19 @@ export default function KnowledgeBaseListPage() {
           totalItems={total}
         />
       )}
-      {typeof document !== 'undefined' &&
-        createPortal(
-          <div className="knowledge-fab-stack">
-            <button
-              aria-label={k('list.refresh')}
-              className="knowledge-fab"
-              disabled={loading}
-              onClick={() => void load()}
-              title={k('list.refresh')}
-              type="button"
-            >
-              <MdiIcon className={loading ? 'mdi-spin' : ''} name="mdi-refresh" />
-            </button>
-            <button
-              aria-label={k('list.create')}
-              className="knowledge-fab"
-              onClick={() => open()}
-              title={k('list.create')}
-              type="button"
-            >
-              <MdiIcon name="mdi-plus" />
-            </button>
-          </div>,
-          document.body,
-        )}
+      <FloatingActions>
+        <FloatingActionButton
+          aria-label={k('list.refresh')}
+          disabled={loading}
+          onClick={() => void load()}
+          title={k('list.refresh')}
+        >
+          <MdiIcon className={loading ? 'mdi-spin' : ''} name="mdi-refresh" />
+        </FloatingActionButton>
+        <FloatingActionButton aria-label={k('list.create')} onClick={() => open()} title={k('list.create')}>
+          <MdiIcon name="mdi-plus" />
+        </FloatingActionButton>
+      </FloatingActions>
       <Dialog
         onOpenChange={(openValue) => !openValue && close()}
         open={editing !== null}

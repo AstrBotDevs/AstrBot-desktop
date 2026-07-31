@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import { createApiKey, deleteApiKey, listApiKeys, revokeApiKey } from '@/api/openapi';
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { SelectControl } from '@/components/ui/SelectControl';
 import { externalLinks } from '@/config/links';
 import { useBrowserCapabilities } from '@/platform/BrowserCapabilitiesProvider';
 import { confirmAction, toast } from '@/stores/feedback';
@@ -152,7 +153,7 @@ export function ApiKeySettingsSection() {
           placeholder={t(`${prefix}.name`)}
           value={name}
         />
-        <select
+        <SelectControl
           aria-label={t(`${prefix}.expiresInDays`)}
           disabled={creating}
           onChange={(event) => setExpiry(event.target.value === 'permanent' ? 'permanent' : Number(event.target.value))}
@@ -163,7 +164,7 @@ export function ApiKeySettingsSection() {
           <option value={30}>{t(`${prefix}.expiryOptions.day30`)}</option>
           <option value={90}>{t(`${prefix}.expiryOptions.day90`)}</option>
           <option value="permanent">{t(`${prefix}.expiryOptions.permanent`)}</option>
-        </select>
+        </SelectControl>
         <button disabled={creating || !name.trim() || !scopes.length} onClick={() => void create()} type="button">
           <MdiIcon className={creating ? 'mdi-spin' : ''} name={creating ? 'mdi-loading' : 'mdi-key-plus'} />
           {t(`${prefix}.create`)}

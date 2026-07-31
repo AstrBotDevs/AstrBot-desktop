@@ -31,7 +31,6 @@ impl DesktopSettingsCache {
 pub(crate) enum DesktopSettingKey {
     LaunchAtLogin,
     SilentLaunch,
-    CloseToTray,
 }
 
 fn default_launch_at_login() -> bool {
@@ -42,18 +41,12 @@ fn default_silent_launch() -> bool {
     false
 }
 
-fn default_close_to_tray() -> bool {
-    true
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct DesktopSettings {
     #[serde(rename = "launchAtLogin", default = "default_launch_at_login")]
     pub(crate) launch_at_login: bool,
     #[serde(rename = "silentLaunch", default = "default_silent_launch")]
     pub(crate) silent_launch: bool,
-    #[serde(rename = "closeToTray", default = "default_close_to_tray")]
-    pub(crate) close_to_tray: bool,
     #[serde(flatten)]
     other: Map<String, Value>,
 }
@@ -63,7 +56,6 @@ impl Default for DesktopSettings {
         Self {
             launch_at_login: default_launch_at_login(),
             silent_launch: default_silent_launch(),
-            close_to_tray: default_close_to_tray(),
             other: Map::new(),
         }
     }
@@ -74,7 +66,6 @@ impl DesktopSettings {
         match key {
             DesktopSettingKey::LaunchAtLogin => self.launch_at_login = value,
             DesktopSettingKey::SilentLaunch => self.silent_launch = value,
-            DesktopSettingKey::CloseToTray => self.close_to_tray = value,
         }
     }
 }
@@ -246,22 +237,17 @@ mod tests {
         }
     }
 
-    fn settings(
-        launch_at_login: bool,
-        silent_launch: bool,
-        close_to_tray: bool,
-    ) -> DesktopSettings {
+    fn settings(launch_at_login: bool, silent_launch: bool) -> DesktopSettings {
         DesktopSettings {
             launch_at_login,
             silent_launch,
-            close_to_tray,
             ..DesktopSettings::default()
         }
     }
 
     #[test]
-    fn desktop_settings_default_preserves_existing_close_to_tray_behavior() {
-        assert_eq!(DesktopSettings::default(), settings(false, false, true));
+    fn desktop_settings_defaults_to_manual_launch() {
+        assert_eq!(DesktopSettings::default(), settings(false, false));
     }
 
     #[test]
@@ -276,10 +262,9 @@ mod tests {
         )
         .expect("write state");
 
-        assert_eq!(
-            read_desktop_settings(Some(&root)),
-            settings(true, true, false)
-        );
+        let settings = read_desktop_settings(Some(&root));
+        assert!(settings.launch_at_login);
+        assert!(settings.silent_launch);
     }
 
     #[test]
@@ -290,16 +275,13 @@ mod tests {
         fs::create_dir_all(path.parent().expect("state parent")).expect("create state parent");
         fs::write(&path, r#"{"silentLaunch":true}"#).expect("write state");
 
-        assert_eq!(
-            read_desktop_settings(Some(&root)),
-            settings(false, true, true)
-        );
+        assert_eq!(read_desktop_settings(Some(&root)), settings(false, true));
     }
 
     #[test]
     fn desktop_settings_cache_returns_updated_value_without_reloading_file() {
         let cache = DesktopSettingsCache::new(DesktopSettings::default());
-        let updated = settings(true, true, false);
+        let updated = settings(true, true);
 
         cache.set(updated.clone());
 
@@ -351,15 +333,15 @@ mod tests {
             DesktopSettings::default()
         );
 
-        let updated = write_desktop_setting(Some(&root), DesktopSettingKey::CloseToTray, false)
+        let updated = write_desktop_setting(Some(&root), DesktopSettingKey::SilentLaunch, true)
             .expect("write setting");
 
-        assert!(!updated.close_to_tray);
+        assert!(updated.silent_launch);
         let raw = fs::read_to_string(&path).expect("read state");
         let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse reset state");
         assert_eq!(
-            parsed.get("closeToTray").and_then(|value| value.as_bool()),
-            Some(false)
+            parsed.get("silentLaunch").and_then(|value| value.as_bool()),
+            Some(true)
         );
     }
 
@@ -388,9 +370,6 @@ mod tests {
             parsed.get("silentLaunch").and_then(|value| value.as_bool()),
             Some(false)
         );
-        assert_eq!(
-            parsed.get("closeToTray").and_then(|value| value.as_bool()),
-            Some(true)
-        );
+        assert!(parsed.get("closeToTray").is_none());
     }
 }

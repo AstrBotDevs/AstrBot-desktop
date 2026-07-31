@@ -7,6 +7,7 @@ import { decodeApiData, expectRecord, isRecord } from '@/api/response';
 import { Markdown } from '@/components/content/Markdown';
 import { Dialog } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { SelectMenu } from '@/components/ui/SelectMenu';
 import { toast } from '@/stores/feedback';
 import { loadWelcomeAnnouncement } from '@/services/announcementService';
 import PlatformPage from '@/routes/configuration/PlatformPage';
@@ -158,14 +159,17 @@ export default function WelcomePage() {
             <div className="onboarding-list__content">
               <h3>{t(`${prefix}.onboard.step3Title`)}</h3>
               <p>{t(`${prefix}.onboard.step3Desc`)}</p>
-              <select
+              <SelectMenu
+                ariaLabel={t(`${prefix}.onboard.step3Title`)}
                 disabled={savingRuntime}
-                onChange={(event) => void saveRuntime(event.target.value as ComputerAccessRuntime)}
+                onChange={(value) => void saveRuntime(value as ComputerAccessRuntime)}
+                options={[
+                  { id: 'local', name: t(`${prefix}.onboard.step3Allow`) },
+                  { id: 'none', name: t(`${prefix}.onboard.step3Deny`) },
+                ]}
+                placeholder={t(`${prefix}.onboard.step3Title`)}
                 value={runtime}
-              >
-                <option value="local">{t(`${prefix}.onboard.step3Allow`)}</option>
-                <option value="none">{t(`${prefix}.onboard.step3Deny`)}</option>
-              </select>
+              />
               <details className="onboarding-help">
                 <summary>{t(`${prefix}.onboard.step3HelpTitle`)}</summary>
                 <ol>

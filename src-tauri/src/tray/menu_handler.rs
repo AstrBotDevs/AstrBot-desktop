@@ -125,21 +125,6 @@ fn handle_silent_launch_toggle(app_handle: &AppHandle) {
     );
 }
 
-fn handle_close_to_tray_toggle(app_handle: &AppHandle) {
-    let Some(tray_state) = app_handle.try_state::<TrayMenuState>() else {
-        return;
-    };
-    let current_settings = app_handle.state::<DesktopSettingsCache>().get();
-    persist_bool_setting_and_update_tray(
-        app_handle,
-        desktop_settings::DesktopSettingKey::CloseToTray,
-        !current_settings.close_to_tray,
-        current_settings.close_to_tray,
-        &tray_state.close_to_tray_item,
-        actions::TRAY_MENU_CLOSE_TO_TRAY,
-    );
-}
-
 pub fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
     match actions::action_from_menu_id(menu_id) {
         Some(actions::TrayMenuAction::ToggleWindow) => window::actions::toggle_main_window(
@@ -193,7 +178,6 @@ pub fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
         }
         Some(actions::TrayMenuAction::LaunchAtLogin) => handle_launch_at_login_toggle(app_handle),
         Some(actions::TrayMenuAction::SilentLaunch) => handle_silent_launch_toggle(app_handle),
-        Some(actions::TrayMenuAction::CloseToTray) => handle_close_to_tray_toggle(app_handle),
         Some(actions::TrayMenuAction::Quit) => {
             lifecycle::events::handle_tray_quit(app_handle);
         }

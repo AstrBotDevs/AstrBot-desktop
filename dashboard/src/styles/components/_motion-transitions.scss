@@ -1,5 +1,5 @@
 /* Shared motion tokens for page and component transitions. */
-.full-layout__page > :not(.chat-shell) { animation: motion-page-in 0.26s ease-out both; }
+.full-layout__page > :not(.chat-shell) { animation: motion-page-in 0.26s ease-out backwards; }
 .headless-menu__content,
 .headless-popover__content,
 .provider-source-add[open] > .provider-source-add__menu,
@@ -24,7 +24,7 @@
 .provider-type-panel,
 .extension-detail__info,
 .extension-config-editor--detail,
-.extension-markdown { animation: motion-content-in 0.22s ease-out both; }
+.extension-markdown { animation: motion-content-in 0.22s ease-out backwards; }
 
 @keyframes motion-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes motion-fade-out { from { opacity: 1; } to { opacity: 0; } }
