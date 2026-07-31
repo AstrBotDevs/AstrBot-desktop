@@ -114,6 +114,11 @@
   min-height: 0;
 }
 
+.console-page--dialog {
+  width: 100%;
+  padding: 0;
+}
+
 .console-page .monitor-terminal {
   min-height: 0;
   max-height: none;
@@ -218,7 +223,25 @@
 .trace-record pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* Platform log and trace views mirror the original dashboard's full-height workspaces. */
-.console-header-react h1, .trace-header-react h1 { font-size: 32px; letter-spacing: -.025em; }
+.headless-dialog__content:has(.console-dialog) {
+  display: flex;
+  width: min(1180px, calc(100vw - clamp(24px, 9vw, 144px)));
+  height: min(680px, calc(100vh - clamp(24px, 12vh, 144px)));
+  max-height: calc(100vh - clamp(24px, 12vh, 144px));
+  flex-direction: column;
+  overflow: hidden;
+  padding: 24px 28px 28px;
+}
+.headless-dialog__content:has(.console-dialog) > .headless-dialog__title {
+  flex: 0 0 auto;
+  padding-right: 40px;
+  font-size: 28px;
+  font-weight: 750;
+}
+.console-dialog { flex: 1; min-height: 0; margin-top: 10px; overflow: hidden; }
+.console-dialog-close { position: absolute; top: 19px; right: 22px; display: grid; width: 34px; height: 34px; place-items: center; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--astrbot-text); cursor: pointer; font-size: 21px; }
+.console-dialog-close:hover { background: var(--astrbot-hover); color: var(--astrbot-primary); }
+.trace-header-react h1 { font-size: 32px; letter-spacing: -.025em; }
 .console-header-actions, .trace-header-actions { min-height: 40px; }
 .console-auto-scroll, .trace-recording-switch { display: inline-flex; align-items: center; gap: 10px; color: color-mix(in srgb, var(--astrbot-text) 68%, transparent); cursor: pointer; font-size: 13px; white-space: nowrap; }
 .trace-recording-switch > .mdi { color: var(--astrbot-primary); }

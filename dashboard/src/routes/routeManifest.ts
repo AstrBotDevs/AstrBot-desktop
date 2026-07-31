@@ -10,7 +10,6 @@ export const routeManifest: readonly RouteManifestEntry[] = [
   { path: '/welcome' },
   { path: '/about' },
   { path: '/dashboard/default' },
-  { path: '/console' },
   { path: '/trace' },
   { path: '/conversation' },
   { path: '/session-management' },

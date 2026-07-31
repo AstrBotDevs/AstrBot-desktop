@@ -13,7 +13,7 @@ import { useLogFeed } from './useLogFeed';
 const levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] as const;
 const levelClass = (level = '') => `console-log-line console-log-line--${level.toLowerCase()}`;
 
-export default function ConsolePage() {
+export default function ConsolePanel() {
   const { t } = useTranslation();
   const filter = useCallback((item: LogItem) => item.type !== 'trace', []);
   const { items } = useLogFeed(filter, 500);
@@ -79,10 +79,9 @@ export default function ConsolePage() {
   };
 
   return (
-    <div className="monitor-page console-page">
+    <div className="monitor-page console-page console-page--dialog">
       <header className="monitor-header console-header-react">
         <div>
-          <h1>{t('features.console.title')}</h1>
           <p>{t('features.console.debugHint.text')}</p>
         </div>
         <div className="monitor-actions console-header-actions">

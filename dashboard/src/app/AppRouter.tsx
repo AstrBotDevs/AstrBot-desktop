@@ -12,7 +12,6 @@ import { RouteErrorPage } from '@/app/RouteErrorPage';
 const WelcomePage = lazy(() => import('@/routes/welcome/WelcomePage'));
 const AboutPage = lazy(() => import('@/routes/about/AboutPage'));
 const StatsPage = lazy(() => import('@/routes/monitoring/StatsPage'));
-const ConsolePage = lazy(() => import('@/routes/monitoring/ConsolePage'));
 const TracePage = lazy(() => import('@/routes/monitoring/TracePage'));
 const ConversationPage = lazy(() => import('@/routes/monitoring/ConversationPage'));
 const PlatformPage = lazy(() => import('@/routes/configuration/PlatformPage'));
@@ -50,7 +49,6 @@ const reactRouteElements: Partial<Record<string, React.ReactNode>> = {
   '/welcome': loading(<WelcomePage />),
   '/about': loading(<AboutPage />),
   '/dashboard/default': loading(<StatsPage />),
-  '/console': loading(<ConsolePage />),
   '/trace': loading(<TracePage />),
   '/conversation': loading(<ConversationPage />),
   '/session-management': loading(<SessionManagementPage />),

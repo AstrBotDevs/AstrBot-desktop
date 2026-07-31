@@ -14,19 +14,16 @@ type FullLayoutProps = PropsWithChildren<{
 
 export type FullLayoutMode = {
   isChatRoute: boolean;
-  isConsoleRoute: boolean;
   isPluginPageRoute: boolean;
   isFullScreenRoute: boolean;
 };
 
 export function getFullLayoutMode(pathname: string): FullLayoutMode {
   const isChatRoute = pathname === '/chat' || pathname.startsWith('/chat/');
-  const isConsoleRoute = pathname === '/console';
   const isPluginPageRoute = pathname.startsWith('/plugin-page/');
 
   return {
     isChatRoute,
-    isConsoleRoute,
     isPluginPageRoute,
     isFullScreenRoute: isChatRoute || isPluginPageRoute,
   };
@@ -46,7 +43,6 @@ export function FullLayout({
     'full-layout',
     !showSidebar && 'full-layout--without-sidebar',
     mode.isChatRoute && 'full-layout--chat',
-    mode.isConsoleRoute && 'full-layout--console',
     isVisualConfigRoute && 'full-layout--visual-config',
   ]
     .filter(Boolean)
@@ -54,7 +50,6 @@ export function FullLayout({
   const pageClassName = [
     'full-layout__page',
     mode.isFullScreenRoute && 'full-layout__page--fullscreen',
-    mode.isConsoleRoute && 'full-layout__page--console',
     mode.isPluginPageRoute && 'full-layout__page--plugin',
     isVisualConfigRoute && 'full-layout__page--visual-config',
   ]
@@ -65,9 +60,7 @@ export function FullLayout({
     <div
       className={layoutClassName}
       data-layout="full"
-      data-layout-mode={
-        mode.isChatRoute ? 'chat' : mode.isConsoleRoute ? 'console' : mode.isPluginPageRoute ? 'plugin' : 'standard'
-      }
+      data-layout-mode={mode.isChatRoute ? 'chat' : mode.isPluginPageRoute ? 'plugin' : 'standard'}
     >
       {header != null && <header className="full-layout__header">{header}</header>}
       {showSidebar && <aside className="full-layout__sidebar">{sidebar}</aside>}
