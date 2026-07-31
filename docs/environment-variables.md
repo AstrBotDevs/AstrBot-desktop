@@ -36,7 +36,7 @@ WebUI 源码固定来自本仓库 `dashboard/`，`pnpm run prepare:webui` 不解
 
 本地开发推荐把这些变量写入仓库根目录 `.env`（从 `.env.example` 复制）。Tauri 的 `dev`/`build` 启动脚本及资源准备入口会自动加载该文件，同时保留外部进程环境变量的更高优先级。
 
-默认开发流程不设置 `ASTRBOT_SOURCE_DIR`；`pnpm run dev` 会根据 `ASTRBOT_SOURCE_GIT_URL` / `ASTRBOT_SOURCE_GIT_REF` 将源码准备到 `vendor/AstrBot`。`ASTRBOT_SOURCE_DIR` 仅作为显式本地源码覆盖项。
+默认开发流程不设置 `ASTRBOT_SOURCE_DIR`；`pnpm run dev` 会根据 `ASTRBOT_SOURCE_GIT_URL` / `ASTRBOT_SOURCE_GIT_REF` 将源码准备到 `vendor/AstrBot`，并在同步后删除上游源码中的 `dashboard/`。`ASTRBOT_SOURCE_DIR` 仅作为显式本地源码覆盖项，其目录内容不会被资源准备脚本删除。
 
 | 变量 | 用途 | 默认值/行为 |
 | --- | --- | --- |

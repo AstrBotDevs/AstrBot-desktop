@@ -42,7 +42,7 @@ ASTRBOT_SOURCE_GIT_URL=https://github.com/AstrBotDevs/AstrBot.git
 ASTRBOT_SOURCE_GIT_REF=master
 ```
 
-`.env` 仅用于本机且已被 Git 忽略。`pnpm run dev` 会自动把远端源码准备到 `vendor/AstrBot` 后再启动；`pnpm run build` 和资源准备脚本也会自动加载 `.env`。已有的进程环境变量优先级高于 `.env`。仅在明确需要使用现有本地源码时才设置 `ASTRBOT_SOURCE_DIR`。
+`.env` 仅用于本机且已被 Git 忽略。`pnpm run dev` 会自动把远端源码准备到 `vendor/AstrBot` 后再启动；`pnpm run build` 和资源准备脚本也会自动加载 `.env`。已有的进程环境变量优先级高于 `.env`。托管源码同步完成后会删除上游仓库自带的 `dashboard/`，确保桌面端只使用本仓库维护的 React Dashboard。仅在明确需要使用现有本地源码时才设置 `ASTRBOT_SOURCE_DIR`；显式指定的源码目录由用户管理，不会执行上述删除。
 
 推荐直接使用 Makefile：
 
