@@ -190,8 +190,6 @@
 .knowledge-tavily.is-configured { color: var(--astrbot-success); }
 .knowledge-tavily > span { flex: 1; }
 .knowledge-tavily > button { border: 0; background: transparent; color: var(--astrbot-primary); cursor: pointer; font-weight: 650; }
-.welcome-onboarding-dialog { width: min(1120px, 86vw); max-height: 74vh; overflow: auto; }
-.welcome-onboarding-dialog .route-page__heading { display: none; }
 .knowledge-upload__settings h3 { width: 100%; margin: 0; font-size: 13px; }
 .knowledge-upload__settings span { font-size: 11px; }
 
