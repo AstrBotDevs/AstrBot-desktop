@@ -19,6 +19,7 @@
   const BRIDGE_COMMANDS = Object.freeze({
     IS_DESKTOP_RUNTIME: 'desktop_bridge_is_desktop_runtime',
     GET_BACKEND_STATE: 'desktop_bridge_get_backend_state',
+    GET_AUTH_SESSION: 'desktop_bridge_get_auth_session',
     SET_AUTH_TOKEN: 'desktop_bridge_set_auth_token',
     SET_SHELL_LOCALE: 'desktop_bridge_set_shell_locale',
     GET_APP_UPDATE_CHANNEL: 'desktop_bridge_get_app_update_channel',
@@ -742,6 +743,7 @@
     isDesktopRuntime: () =>
       isRuntimeBridgeEnabled(BRIDGE_COMMANDS.IS_DESKTOP_RUNTIME, true),
     getBackendState: () => invokeBridge(BRIDGE_COMMANDS.GET_BACKEND_STATE),
+    getAuthSession: () => invokeBridge(BRIDGE_COMMANDS.GET_AUTH_SESSION),
     restartBackend: async (authToken = null) => {
       const normalizedToken =
         typeof authToken === 'string' && authToken ? authToken : getStoredAuthToken();

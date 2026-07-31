@@ -20,6 +20,7 @@
   "bootstrap": {
     "starting": "正在启动 AstrBot 后端…",
     "timeout": "AstrBot 后端启动超时。",
+    "desktopAuthFailed": "AstrBot 桌面会话初始化失败。",
     "retry": "重试"
   },
   "notFound": "页面不存在",

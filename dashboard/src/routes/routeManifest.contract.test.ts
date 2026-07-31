@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { matchRoutes } from 'react-router-dom';
 
-import { routeLayout, routeManifest, routePaths, routeRequiresAuth } from './routeManifest';
+import { routeLayout, routeManifest, routePaths } from './routeManifest';
 
 describe('route manifest contract', () => {
   it('contains each route only once', () => {
@@ -15,8 +15,6 @@ describe('route manifest contract', () => {
     expect(routePaths).toEqual([
       '/',
       '/main',
-      '/auth/login',
-      '/auth/setup',
       '/welcome',
       '/about',
       '/dashboard/default',
@@ -52,7 +50,6 @@ describe('route manifest contract', () => {
     const paths = new Set(routeManifest.map((route) => route.path));
 
     const requiredPaths = [
-      '/auth/login',
       '/welcome',
       '/extension/:pluginId',
       '/knowledge-base/:kbId/document/:docId',
@@ -61,16 +58,7 @@ describe('route manifest contract', () => {
     expect(requiredPaths.every((path) => paths.has(path))).toBe(true);
   });
 
-  it('keeps only authentication entry routes public', () => {
-    expect(routeRequiresAuth('/auth/login')).toBe(false);
-    expect(routeRequiresAuth('/auth/setup')).toBe(false);
-    expect(routeRequiresAuth('/dashboard/default')).toBe(true);
-    expect(routeRequiresAuth('/missing')).toBe(true);
-  });
-
   it('assigns shared layouts without exposing chatbox routes', () => {
-    expect(routeLayout('/auth/login')).toBe('public-blank');
-    expect(routeRequiresAuth('/chatbox/session-2')).toBe(true);
     expect(routeLayout('/chatbox/:conversationId')).toBe('protected-blank');
     expect(routeLayout('/settings')).toBe('protected-full');
   });

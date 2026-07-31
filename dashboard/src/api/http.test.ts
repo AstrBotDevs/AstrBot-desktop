@@ -48,28 +48,28 @@ describe('apiRequest', () => {
     expect(onUnauthorized).toHaveBeenCalledOnce();
   });
 
-  it('does not redirect when login itself returns an authentication challenge', async () => {
+  it('expires the session for every unauthorized API response', async () => {
     const onUnauthorized = vi.fn();
 
     await expect(
       apiRequest(
-        '/api/v1/auth/login',
+        '/api/v1/auth/totp/setup',
         {},
         {
-          fetch: vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ message: 'TOTP required' }, 401)),
+          fetch: vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ message: 'expired' }, 401)),
           onUnauthorized,
           storage: memoryStorage(),
         },
       ),
     ).rejects.toBeInstanceOf(ApiError);
 
-    expect(onUnauthorized).not.toHaveBeenCalled();
+    expect(onUnauthorized).toHaveBeenCalledOnce();
   });
 
   it('accepts an empty successful response', async () => {
     await expect(
       apiRequest(
-        '/api/v1/auth/logout',
+        '/api/v1/system/restart',
         {},
         {
           fetch: vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 })),

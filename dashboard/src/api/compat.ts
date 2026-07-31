@@ -45,10 +45,7 @@ export const compatibilityExitPlan: readonly CompatibilityExitItem[] = [
 ] as const;
 
 export type VersionData = {
-  change_pwd_hint?: boolean;
   dashboard_version?: string;
-  md5_pwd_hint?: boolean;
-  password_upgrade_required?: boolean;
   version?: string;
 };
 

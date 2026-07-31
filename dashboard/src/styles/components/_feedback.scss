@@ -135,6 +135,17 @@
   color: #fff;
 }
 
+.upgrade-recovery-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-left: 4px solid var(--astrbot-error);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--astrbot-error) 10%, transparent);
+}
+
 .not-found {
   display: grid;
   place-content: center;

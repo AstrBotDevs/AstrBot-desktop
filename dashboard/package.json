@@ -19,7 +19,6 @@
   },
   "dependencies": {
     "@hey-api/client-axios": "0.2.12",
-    "@hookform/resolvers": "5.4.0",
     "@radix-ui/react-dialog": "1.1.19",
     "@streamdown/cjk": "1.0.3",
     "@streamdown/code": "1.1.1",
@@ -33,11 +32,9 @@
     "qrcode": "^1.5.4",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "react-hook-form": "7.80.0",
     "react-i18next": "17.0.8",
     "react-router-dom": "7.18.0",
     "streamdown": "2.5.0",
-    "yup": "1.7.1",
     "zustand": "5.0.14"
   },
   "devDependencies": {

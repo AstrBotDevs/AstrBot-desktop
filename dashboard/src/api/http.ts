@@ -1,15 +1,6 @@
 import { clearAuthSession, readAuthToken } from '@/auth/storage';
 import { localePreference } from '@/config/preferences';
 
-const AUTH_CHALLENGE_PATHS = new Set([
-  '/api/auth/login',
-  '/api/auth/setup',
-  '/api/auth/setup-status',
-  '/api/v1/auth/login',
-  '/api/v1/auth/setup',
-  '/api/v1/auth/setup-status',
-]);
-
 export const AUTH_SESSION_EXPIRED_EVENT = 'astrbot:auth-session-expired';
 
 export type ApiEnvelope<T> = {
@@ -135,13 +126,7 @@ export function readApiErrorMessage(payload: unknown, fallback: string) {
 export function shouldExpireSession(path: string) {
   const origin = typeof window === 'undefined' ? 'http://localhost' : window.location.origin;
   const pathname = new URL(path, origin).pathname;
-  return pathname.startsWith('/api/') && !AUTH_CHALLENGE_PATHS.has(pathname);
-}
-
-export function redirectToLogin() {
-  if (typeof window !== 'undefined' && !window.location.hash.startsWith('#/auth/login')) {
-    window.location.hash = '/auth/login';
-  }
+  return pathname.startsWith('/api/');
 }
 
 export function expireUnauthorizedSession(
@@ -155,6 +140,6 @@ export function expireUnauthorizedSession(
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event(AUTH_SESSION_EXPIRED_EVENT));
   }
-  (onUnauthorized ?? redirectToLogin)();
+  onUnauthorized?.();
   return true;
 }

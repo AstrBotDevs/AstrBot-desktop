@@ -20,6 +20,7 @@
   "bootstrap": {
     "starting": "Starting the AstrBot backend…",
     "timeout": "The AstrBot backend took too long to start.",
+    "desktopAuthFailed": "The AstrBot desktop session could not be initialized.",
     "retry": "Retry"
   },
   "notFound": "Page not found",

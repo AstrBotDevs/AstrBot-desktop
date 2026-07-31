@@ -2,15 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
-import { authApi } from '@/api/auth';
-import { statsApi, updatesApi } from '@/api/compat';
+import { updatesApi } from '@/api/compat';
 import { Dialog } from '@/components/headless/Dialog';
 import { Menu, MenuItem } from '@/components/headless/Menu';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import { Button, DialogCancel } from '@/components/ui/Button';
 import { DialogActions } from '@/components/ui/DialogActions';
 import { errorMessage, JsonObject, responseData } from '@/routes/configuration/model';
-import { useAuthStore } from '@/stores/auth';
 import { toast } from '@/stores/feedback';
 import { type ThemeMode, useLayoutStore } from '@/stores/layout';
 import { useDesktopStore } from '@/stores/desktop';
@@ -23,13 +21,6 @@ import {
   LAST_CHAT_ROUTE_KEY,
   runHeaderUpdateAction,
 } from './headerModel';
-import {
-  passwordWarningFromFlags,
-  persistPasswordSecurityFlags,
-  readPasswordWarning,
-  type PasswordSecurityFlags,
-  type PasswordWarning,
-} from './shellStartup';
 
 const themeOptions: Array<{ icon: `mdi-${string}`; mode: ThemeMode; labelKey: string }> = [
   { icon: 'mdi-white-balance-sunny', mode: 'light', labelKey: 'core.header.buttons.theme.light' },
@@ -49,10 +40,6 @@ export function Header() {
   const [updateChecking, setUpdateChecking] = useState(false);
   const [updateInstalling, setUpdateInstalling] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<JsonObject>({});
-  const [accountOpen, setAccountOpen] = useState(false);
-  const [accountWarning, setAccountWarning] = useState<PasswordWarning>(() => readPasswordWarning(localStorage));
-  const [accountSaving, setAccountSaving] = useState(false);
-  const [account, setAccount] = useState({ password: '', newPassword: '', confirmPassword: '', username: '' });
   const submenuTimer = useRef<number | null>(null);
   const drawerOpen = useLayoutStore((state) => state.drawerOpen);
   const chatSidebarOpen = useLayoutStore((state) => state.chatSidebarOpen);
@@ -63,7 +50,6 @@ export function Header() {
   const toggleDrawer = useLayoutStore((state) => state.toggleDrawer);
   const toggleChatSidebar = useLayoutStore((state) => state.toggleChatSidebar);
   const toggleMiniSidebar = useLayoutStore((state) => state.toggleMiniSidebar);
-  const clearSession = useAuthStore((state) => state.clearSession);
   const isDesktop = useDesktopStore((state) => state.isDesktop);
   const { checkForUpdate: checkDesktopUpdate, installUpdate: installDesktopUpdate } = useDesktop();
   const isChat = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
@@ -103,30 +89,6 @@ export function Header() {
     },
     [],
   );
-
-  useEffect(() => {
-    if (accountWarning) setAccountOpen(true);
-    let active = true;
-    void statsApi
-      .version()
-      .then((response) => {
-        if (!active) return;
-        const data = responseData<JsonObject>(response) ?? {};
-        const flags: PasswordSecurityFlags = {
-          change_pwd_hint: Boolean(data.change_pwd_hint),
-          md5_pwd_hint: Boolean(data.md5_pwd_hint),
-          password_upgrade_required: Boolean(data.password_upgrade_required),
-        };
-        persistPasswordSecurityFlags(flags, localStorage);
-        const warning = passwordWarningFromFlags(flags);
-        setAccountWarning(warning);
-        if (warning) setAccountOpen(true);
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const currentLanguage = localeMetadata(i18n.language);
   const currentTheme = themeOptions.find((item) => item.mode === themeMode) || themeOptions[0];
@@ -198,59 +160,6 @@ export function Header() {
       toast.error(errorMessage(cause, t('core.header.updateDialog.progress.failed')));
     } finally {
       setUpdateInstalling(false);
-    }
-  };
-
-  const saveAccount = async () => {
-    if (!account.password) {
-      toast.warning(t('core.header.accountDialog.validation.passwordRequired'));
-      return;
-    }
-    if (account.newPassword && account.newPassword !== account.confirmPassword) {
-      toast.warning(t('core.header.accountDialog.validation.passwordMatch'));
-      return;
-    }
-    if (account.newPassword && account.newPassword.length < 8) {
-      toast.warning(t('core.header.accountDialog.validation.passwordMinLength'));
-      return;
-    }
-    if (account.newPassword && !/[A-Z]/.test(account.newPassword)) {
-      toast.warning(t('core.header.accountDialog.validation.passwordUppercase'));
-      return;
-    }
-    if (account.newPassword && !/[a-z]/.test(account.newPassword)) {
-      toast.warning(t('core.header.accountDialog.validation.passwordLowercase'));
-      return;
-    }
-    if (account.newPassword && !/\d/.test(account.newPassword)) {
-      toast.warning(t('core.header.accountDialog.validation.passwordDigit'));
-      return;
-    }
-    if (account.username.trim() && account.username.trim().length < 3) {
-      toast.warning(t('core.header.accountDialog.validation.usernameMinLength'));
-      return;
-    }
-    setAccountSaving(true);
-    try {
-      const response = await authApi.updateAccount({
-        password: account.password,
-        new_password: account.newPassword || undefined,
-        confirm_password: account.confirmPassword || undefined,
-        new_username: account.username.trim() || undefined,
-      });
-      if (response.data.status === 'error') {
-        throw new Error(response.data.message || t('core.header.accountDialog.messages.updateFailed'));
-      }
-      await authApi.logout().catch(() => undefined);
-      setAccountOpen(false);
-      setAccountWarning(null);
-      setAccount({ password: '', newPassword: '', confirmPassword: '', username: '' });
-      clearSession();
-      void navigate('/auth/login', { replace: true });
-    } catch (cause) {
-      toast.error(errorMessage(cause, t('core.header.accountDialog.messages.updateFailed')));
-    } finally {
-      setAccountSaving(false);
     }
   };
 
@@ -411,12 +320,6 @@ export function Header() {
               {t('core.header.updateDialog.title')}
             </span>
           </MenuItem>
-          <MenuItem onSelect={() => setAccountOpen(true)}>
-            <span className="headless-menu__item-label">
-              <MdiIcon name="mdi-account" />
-              {t('core.header.accountDialog.title')}
-            </span>
-          </MenuItem>
         </Menu>
       </div>
       <Dialog onOpenChange={setUpdateOpen} open={updateOpen} title={t('core.header.updateDialog.title')}>
@@ -445,7 +348,7 @@ export function Header() {
                 : t('core.header.updateDialog.dashboardUpdate.isLatest')}
           </p>
           <DialogActions>
-            <DialogCancel>{t('core.header.accountDialog.actions.cancel')}</DialogCancel>
+            <DialogCancel>{t('core.actions.close')}</DialogCancel>
             <Button disabled={updateChecking} onClick={() => void loadUpdate()}>
               {t('core.header.buttons.update')}
             </Button>
@@ -457,59 +360,6 @@ export function Header() {
               {updateInstalling
                 ? t('core.header.updateDialog.status.updating')
                 : t('core.header.updateDialog.updateToLatest')}
-            </Button>
-          </DialogActions>
-        </div>
-      </Dialog>
-      <Dialog onOpenChange={setAccountOpen} open={accountOpen} title={t('core.header.accountDialog.title')}>
-        <div className="dialog-form header-account-form">
-          {accountWarning && (
-            <p className="auth-warning" role="status">
-              {t(
-                `core.header.accountDialog.${accountWarning === 'upgrade' ? 'securityWarningUpgrade' : accountWarning === 'md5' ? 'securityWarningMd5' : 'securityWarning'}`,
-              )}
-            </p>
-          )}
-          <label>
-            {t('core.header.accountDialog.form.currentPassword')}
-            <input
-              autoComplete="current-password"
-              onChange={(event) => setAccount({ ...account, password: event.target.value })}
-              type="password"
-              value={account.password}
-            />
-          </label>
-          <label>
-            {t('core.header.accountDialog.form.newPassword')}
-            <input
-              autoComplete="new-password"
-              onChange={(event) => setAccount({ ...account, newPassword: event.target.value })}
-              type="password"
-              value={account.newPassword}
-            />
-            <small>{t('core.header.accountDialog.form.passwordHint')}</small>
-          </label>
-          <label>
-            {t('core.header.accountDialog.form.confirmPassword')}
-            <input
-              autoComplete="new-password"
-              onChange={(event) => setAccount({ ...account, confirmPassword: event.target.value })}
-              type="password"
-              value={account.confirmPassword}
-            />
-          </label>
-          <label>
-            {t('core.header.accountDialog.form.newUsername')}
-            <input
-              autoComplete="username"
-              onChange={(event) => setAccount({ ...account, username: event.target.value })}
-              value={account.username}
-            />
-          </label>
-          <DialogActions>
-            <DialogCancel>{t('core.header.accountDialog.actions.cancel')}</DialogCancel>
-            <Button disabled={accountSaving} onClick={() => void saveAccount()} variant="primary">
-              {t('core.header.accountDialog.actions.save')}
             </Button>
           </DialogActions>
         </div>

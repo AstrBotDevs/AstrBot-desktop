@@ -20,13 +20,11 @@ function createStorage(): Storage {
   };
 }
 
-describe('auth storage compatibility', () => {
-  it('persists the existing dashboard session keys', () => {
+describe('desktop session storage', () => {
+  it('persists the token and username used by API requests', () => {
     const storage = createStorage();
     persistAuthSession(
       {
-        changePwdHint: true,
-        passwordUpgradeRequired: true,
         token: 'secret',
         username: 'astrbot',
       },
@@ -35,34 +33,14 @@ describe('auth storage compatibility', () => {
 
     expect(readAuthToken(storage)).toBe('secret');
     expect(storage.getItem('user')).toBe('astrbot');
-    expect(storage.getItem('change_pwd_hint')).toBe('true');
-    expect(storage.getItem('md5_pwd_hint')).toBeNull();
-    expect(storage.getItem('password_upgrade_required')).toBe('true');
   });
 
-  it('clears every authentication compatibility key', () => {
+  it('clears the desktop session keys', () => {
     const storage = createStorage();
     AUTH_STORAGE_KEYS.forEach((key) => storage.setItem(key, 'value'));
 
     clearAuthSession(storage);
 
     expect(AUTH_STORAGE_KEYS.every((key) => storage.getItem(key) === null)).toBe(true);
-  });
-
-  it('keeps the legacy MD5 warning precedence', () => {
-    const storage = createStorage();
-    persistAuthSession(
-      {
-        md5PwdHint: true,
-        passwordUpgradeRequired: true,
-        token: 'secret',
-        username: 'astrbot',
-      },
-      storage,
-    );
-
-    expect(storage.getItem('change_pwd_hint')).toBeNull();
-    expect(storage.getItem('md5_pwd_hint')).toBeNull();
-    expect(storage.getItem('password_upgrade_required')).toBe('true');
   });
 });

@@ -213,6 +213,11 @@ pub(crate) fn desktop_bridge_get_backend_state(app_handle: AppHandle) -> Backend
 }
 
 #[tauri::command]
+pub(crate) fn desktop_bridge_get_auth_session() -> crate::desktop_auth::DesktopAuthSessionResult {
+    crate::desktop_auth::create_desktop_auth_session()
+}
+
+#[tauri::command]
 pub(crate) fn desktop_bridge_set_auth_token(
     app_handle: AppHandle,
     auth_token: Option<String>,

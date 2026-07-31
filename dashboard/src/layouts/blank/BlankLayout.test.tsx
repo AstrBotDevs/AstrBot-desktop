@@ -8,27 +8,27 @@ describe('BlankLayout', () => {
   it('renders explicit page content in the layout container', () => {
     const markup = renderToStaticMarkup(
       <BlankLayout>
-        <p>Authentication page</p>
+        <p>Chat page</p>
       </BlankLayout>,
     );
 
     expect(markup).toContain('class="blank-layout"');
     expect(markup).toContain('data-layout="blank"');
-    expect(markup).toContain('>Authentication page<');
+    expect(markup).toContain('>Chat page<');
   });
 
   it('renders nested route content through its outlet', () => {
     const markup = renderToStaticMarkup(
-      <MemoryRouter initialEntries={['/auth/login']}>
+      <MemoryRouter initialEntries={['/chatbox/session-1']}>
         <Routes>
           <Route element={<BlankLayout />}>
-            <Route path="/auth/login" element={<p>Login route</p>} />
+            <Route path="/chatbox/:conversationId" element={<p>Chatbox route</p>} />
           </Route>
         </Routes>
       </MemoryRouter>,
     );
 
     expect(markup).toContain('class="blank-layout"');
-    expect(markup).toContain('>Login route<');
+    expect(markup).toContain('>Chatbox route<');
   });
 });

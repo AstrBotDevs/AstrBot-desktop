@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { authApi } from '@/api/auth';
 import { statsApi } from '@/api/compat';
 import { sessionStorageKeys } from '@/config/storageKeys';
 import {
@@ -9,7 +8,6 @@ import {
   normalizeVersion,
   restartPollDecision,
   restartLegacyCore,
-  UPGRADE_RECOVERY_EVENT,
   UPGRADE_RECOVERY_TOKEN_KEY,
   type UpgradeRecoveryDetail,
   versionsMismatch,
@@ -51,20 +49,14 @@ export function UpgradeRecoveryDialog() {
   }, []);
 
   useEffect(() => {
-    const handle = (event: Event) => {
-      void show((event as CustomEvent<UpgradeRecoveryDetail>).detail ?? {});
-    };
-    window.addEventListener(UPGRADE_RECOVERY_EVENT, handle);
-    void authApi
-      .setupStatus()
+    void statsApi
+      .version()
       .then(async (response) => {
         if (!response.legacyFallback) return;
-        const versionResponse = await statsApi.version();
-        await show(versionResponse.data.data ?? {});
+        await show(response.data.data ?? {});
       })
       .catch(() => undefined);
     return () => {
-      window.removeEventListener(UPGRADE_RECOVERY_EVENT, handle);
       stopTimer();
     };
   }, [show, stopTimer]);
@@ -137,7 +129,7 @@ export function UpgradeRecoveryDialog() {
             dashboardVersion: displayVersion(detail?.dashboard_version),
           })}
         </p>
-        <div className="auth-warning">
+        <div className="upgrade-recovery-warning">
           <MdiIcon name="mdi-alert" />
           {t('core.common.upgradeRecovery.hint')}
         </div>

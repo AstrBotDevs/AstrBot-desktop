@@ -22,7 +22,6 @@ import zhCNConsole from './locales/zh-CN/features/console.json';
 import zhCNTrace from './locales/zh-CN/features/trace.json';
 import zhCNAbout from './locales/zh-CN/features/about.json';
 import zhCNSettings from './locales/zh-CN/features/settings.json';
-import zhCNAuth from './locales/zh-CN/features/auth.json';
 import zhCNCron from './locales/zh-CN/features/cron.json';
 import zhCNStats from './locales/zh-CN/features/stats.json';
 import zhCNKnowledgeBaseIndex from './locales/zh-CN/features/knowledge-base/index.json';
@@ -58,7 +57,6 @@ import enUSConsole from './locales/en-US/features/console.json';
 import enUSTrace from './locales/en-US/features/trace.json';
 import enUSAbout from './locales/en-US/features/about.json';
 import enUSSettings from './locales/en-US/features/settings.json';
-import enUSAuth from './locales/en-US/features/auth.json';
 import enUSCron from './locales/en-US/features/cron.json';
 import enUSStats from './locales/en-US/features/stats.json';
 import enUSKnowledgeBaseIndex from './locales/en-US/features/knowledge-base/index.json';
@@ -94,7 +92,6 @@ import ruRUConsole from './locales/ru-RU/features/console.json';
 import ruRUTrace from './locales/ru-RU/features/trace.json';
 import ruRUAbout from './locales/ru-RU/features/about.json';
 import ruRUSettings from './locales/ru-RU/features/settings.json';
-import ruRUAuth from './locales/ru-RU/features/auth.json';
 import ruRUCron from './locales/ru-RU/features/cron.json';
 import ruRUStats from './locales/ru-RU/features/stats.json';
 import ruRUKnowledgeBaseIndex from './locales/ru-RU/features/knowledge-base/index.json';
@@ -134,7 +131,6 @@ export const translations = {
       trace: zhCNTrace,
       about: zhCNAbout,
       settings: zhCNSettings,
-      auth: zhCNAuth,
       cron: zhCNCron,
       stats: zhCNStats,
       'knowledge-base': {
@@ -176,7 +172,6 @@ export const translations = {
       trace: enUSTrace,
       about: enUSAbout,
       settings: enUSSettings,
-      auth: enUSAuth,
       cron: enUSCron,
       stats: enUSStats,
       'knowledge-base': {
@@ -218,7 +213,6 @@ export const translations = {
       trace: ruRUTrace,
       about: ruRUAbout,
       settings: ruRUSettings,
-      auth: ruRUAuth,
       cron: ruRUCron,
       stats: ruRUStats,
       'knowledge-base': {
