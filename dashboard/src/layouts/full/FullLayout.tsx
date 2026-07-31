@@ -3,9 +3,11 @@ import { Outlet, useLocation } from 'react-router-dom';
 
 import { Header } from './Header';
 import { FirstNoticeDialog } from './FirstNoticeDialog';
+import { Footer } from './Footer';
 import { Sidebar } from './Sidebar';
 
 type FullLayoutProps = PropsWithChildren<{
+  footer?: ReactNode;
   header?: ReactNode;
   sidebar?: ReactNode;
 }>;
@@ -30,7 +32,12 @@ export function getFullLayoutMode(pathname: string): FullLayoutMode {
   };
 }
 
-export function FullLayout({ children, header = <Header />, sidebar = <Sidebar /> }: FullLayoutProps) {
+export function FullLayout({
+  children,
+  footer = <Footer />,
+  header = <Header />,
+  sidebar = <Sidebar />,
+}: FullLayoutProps) {
   const { pathname } = useLocation();
   const mode = getFullLayoutMode(pathname);
   const isVisualConfigRoute = pathname === '/config';
@@ -67,6 +74,7 @@ export function FullLayout({ children, header = <Header />, sidebar = <Sidebar /
       <main className="full-layout__main">
         <div className={pageClassName}>{children ?? <Outlet />}</div>
       </main>
+      {footer != null && <footer className="full-layout__footer">{footer}</footer>}
       <FirstNoticeDialog />
     </div>
   );

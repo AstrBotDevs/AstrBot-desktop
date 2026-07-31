@@ -27,13 +27,18 @@ describe('sidebar navigation compatibility', () => {
     expect(extension?.children).toBeUndefined();
   });
 
+  it('keeps the platform log entry out of the sidebar', () => {
+    const items = defaultNavigationItems.flatMap((item) => [item, ...(item.children ?? [])]);
+    expect(items.some((item) => item.to === '/console')).toBe(false);
+  });
+
   it('applies existing sidebar customization and keeps new defaults', () => {
     const result = resolveNavigationItems(defaultNavigationItems, {
-      mainItems: ['core.navigation.console', 'missing', 'core.navigation.console'],
+      mainItems: ['core.navigation.cron', 'missing', 'core.navigation.cron'],
       moreItems: ['core.navigation.welcome', 'core.navigation.trace'],
     });
 
-    expect(result[0].title).toBe('core.navigation.console');
+    expect(result[0].title).toBe('core.navigation.cron');
     const more = result.find((item) => item.title === MORE_GROUP_KEY);
     expect(more?.children?.map((item) => item.title)).toContain('core.navigation.trace');
     expect(result.some((item) => item.title === 'core.navigation.platforms')).toBe(true);
@@ -59,7 +64,7 @@ describe('sidebar navigation compatibility', () => {
 
   it('marks and expands a parent group for deep-linked children', () => {
     const more = defaultNavigationItems.find((item) => item.title === MORE_GROUP_KEY)!;
-    expect(navigationItemActive(more, '/console', '')).toBe(true);
+    expect(navigationItemActive(more, '/trace', '')).toBe(true);
     expect(navigationItemActive(more, '/settings', '')).toBe(false);
   });
 });

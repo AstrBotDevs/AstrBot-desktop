@@ -17,7 +17,6 @@ const moreItems: NavigationItem[] = [
   { title: 'core.navigation.cron', icon: 'mdi-clock-outline', to: '/cron' },
   { title: 'core.navigation.subagent', icon: 'mdi-vector-link', to: '/subagent' },
   { title: 'core.navigation.dashboard', icon: 'mdi-view-dashboard', to: '/dashboard/default' },
-  { title: 'core.navigation.console', icon: 'mdi-console', to: '/console' },
   { title: 'core.navigation.trace', icon: 'mdi-timeline-text-outline', to: '/trace' },
 ];
 

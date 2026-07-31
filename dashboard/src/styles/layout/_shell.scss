@@ -74,7 +74,7 @@
 
 .full-layout {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) var(--astrbot-footer-height);
   grid-template-columns: auto minmax(0, 1fr);
   width: 100%;
   height: 100%;
@@ -102,6 +102,13 @@
   min-width: 0;
   min-height: 0;
   overflow: auto;
+}
+
+.full-layout__footer {
+  z-index: 30;
+  grid-row: 3;
+  grid-column: 1 / -1;
+  min-width: 0;
 }
 
 .full-layout--visual-config .full-layout__main {
@@ -154,7 +161,7 @@
 
 .full-layout--chat {
   --chat-sidebar-width: 280px;
-  grid-template-rows: var(--astrbot-header-height) minmax(0, 1fr);
+  grid-template-rows: var(--astrbot-header-height) minmax(0, 1fr) var(--astrbot-footer-height);
   grid-template-columns: var(--chat-sidebar-width) minmax(0, 1fr);
 }
 
@@ -166,8 +173,68 @@
 }
 
 .full-layout--chat .full-layout__main {
-  grid-row: 1 / -1;
+  grid-row: 1 / 3;
   grid-column: 1 / -1;
+}
+
+.app-footer__items {
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  height: var(--astrbot-footer-height);
+  padding: 0 6px;
+  background: #63b3e2;
+  color: #fff;
+  font-size: 12px;
+}
+
+.app-footer__item {
+  position: relative;
+  display: inline-flex;
+  width: 36px;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  text-decoration: none;
+}
+
+.app-footer__item .mdi {
+  font-size: 18px;
+}
+
+.app-footer__item::after {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 7px);
+  width: max-content;
+  padding: 5px 8px;
+  border-radius: 4px;
+  background: #3c3c3c;
+  box-shadow: 0 3px 10px rgb(0 0 0 / 22%);
+  color: #fff;
+  content: attr(data-tooltip);
+  font-size: 12px;
+  line-height: 18px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(3px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  visibility: hidden;
+  white-space: nowrap;
+}
+
+.app-footer__item:hover,
+.app-footer__item:focus-visible,
+.app-footer__item--active {
+  outline: none;
+  background: rgb(0 0 0 / 16%);
+}
+
+.app-footer__item:hover::after,
+.app-footer__item:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
 }
 
 .app-header {
@@ -528,7 +595,7 @@
     position: fixed;
     z-index: 50;
     top: var(--astrbot-header-height);
-    bottom: 0;
+    bottom: var(--astrbot-footer-height);
     left: 0;
   }
 
@@ -540,7 +607,7 @@
   .sidebar-backdrop {
     position: fixed;
     z-index: 49;
-    inset: var(--astrbot-header-height) 0 0;
+    inset: var(--astrbot-header-height) 0 var(--astrbot-footer-height);
     display: block;
     width: 100%;
     border: 0;

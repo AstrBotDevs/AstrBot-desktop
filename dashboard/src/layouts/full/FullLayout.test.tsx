@@ -39,6 +39,9 @@ describe('FullLayout', () => {
     expect(markup).toContain('data-layout-mode="standard"');
     expect(markup).toContain('full-layout__header');
     expect(markup).toContain('full-layout__sidebar');
+    expect(markup).toContain('full-layout__footer');
+    expect(markup).toContain('href="/console"');
+    expect(markup).toContain('data-tooltip="core.navigation.console"');
     expect(markup).not.toContain('full-layout__page--fullscreen');
     expect(markup).toContain('>Page content<');
   });
@@ -49,6 +52,7 @@ describe('FullLayout', () => {
     expect(markup).toContain('data-layout-mode="chat"');
     expect(markup).toContain('full-layout--without-sidebar');
     expect(markup).not.toContain('full-layout__sidebar');
+    expect(markup).toContain('full-layout__footer');
     expect(markup).toContain('full-layout__page--fullscreen');
   });
 
@@ -67,6 +71,7 @@ describe('FullLayout', () => {
     expect(markup).toContain('full-layout--console');
     expect(markup).toContain('full-layout__page--console');
     expect(markup).toContain('full-layout__sidebar');
+    expect(markup).toContain('aria-current="page"');
   });
 
   it('marks the visual configuration route without relational selectors', () => {
