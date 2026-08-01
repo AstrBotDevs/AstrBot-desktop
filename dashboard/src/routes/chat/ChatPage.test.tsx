@@ -55,6 +55,16 @@ describe('ChatPage', () => {
     expect(await screen.findByText('features.chat.welcome.title')).toBeInTheDocument();
   });
 
+  it('keeps only transport controls in the sidebar settings menu', async () => {
+    renderRoute(<ChatPage />, { route: '/chat' });
+
+    await screen.findByText('features.chat.welcome.title');
+    expect(screen.getByText('features.chat.transport.title')).toBeInTheDocument();
+    expect(screen.queryByText('core.common.language')).not.toBeInTheDocument();
+    expect(screen.queryByText('features.chat.modes.darkMode')).not.toBeInTheDocument();
+    expect(screen.queryByText('features.chat.modes.lightMode')).not.toBeInTheDocument();
+  });
+
   it('shows a page-level error when conversations cannot load', async () => {
     vi.mocked(listChatSessions).mockRejectedValue(new Error('conversation service unavailable'));
 

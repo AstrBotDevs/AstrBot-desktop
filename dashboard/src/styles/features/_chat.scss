@@ -223,10 +223,6 @@ html[data-theme='dark'] .chat-shell {
 .chat-settings-menu__panel button > small { max-width: 92px; overflow: hidden; color: var(--chat-muted); font-size: 12px; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
 .chat-settings-submenu { top: -6px; left: calc(100% + 8px); width: 180px; }
 .chat-settings-submenu > button { display: grid; width: 100%; min-height: 38px; grid-template-columns: minmax(0, 1fr) 18px; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 8px; text-align: left; }
-.chat-settings-submenu--language { width: 190px; }
-.chat-settings-submenu--language > button { grid-template-columns: 28px minmax(0, 1fr) 18px; }
-.chat-settings-submenu--language > button > small { width: 28px; color: inherit; }
-
 @media (min-width: 601px) {
   .chat-shell.is-sidebar-collapsed .chat-sessions__brand { justify-content: center; padding: 0; }
   .chat-shell.is-sidebar-collapsed .chat-sessions__brand-title,

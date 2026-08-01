@@ -105,10 +105,6 @@
     "confirmDelete": "确定要删除“{name}”吗？此操作无法撤销。",
     "renameFailed": "重命名会话失败"
   },
-  "modes": {
-    "darkMode": "切换到夜间模式",
-    "lightMode": "切换到日间模式"
-  },
   "shortcuts": {
     "help": "获取帮助",
     "voiceRecord": "录制语音",

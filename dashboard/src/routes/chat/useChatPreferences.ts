@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { chatTransportPreference, selectedModelPreference, selectedProviderPreference } from '@/config/preferences';
 
 export type TransportMode = 'sse' | 'websocket';
-export type SettingsSubmenu = 'transport' | 'language' | null;
+export type SettingsSubmenu = 'transport' | null;
 
 export function useChatPreferences() {
   const [provider, setProvider] = useState(() => selectedProviderPreference.read());

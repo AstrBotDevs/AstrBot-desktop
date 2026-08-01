@@ -82,7 +82,6 @@ import {
   stagedAttachmentType,
   usesLocalProviderOverride,
 } from './model';
-import { localeMetadata, localeRegistry } from '@/i18n/locales';
 
 type ChatPageProps = { chatbox?: boolean };
 type StagedFile = { attachment_id: string; filename: string; preview_url?: string; type: StagedAttachmentType };
@@ -180,8 +179,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const [, setMediaVersion] = useState(0);
   const layoutChatSidebarOpen = useLayoutStore((state) => state.chatSidebarOpen);
   const setLayoutChatSidebarOpen = useLayoutStore((state) => state.setChatSidebarOpen);
-  const themeMode = useLayoutStore((state) => state.themeMode);
-  const setThemeMode = useLayoutStore((state) => state.setThemeMode);
   const abortRef = useRef<AbortController | null>(null);
   const configSaveLockRef = useRef({ current: false });
   const configIdRef = useRef(configId);
@@ -223,7 +220,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     [provider, providers],
   );
   const providerOverrideEnabled = !agentRunnerLoading && usesLocalProviderOverride(agentRunnerType);
-  const currentLanguage = localeMetadata(i18n.language);
   const editingProjectForm = useMemo<ChatProjectForm | null>(
     () =>
       editingProject
@@ -239,7 +235,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
         : null,
     [editingProject],
   );
-  const isDark = themeMode === 'dark' || (themeMode === 'system' && document.documentElement.dataset.theme === 'dark');
   const filteredProviders = useMemo(() => {
     const query = providerSearch.trim().toLowerCase();
     return query
@@ -673,10 +668,10 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
-  const openSettingsSubmenu = (submenu: 'transport' | 'language') => {
+  const openSettingsSubmenu = () => {
     if (settingsSubmenuTimer.current != null) window.clearTimeout(settingsSubmenuTimer.current);
     settingsSubmenuTimer.current = null;
-    setSettingsSubmenu(submenu);
+    setSettingsSubmenu('transport');
   };
 
   const scheduleSettingsSubmenuClose = () => {
@@ -686,8 +681,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
       settingsSubmenuTimer.current = null;
     }, 120);
   };
-
-  const toggleTheme = () => setThemeMode(isDark ? 'light' : 'dark');
 
   const removeSession = async (session: ChatSession) => {
     const name = session.display_name || session.session_id;
@@ -1669,7 +1662,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
             <div className="chat-settings-menu__panel">
               <div
                 className="chat-settings-menu__item-wrap"
-                onMouseEnter={() => openSettingsSubmenu('transport')}
+                onMouseEnter={openSettingsSubmenu}
                 onMouseLeave={scheduleSettingsSubmenuClose}
               >
                 <button
@@ -1685,7 +1678,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
                 {settingsSubmenu === 'transport' && (
                   <div
                     className="chat-settings-submenu"
-                    onMouseEnter={() => openSettingsSubmenu('transport')}
+                    onMouseEnter={openSettingsSubmenu}
                     onMouseLeave={scheduleSettingsSubmenuClose}
                   >
                     {(['sse', 'websocket'] as const).map((mode) => (
@@ -1705,49 +1698,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
                   </div>
                 )}
               </div>
-              <div
-                className="chat-settings-menu__item-wrap"
-                onMouseEnter={() => openSettingsSubmenu('language')}
-                onMouseLeave={scheduleSettingsSubmenuClose}
-              >
-                <button
-                  className={settingsSubmenu === 'language' ? 'is-active' : ''}
-                  onClick={() => setSettingsSubmenu((value) => (value === 'language' ? null : 'language'))}
-                  type="button"
-                >
-                  <MdiIcon name="mdi-translate" />
-                  <span>{t('core.common.language')}</span>
-                  <small>{currentLanguage.label}</small>
-                  <MdiIcon name="mdi-chevron-right" />
-                </button>
-                {settingsSubmenu === 'language' && (
-                  <div
-                    className="chat-settings-submenu chat-settings-submenu--language"
-                    onMouseEnter={() => openSettingsSubmenu('language')}
-                    onMouseLeave={scheduleSettingsSubmenuClose}
-                  >
-                    {localeRegistry.map((language) => (
-                      <button
-                        className={i18n.language === language.code ? 'is-active' : ''}
-                        key={language.code}
-                        onClick={() => {
-                          void i18n.changeLanguage(language.code);
-                          setSettingsSubmenu(null);
-                        }}
-                        type="button"
-                      >
-                        <small>{language.flag}</small>
-                        <span>{language.label}</span>
-                        {i18n.language === language.code && <MdiIcon name="mdi-check" />}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <button onClick={toggleTheme} type="button">
-                <MdiIcon name={isDark ? 'mdi-white-balance-sunny' : 'mdi-weather-night'} />
-                <span>{t(`features.chat.modes.${isDark ? 'lightMode' : 'darkMode'}`)}</span>
-              </button>
             </div>
           </details>
         </div>
