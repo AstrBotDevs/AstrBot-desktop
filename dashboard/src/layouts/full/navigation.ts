@@ -11,6 +11,9 @@ export const MORE_GROUP_KEY = 'core.navigation.groups.more';
 export const PLUGIN_WEBUI_GROUP_KEY = 'core.navigation.pluginWebui';
 export const PLUGIN_SIDEBAR_CHANGED_EVENT = 'astrbot:plugin-sidebar-changed';
 
+const REMOVED_MAIN_NAVIGATION_TITLES = new Set(['core.navigation.config']);
+const REMOVED_MAIN_NAVIGATION_PATHS = new Set(['/config']);
+
 const moreItems: NavigationItem[] = [
   { title: 'core.navigation.conversation', icon: 'mdi-database', to: '/conversation' },
   { title: 'core.navigation.sessionManagement', icon: 'mdi-pencil-ruler', to: '/session-management' },
@@ -24,7 +27,6 @@ export const defaultNavigationItems: NavigationItem[] = [
   { title: 'core.navigation.welcome', icon: 'mdi-hand-wave-outline', to: '/welcome' },
   { title: 'core.navigation.platforms', icon: 'mdi-robot', to: '/platforms' },
   { title: 'core.navigation.providers', icon: 'mdi-creation', to: '/providers' },
-  { title: 'core.navigation.config', icon: 'mdi-cog', to: '/config' },
   { title: 'core.navigation.extension', icon: 'mdi-puzzle', to: '/extension#installed' },
   { title: 'core.navigation.knowledgeBase', icon: 'mdi-book-open-variant', to: '/knowledge-base' },
   { title: 'core.navigation.persona', icon: 'mdi-heart', to: '/persona' },
@@ -75,10 +77,32 @@ export function buildPluginNavigation(items: unknown[]): NavigationItem | null {
 }
 
 export function mergePluginNavigation(items: NavigationItem[], pluginItem: NavigationItem | null) {
-  if (!pluginItem) return items;
-  const moreIndex = items.findIndex((item) => item.title === MORE_GROUP_KEY);
-  if (moreIndex < 0) return [...items, pluginItem];
-  return [...items.slice(0, moreIndex), pluginItem, ...items.slice(moreIndex)];
+  const visibleItems = filterMainNavigationItems(items);
+  if (!pluginItem) return visibleItems;
+  const visiblePluginItems = filterMainNavigationItems([pluginItem]);
+  if (!visiblePluginItems.length) return visibleItems;
+  const visiblePluginItem = visiblePluginItems[0];
+  const moreIndex = visibleItems.findIndex((item) => item.title === MORE_GROUP_KEY);
+  if (moreIndex < 0) return [...visibleItems, visiblePluginItem];
+  return [...visibleItems.slice(0, moreIndex), visiblePluginItem, ...visibleItems.slice(moreIndex)];
+}
+
+export function filterMainNavigationItems(items: NavigationItem[]): NavigationItem[] {
+  return items.flatMap((item) => {
+    const path = item.to?.split('#')[0];
+    if (REMOVED_MAIN_NAVIGATION_TITLES.has(item.title) || (path && REMOVED_MAIN_NAVIGATION_PATHS.has(path))) {
+      return [];
+    }
+    if (!item.children) return [item];
+    const children = filterMainNavigationItems(item.children);
+    if (
+      children.length === item.children.length &&
+      children.every((child, index) => child === item.children?.[index])
+    ) {
+      return [item];
+    }
+    return [{ ...item, children }];
+  });
 }
 
 export function navigationTargetActive(to: string | undefined, pathname: string, hash: string) {
@@ -123,5 +147,7 @@ export function resolveNavigationItems(items: NavigationItem[], customization: S
 }
 
 export function readNavigationItems() {
-  return resolveNavigationItems(defaultNavigationItems, sidebarCustomizationPreference.read());
+  return filterMainNavigationItems(
+    resolveNavigationItems(defaultNavigationItems, sidebarCustomizationPreference.read()),
+  );
 }

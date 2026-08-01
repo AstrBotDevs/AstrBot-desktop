@@ -111,17 +111,6 @@
   min-width: 0;
 }
 
-.full-layout--visual-config .full-layout__main {
-  overflow: hidden;
-  scrollbar-gutter: stable;
-}
-
-.full-layout__page--visual-config {
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-}
-
 .full-layout--without-sidebar .full-layout__main {
   grid-column: 1 / -1;
 }

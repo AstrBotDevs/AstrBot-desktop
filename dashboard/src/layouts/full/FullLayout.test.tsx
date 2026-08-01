@@ -61,11 +61,4 @@ describe('FullLayout', () => {
     expect(markup).toContain('full-layout__sidebar');
     expect(markup).toContain('full-layout__page--plugin');
   });
-
-  it('marks the visual configuration route without relational selectors', () => {
-    const markup = renderLayout('/config');
-
-    expect(markup).toContain('full-layout--visual-config');
-    expect(markup).toContain('full-layout__page--visual-config');
-  });
 });

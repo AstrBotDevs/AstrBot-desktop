@@ -9,6 +9,7 @@
 .settings-page--embedded .settings-layout { height: 100%; min-height: 0; grid-template-rows: minmax(0, 1fr); align-items: stretch; }
 .settings-page--embedded .settings-nav { top: 0; max-height: 100%; overflow-y: auto; }
 .settings-page--embedded .settings-main { height: 100%; min-height: 0; padding-right: 4px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.settings-page--embedded .settings-main--config { position: relative; overflow: hidden; scrollbar-gutter: auto; }
 .settings-page--embedded .settings-restart { position: absolute; right: 28px; bottom: 24px; }
 @media (max-width: 720px) {
   .settings-page--embedded .settings-layout { grid-template-rows: auto minmax(0, 1fr); }
@@ -29,15 +30,18 @@
 .settings-nav button { position: relative; display: flex; width: 100%; min-height: 34px; align-items: center; gap: 8px; padding: 6px 9px 6px 12px; border: 0; border-radius: 8px; background: transparent; color: color-mix(in srgb, var(--astrbot-text) 64%, transparent); cursor: pointer; font-size: .84rem; font-weight: 680; text-align: left; }
 .settings-nav button .mdi { width: 15px; font-size: 15px; line-height: 1; text-align: center; }
 .settings-nav button:hover { background: color-mix(in srgb, var(--astrbot-text) 4.5%, transparent); color: var(--astrbot-text); }
-.settings-nav button:last-child { margin-top: 10px; }
-.settings-nav button:last-child::after { position: absolute; top: -8px; right: 0; left: 0; height: 1px; background: var(--settings-border); content: ''; pointer-events: none; }
+.settings-nav__item--separated { margin-top: 10px; }
+.settings-nav__item--separated::after { position: absolute; top: -8px; right: 0; left: 0; height: 1px; background: var(--settings-divider); content: ''; pointer-events: none; }
 .settings-nav button[aria-pressed='true'] { background: color-mix(in srgb, var(--astrbot-text) 7%, transparent); color: var(--astrbot-text); font-weight: 760; }
-.settings-nav button[aria-pressed='true']::before { position: absolute; top: 8px; bottom: 8px; left: 0; width: 2px; border-radius: 999px; background: color-mix(in srgb, var(--astrbot-text) 52%, transparent); content: ''; }
 .settings-main { min-width: 0; }
 .settings-section { margin-bottom: 0; scroll-margin-top: 84px; }
 .settings-section__heading { margin-bottom: 22px; }
 .settings-section__title { margin: 0; font-size: 1.34rem; font-weight: 780; line-height: 1.25; }
 .settings-section__content { min-width: 0; }
+.settings-section--config { display: flex; height: 100%; min-height: 0; flex-direction: column; }
+.settings-section--config.is-hidden { display: none; }
+.settings-section--config > .settings-section__heading { flex: 0 0 auto; }
+.settings-section--config > .settings-section__content { min-height: 0; flex: 1; }
 .settings-restart { position: fixed; right: 24px; bottom: 24px; z-index: 30; display: flex; width: min(420px, calc(100vw - 48px)); min-height: 48px; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px 8px 16px; border: 0; border-radius: 12px; background: color-mix(in srgb, var(--astrbot-text) 6%, color-mix(in srgb, var(--astrbot-surface) 74%, transparent)); box-shadow: 0 8px 28px rgb(0 0 0 / 8%); backdrop-filter: blur(16px); }
 .settings-restart > span { display: inline-flex; align-items: center; gap: 8px; }
 .settings-saving-bar { height: 3px; margin-bottom: 16px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--astrbot-primary) 15%, transparent); }

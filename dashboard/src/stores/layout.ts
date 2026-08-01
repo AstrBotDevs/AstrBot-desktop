@@ -8,7 +8,15 @@ export const SIDEBAR_DEFAULT_WIDTH = 235;
 export const SIDEBAR_COLLAPSED_WIDTH = 80;
 
 export type ThemeMode = 'light' | 'dark' | 'system';
-export type SettingsSection = 'general' | 'appearance' | 'network' | 'security' | 'maintenance' | 'openapi' | 'about';
+export type SettingsSection =
+  | 'general'
+  | 'appearance'
+  | 'network'
+  | 'security'
+  | 'maintenance'
+  | 'openapi'
+  | 'about'
+  | 'config';
 
 function readOpenedGroups(): string[] {
   return openedSidebarGroupsPreference.read();

@@ -1,9 +1,12 @@
+// @vitest-environment jsdom
+
 import i18next from 'i18next';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { I18nextProvider } from 'react-i18next';
-import { describe, expect, it } from 'vitest';
+import { render, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
-import { ConfigGroup, ConfigRichText } from './DynamicConfigForm';
+import { ConfigGroup, ConfigRichText, MetadataConfigEditor } from './DynamicConfigForm';
 
 const i18n = i18next.createInstance();
 void i18n.init({ initAsync: false, lng: 'en', resources: { en: { translation: {} } } });
@@ -166,5 +169,33 @@ describe('DynamicConfigForm', () => {
     expect(markup).toContain('href="https://data.iana.org/time-zones/tzdb-2021a/zone1970.tab"');
     expect(markup).toContain('>时区列表</a>');
     expect(markup).toContain('href="https://docs.astrbot.app/"');
+  });
+
+  it('exposes configuration sections when navigation is rendered by a parent', async () => {
+    const onSectionsChange = vi.fn();
+    const { container } = render(
+      <I18nextProvider i18n={i18n}>
+        <MetadataConfigEditor
+          activeSection="second"
+          hideNavigation
+          metadata={{
+            first: { metadata: { group: { items: {}, type: 'object' } }, name: 'First' },
+            second: { metadata: { group: { items: {}, type: 'object' } }, name: 'Second' },
+          }}
+          onChange={() => undefined}
+          onSectionsChange={onSectionsChange}
+          value={{}}
+        />
+      </I18nextProvider>,
+    );
+
+    expect(container.querySelector('.metadata-config--external-nav')).not.toBeNull();
+    expect(container.querySelector('.metadata-config__tabs')).toBeNull();
+    await waitFor(() =>
+      expect(onSectionsChange).toHaveBeenCalledWith([
+        { id: 'first', label: 'First' },
+        { id: 'second', label: 'Second' },
+      ]),
+    );
   });
 });

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildPluginNavigation,
   defaultNavigationItems,
+  filterMainNavigationItems,
   mergePluginNavigation,
   MORE_GROUP_KEY,
   navigationItemActive,
@@ -30,6 +31,30 @@ describe('sidebar navigation compatibility', () => {
   it('keeps the platform log entry out of the sidebar', () => {
     const items = defaultNavigationItems.flatMap((item) => [item, ...(item.children ?? [])]);
     expect(items.some((item) => item.to === '/console')).toBe(false);
+  });
+
+  it('keeps configuration profiles inside settings instead of the main sidebar', () => {
+    const items = defaultNavigationItems.flatMap((item) => [item, ...(item.children ?? [])]);
+    expect(items.some((item) => item.to === '/config')).toBe(false);
+  });
+
+  it('removes legacy configuration entries from restored and nested navigation', () => {
+    const result = filterMainNavigationItems([
+      { title: 'core.navigation.config', icon: 'mdi-cog', to: '/config' },
+      {
+        title: MORE_GROUP_KEY,
+        icon: 'mdi-dots-horizontal',
+        children: [
+          { title: 'legacy-config', icon: 'mdi-cog', to: '/config#platform_group' },
+          { title: 'core.navigation.trace', icon: 'mdi-timeline-text-outline', to: '/trace' },
+        ],
+      },
+    ]);
+
+    expect(
+      result.flatMap((item) => [item, ...(item.children ?? [])]).some((item) => item.to?.startsWith('/config')),
+    ).toBe(false);
+    expect(result[0].children?.map((item) => item.to)).toEqual(['/trace']);
   });
 
   it('applies existing sidebar customization and keeps new defaults', () => {

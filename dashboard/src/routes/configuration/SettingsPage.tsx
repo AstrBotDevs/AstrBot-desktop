@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { getSystemConfig } from '@/api/openapi';
@@ -27,6 +27,8 @@ import { errorMessage, type JsonObject, responseData } from './model';
 import { ApiKeySettingsSection } from './ApiKeySettingsSection';
 import { BackupDialog, ProxySelector, SidebarCustomizer, StorageCleanupPanel } from './SettingsExtras';
 import { ChatTransportSetting } from './ChatTransportSetting';
+
+const ConfigPage = lazy(() => import('./ConfigPage'));
 
 const SYSTEM_GROUPS = {
   runtime: ['timezone', 'callback_api_base'],
@@ -65,6 +67,39 @@ const NAV_ITEMS: Array<{ icon: `mdi-${string}`; id: SettingsSection }> = [
   { id: 'about', icon: 'mdi-information-outline' },
 ];
 
+const CONFIG_SECTION_ICONS: Record<string, `mdi-${string}`> = {
+  ai_group: 'mdi-brain',
+  ext_group: 'mdi-tune-variant',
+  platform_group: 'mdi-robot',
+  plugin_group: 'mdi-puzzle',
+};
+
+function SettingsNavigationItem({
+  active,
+  icon,
+  label,
+  onClick,
+  separated = false,
+}: {
+  active: boolean;
+  icon: `mdi-${string}`;
+  label: string;
+  onClick: () => void;
+  separated?: boolean;
+}) {
+  return (
+    <button
+      aria-pressed={active}
+      className={separated ? 'settings-nav__item--separated' : undefined}
+      onClick={onClick}
+      type="button"
+    >
+      <MdiIcon name={icon} />
+      <span>{label}</span>
+    </button>
+  );
+}
+
 function systemMetadataRoot(metadata: ConfigRecord): ConfigGroupMetadata {
   const group = metadata.system_group;
   if (!isConfigRecord(group) || !isConfigRecord(group.metadata) || !isConfigRecord(group.metadata.system))
@@ -91,8 +126,13 @@ export default function SettingsPage({
   const { restartBackend } = useDesktop();
   const prefix = 'features.settings';
   const initialSection =
-    requestedSection ?? NAV_ITEMS.find((item) => window.location.hash.includes(item.id))?.id ?? 'general';
+    requestedSection ??
+    (window.location.hash.includes('config')
+      ? 'config'
+      : (NAV_ITEMS.find((item) => window.location.hash.includes(item.id))?.id ?? 'general'));
   const [section, setSection] = useState<SettingsSection>(initialSection);
+  const [configSection, setConfigSection] = useState('');
+  const [configSections, setConfigSections] = useState<Array<{ id: string; label: string }>>([]);
   const [config, setConfig] = useState<ConfigRecord>({});
   const [metadata, setMetadata] = useState<ConfigRecord>({});
   const [saved, setSaved] = useState('{}');
@@ -139,7 +179,8 @@ export default function SettingsPage({
   }, [embedded]);
 
   useEffect(() => {
-    if (requestedSection) setSection(requestedSection);
+    if (!requestedSection) return;
+    setSection(requestedSection);
   }, [requestedSection]);
 
   const rootMetadata = useMemo(() => systemMetadataRoot(metadata), [metadata]);
@@ -239,6 +280,18 @@ export default function SettingsPage({
     window.history.replaceState(null, '', `${window.location.pathname}#${hash}`);
   };
 
+  const updateConfigSections = useCallback((nextSections: Array<{ id: string; label: string }>) => {
+    setConfigSections((current) =>
+      JSON.stringify(current) === JSON.stringify(nextSections) ? current : nextSections,
+    );
+  }, []);
+
+  const sectionTitle = (item: SettingsSection) => {
+    if (item === 'about') return t('core.navigation.about');
+    if (item === 'config') return t('core.navigation.config');
+    return t(`${prefix}.sections.${item}.title`);
+  };
+
   const restart = async (needsConfirmation = true) => {
     const release = acquireActionLock(restartLockRef.current);
     if (!release) return;
@@ -293,21 +346,56 @@ export default function SettingsPage({
       </header>
       <div className="settings-layout">
         <nav aria-label={t(`${prefix}.page.title`)} className="settings-nav">
-          {NAV_ITEMS.map((item) => (
-            <button
-              aria-pressed={section === item.id}
+          {configSections.map((item) => (
+            <SettingsNavigationItem
+              active={section === 'config' && configSection === item.id}
+              icon={CONFIG_SECTION_ICONS[item.id] ?? 'mdi-cog-outline'}
               key={item.id}
+              label={item.label}
+              onClick={() => {
+                setConfigSection(item.id);
+                changeSection('config');
+              }}
+            />
+          ))}
+          {NAV_ITEMS.map((item) => (
+            <SettingsNavigationItem
+              active={section === item.id}
+              icon={item.icon}
+              key={item.id}
+              label={sectionTitle(item.id)}
               onClick={() => changeSection(item.id)}
-              type="button"
-            >
-              <MdiIcon name={item.icon} />
-              <span>{item.id === 'about' ? t('core.navigation.about') : t(`${prefix}.sections.${item.id}.title`)}</span>
-            </button>
+              separated={item.id === 'about' || (item.id === 'general' && configSections.length > 0)}
+            />
           ))}
         </nav>
-        <main className="settings-main">
+        <main className={`settings-main${section === 'config' ? ' settings-main--config' : ''}`}>
+          <section
+            aria-hidden={section !== 'config'}
+            className={`settings-section settings-section--config${section !== 'config' ? ' is-hidden' : ''}`}
+          >
+            <header className="settings-section__heading">
+              <h2 className="settings-section__title">{sectionTitle('config')}</h2>
+            </header>
+            <div className="settings-section__content">
+              <Suspense
+                fallback={
+                  <div className="route-loading" role="status">
+                    {t('core.common.loading')}
+                  </div>
+                }
+              >
+                <ConfigPage
+                  activeSection={configSection}
+                  embedded
+                  onActiveSectionChange={setConfigSection}
+                  onSectionsChange={updateConfigSections}
+                />
+              </Suspense>
+            </div>
+          </section>
           {section === 'about' && <SettingsAboutSection />}
-          {section !== 'about' && (
+          {section !== 'about' && section !== 'config' && (
             <>
               {restartRequired && (
                 <div className="settings-restart" role="status">

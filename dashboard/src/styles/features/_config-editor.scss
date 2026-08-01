@@ -1,4 +1,12 @@
 .visual-config-page { display: flex; height: 100%; min-height: 0; justify-content: center; padding: 16px 18px; overflow: hidden; }
+.visual-config-page.visual-config-page--embedded { padding: 10px 0 0; }
+.visual-config-page--embedded .visual-config-toolbar { gap: 14px; margin-bottom: 18px; }
+.visual-config-page--embedded .visual-config-profile { width: min(210px, 32%); }
+.visual-config-page--embedded .visual-config-search { flex: 1; }
+.visual-config-page--embedded .visual-config-actions { position: absolute; right: 20px; bottom: 20px; }
+@media (max-width: 767px) {
+  .visual-config-page--embedded .visual-config-profile { width: 100%; }
+}
 .visual-config-panel { display: flex; width: min(750px, 100%); min-width: 0; min-height: 0; flex-direction: column; }
 .visual-config-toolbar {
   z-index: 25;
@@ -41,6 +49,7 @@
 .config-operation-name input { padding: 10px 12px; border: 1px solid var(--astrbot-border); border-radius: 8px; background: var(--astrbot-surface); color: inherit; font: inherit; }
 
 .metadata-config { display: grid; min-height: 0; flex: 1; grid-template-columns: 150px minmax(0, 1fr); align-items: stretch; overflow: hidden; }
+.metadata-config--external-nav { grid-template-columns: minmax(0, 1fr); }
 .metadata-config__tabs {
   z-index: 24;
   display: grid;

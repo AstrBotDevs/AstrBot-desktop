@@ -940,67 +940,101 @@ function defaultTextResolver(t: ReturnType<typeof useTranslation>['t']): TextRes
 }
 
 export function MetadataConfigEditor({
+  activeSection,
+  hideNavigation = false,
   metadata,
+  onActiveSectionChange,
   onChange,
+  onSectionsChange,
   search = '',
   value,
 }: {
+  activeSection?: string;
+  hideNavigation?: boolean;
   metadata: ConfigRecord;
+  onActiveSectionChange?: (section: string) => void;
   onChange: (value: ConfigRecord) => void;
+  onSectionsChange?: (sections: Array<{ id: string; label: string }>) => void;
   search?: string;
   value: ConfigRecord;
 }) {
   const { t } = useTranslation();
-  const resolveText = defaultTextResolver(t);
-  const allSections = Object.entries(metadata).flatMap(([key, section]) =>
-    isConfigRecord(section) && isConfigRecord(section.metadata) ? [{ key, section }] : [],
+  const resolveText = useMemo(() => defaultTextResolver(t), [t]);
+  const allSections = useMemo(
+    () =>
+      Object.entries(metadata).flatMap(([key, section]) =>
+        isConfigRecord(section) && isConfigRecord(section.metadata) ? [{ key, section }] : [],
+      ),
+    [metadata],
   );
   const needle = search.trim().toLocaleLowerCase();
-  const sections = needle
-    ? allSections.filter(({ key, section }) => {
-        return Object.entries(section.metadata as ConfigRecord).some(([groupKey, group]) => {
-          if (!isConfigRecord(group)) return false;
-          const groupMetadata = group as ConfigGroupMetadata;
-          const groupPath = `${key}.${groupKey}`;
-          const groupText = [
-            groupKey,
-            groupMetadata.description,
-            groupMetadata.hint,
-            resolveText(groupPath, 'description', groupMetadata.description),
-            resolveText(groupPath, 'hint', groupMetadata.hint),
-          ];
-          if (
-            groupText.some((candidate) =>
-              String(candidate ?? '')
-                .toLocaleLowerCase()
-                .includes(needle),
-            )
-          )
-            return true;
-          return Object.entries(groupMetadata.items ?? {}).some(([itemKey, item]) => {
-            if (item.invisible || !matchesConfigCondition(value, item)) return false;
-            const itemPath = `${groupPath}.${itemKey}`;
-            return [
-              itemKey,
-              item.description,
-              item.hint,
-              resolveText(itemPath, 'description', item.description),
-              resolveText(itemPath, 'hint', item.hint),
-            ].some((candidate) =>
-              String(candidate ?? '')
-                .toLocaleLowerCase()
-                .includes(needle),
-            );
-          });
-        });
-      })
-    : allSections;
-  const [active, setActive] = useState(sections[0]?.key ?? '');
+  const sections = useMemo(
+    () =>
+      needle
+        ? allSections.filter(({ key, section }) => {
+            return Object.entries(section.metadata as ConfigRecord).some(([groupKey, group]) => {
+              if (!isConfigRecord(group)) return false;
+              const groupMetadata = group as ConfigGroupMetadata;
+              const groupPath = `${key}.${groupKey}`;
+              const groupText = [
+                groupKey,
+                groupMetadata.description,
+                groupMetadata.hint,
+                resolveText(groupPath, 'description', groupMetadata.description),
+                resolveText(groupPath, 'hint', groupMetadata.hint),
+              ];
+              if (
+                groupText.some((candidate) =>
+                  String(candidate ?? '')
+                    .toLocaleLowerCase()
+                    .includes(needle),
+                )
+              )
+                return true;
+              return Object.entries(groupMetadata.items ?? {}).some(([itemKey, item]) => {
+                if (item.invisible || !matchesConfigCondition(value, item)) return false;
+                const itemPath = `${groupPath}.${itemKey}`;
+                return [
+                  itemKey,
+                  item.description,
+                  item.hint,
+                  resolveText(itemPath, 'description', item.description),
+                  resolveText(itemPath, 'hint', item.hint),
+                ].some((candidate) =>
+                  String(candidate ?? '')
+                    .toLocaleLowerCase()
+                    .includes(needle),
+                );
+              });
+            });
+          })
+        : allSections,
+    [allSections, needle, resolveText, value],
+  );
+  const [localActive, setLocalActive] = useState(sections[0]?.key ?? '');
+  const active = activeSection ?? localActive;
   const current = sections.find((section) => section.key === active) ?? sections[0];
 
   useEffect(() => {
-    if (sections.length && !sections.some((section) => section.key === active)) setActive(sections[0].key);
-  }, [active, sections]);
+    const first = sections[0]?.key;
+    if (!first || sections.some((section) => section.key === active)) return;
+    setLocalActive(first);
+    onActiveSectionChange?.(first);
+  }, [active, onActiveSectionChange, sections]);
+
+  useEffect(() => {
+    onSectionsChange?.(
+      sections.map(({ key, section }) => ({
+        id: key,
+        label: resolveText(key, 'description', String(section.name ?? key)),
+      })),
+    );
+  }, [onSectionsChange, resolveText, sections]);
+
+  const changeActive = (next: string) => {
+    setLocalActive(next);
+    onActiveSectionChange?.(next);
+  };
 
   if (!allSections.length)
     return (
@@ -1016,14 +1050,16 @@ export function MetadataConfigEditor({
     );
   if (!current) return <div className="dynamic-config-empty">{t('features.config.search.noResult')}</div>;
   return (
-    <div className="metadata-config">
-      <nav className="metadata-config__tabs">
-        {sections.map(({ key, section }) => (
-          <button aria-pressed={current.key === key} key={key} onClick={() => setActive(key)} type="button">
-            {resolveText(key, 'description', String(section.name ?? key))}
-          </button>
-        ))}
-      </nav>
+    <div className={`metadata-config${hideNavigation ? ' metadata-config--external-nav' : ''}`}>
+      {!hideNavigation && (
+        <nav className="metadata-config__tabs">
+          {sections.map(({ key, section }) => (
+            <button aria-pressed={current.key === key} key={key} onClick={() => changeActive(key)} type="button">
+              {resolveText(key, 'description', String(section.name ?? key))}
+            </button>
+          ))}
+        </nav>
+      )}
       <div className="metadata-config__content">
         {Object.entries(current.section.metadata as ConfigRecord).map(([key, group]) =>
           isConfigRecord(group) ? (

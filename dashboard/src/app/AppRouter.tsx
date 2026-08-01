@@ -8,7 +8,7 @@ import { BlankLayout } from '@/layouts/blank/BlankLayout';
 import { FullLayout } from '@/layouts/full/FullLayout';
 import { coreRouteModuleLoaders } from '@/app/coreRouteModules';
 import { RouteErrorPage } from '@/app/RouteErrorPage';
-import { useLayoutStore } from '@/stores/layout';
+import { useLayoutStore, type SettingsSection } from '@/stores/layout';
 
 const WelcomePage = lazy(() => import('@/routes/welcome/WelcomePage'));
 const AboutPage = lazy(() => import('@/routes/about/AboutPage'));
@@ -16,7 +16,6 @@ const StatsPage = lazy(() => import('@/routes/monitoring/StatsPage'));
 const TracePage = lazy(() => import('@/routes/monitoring/TracePage'));
 const ConversationPage = lazy(() => import('@/routes/monitoring/ConversationPage'));
 const PlatformPage = lazy(() => import('@/routes/configuration/PlatformPage'));
-const ConfigPage = lazy(() => import('@/routes/configuration/ConfigPage'));
 const PersonaPage = lazy(() => import('@/routes/configuration/PersonaPage'));
 const SubagentPage = lazy(() => import('@/routes/configuration/SubagentPage'));
 const CronPage = lazy(() => import('@/routes/configuration/CronPage'));
@@ -43,14 +42,14 @@ function loading(element: React.ReactNode) {
   return <Suspense fallback={<RouteLoading />}>{element}</Suspense>;
 }
 
-function SettingsRouteRedirect() {
+function SettingsRouteRedirect({ section = 'general' }: { section?: SettingsSection }) {
   const navigate = useNavigate();
   const openSettings = useLayoutStore((state) => state.openSettings);
 
   useEffect(() => {
-    openSettings();
+    openSettings(section);
     void navigate('/welcome', { replace: true });
-  }, [navigate, openSettings]);
+  }, [navigate, openSettings, section]);
 
   return <RouteLoading />;
 }
@@ -66,8 +65,8 @@ const reactRouteElements: Partial<Record<string, React.ReactNode>> = {
   '/session-management': loading(<SessionManagementPage />),
   '/platforms': loading(<PlatformPage />),
   '/providers': loading(<ProviderPage />),
-  '/config': loading(<ConfigPage />),
-  '/normal': <Navigate replace to="/config" />,
+  '/config': <SettingsRouteRedirect section="config" />,
+  '/normal': <SettingsRouteRedirect section="config" />,
   '/system': <SettingsRouteRedirect />,
   '/settings': <SettingsRouteRedirect />,
   '/persona': loading(<PersonaPage />),

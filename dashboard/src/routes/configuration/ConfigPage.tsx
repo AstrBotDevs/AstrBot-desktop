@@ -26,7 +26,17 @@ import { errorMessage, parseJsonObject, prettyJson, recordId } from './model';
 
 type ProfileOperation = { mode: 'copy' | 'rename'; profile: { id: string; name: string } };
 
-export default function ConfigPage() {
+export default function ConfigPage({
+  activeSection,
+  embedded = false,
+  onActiveSectionChange,
+  onSectionsChange,
+}: {
+  activeSection?: string;
+  embedded?: boolean;
+  onActiveSectionChange?: (section: string) => void;
+  onSectionsChange?: (sections: Array<{ id: string; label: string }>) => void;
+}) {
   const { t } = useTranslation();
   const [profiles, setProfiles] = useState<ConfigProfileDto[]>([]);
   const [selected, setSelected] = useState(DEFAULT_CONFIG_ID);
@@ -92,7 +102,7 @@ export default function ConfigPage() {
   }, [profiles]);
 
   const dirty = JSON.stringify(config) !== saved;
-  const blocker = useBlocker(dirty);
+  const blocker = useBlocker(!embedded && dirty);
 
   useEffect(() => {
     const beforeUnload = (event: BeforeUnloadEvent) => {
@@ -291,7 +301,7 @@ export default function ConfigPage() {
   );
 
   return (
-    <div className="visual-config-page">
+    <div className={`visual-config-page${embedded ? ' visual-config-page--embedded' : ''}`}>
       <div className="visual-config-panel">
         <div className="visual-config-toolbar">
           <label className="visual-config-profile">
@@ -333,11 +343,22 @@ export default function ConfigPage() {
         )}
         <LoadingState error={error} loading={loading} />
         {!loading && !error && (
-          <MetadataConfigEditor metadata={metadata} onChange={setConfig} search={search} value={config} />
+          <MetadataConfigEditor
+            activeSection={activeSection}
+            hideNavigation={embedded}
+            metadata={metadata}
+            onActiveSectionChange={onActiveSectionChange}
+            onChange={setConfig}
+            onSectionsChange={onSectionsChange}
+            search={search}
+            value={config}
+          />
         )}
       </div>
 
-      {typeof document !== 'undefined' && floatingActions && createPortal(floatingActions, document.body)}
+      {typeof document !== 'undefined' &&
+        floatingActions &&
+        (embedded ? floatingActions : createPortal(floatingActions, document.body))}
 
       <Dialog
         description={t('features.config.configManagement.description')}

@@ -38,13 +38,11 @@ export function FullLayout({
 }: FullLayoutProps) {
   const { pathname } = useLocation();
   const mode = getFullLayoutMode(pathname);
-  const isVisualConfigRoute = pathname === '/config';
   const showSidebar = !mode.isChatRoute && sidebar != null;
   const layoutClassName = [
     'full-layout',
     !showSidebar && 'full-layout--without-sidebar',
     mode.isChatRoute && 'full-layout--chat',
-    isVisualConfigRoute && 'full-layout--visual-config',
   ]
     .filter(Boolean)
     .join(' ');
@@ -52,7 +50,6 @@ export function FullLayout({
     'full-layout__page',
     mode.isFullScreenRoute && 'full-layout__page--fullscreen',
     mode.isPluginPageRoute && 'full-layout__page--plugin',
-    isVisualConfigRoute && 'full-layout__page--visual-config',
   ]
     .filter(Boolean)
     .join(' ');
