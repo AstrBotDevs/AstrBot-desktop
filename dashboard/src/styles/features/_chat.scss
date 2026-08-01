@@ -203,7 +203,7 @@ html[data-theme='dark'] .chat-shell {
 .chat-session-list > div:hover .chat-session-progress,
 .chat-session-list > div:focus-within .chat-session-progress { display: none; }
 .chat-sessions__footer { position: relative; margin-top: auto; padding: 10px 16px 14px; }
-.chat-sessions__settings { display: flex; width: 100%; min-height: 36px; align-items: center; gap: 12px; padding: 7px 10px; border-radius: 8px; color: inherit; cursor: pointer; font-size: 14px; font-weight: 500; text-decoration: none; }
+.chat-sessions__settings { display: flex; width: 100%; min-height: 36px; align-items: center; gap: 12px; padding: 7px 10px; border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 14px; font-weight: 500; text-decoration: none; }
 .chat-sessions__settings:hover { background: var(--chat-session-active); }
 @media (min-width: 601px) {
   .chat-shell.is-sidebar-collapsed .chat-sessions__brand { justify-content: center; padding: 0; }

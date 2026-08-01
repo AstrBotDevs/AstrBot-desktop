@@ -20,14 +20,13 @@ import { themePrimaryPreference, themeSecondaryPreference } from '@/config/prefe
 import { useDesktop } from '@/desktop/DesktopProvider';
 import { useDesktopStore } from '@/stores/desktop';
 import { confirmAction, toast } from '@/stores/feedback';
+import type { SettingsSection } from '@/stores/layout';
 import { acquireActionLock } from '@/utils/actionLock';
 import { LoadingState } from './ConfigurationUi';
 import { errorMessage, type JsonObject, responseData } from './model';
 import { ApiKeySettingsSection } from './ApiKeySettingsSection';
 import { BackupDialog, ProxySelector, SidebarCustomizer, StorageCleanupPanel } from './SettingsExtras';
 import { ChatTransportSetting } from './ChatTransportSetting';
-
-type SettingsSection = 'general' | 'appearance' | 'network' | 'security' | 'maintenance' | 'openapi' | 'about';
 
 const SYSTEM_GROUPS = {
   runtime: ['timezone', 'callback_api_base'],
@@ -81,11 +80,18 @@ function selectMetadata(metadata: ConfigGroupMetadata, keys: readonly string[]):
   };
 }
 
-export default function SettingsPage() {
+export default function SettingsPage({
+  embedded = false,
+  initialSection: requestedSection,
+}: {
+  embedded?: boolean;
+  initialSection?: SettingsSection;
+}) {
   const { t } = useTranslation();
   const { restartBackend } = useDesktop();
   const prefix = 'features.settings';
-  const initialSection = NAV_ITEMS.find((item) => window.location.hash.includes(item.id))?.id ?? 'general';
+  const initialSection =
+    requestedSection ?? NAV_ITEMS.find((item) => window.location.hash.includes(item.id))?.id ?? 'general';
   const [section, setSection] = useState<SettingsSection>(initialSection);
   const [config, setConfig] = useState<ConfigRecord>({});
   const [metadata, setMetadata] = useState<ConfigRecord>({});
@@ -127,9 +133,14 @@ export default function SettingsPage() {
     void load();
   }, [load]);
   useEffect(() => {
+    if (embedded) return;
     const item = NAV_ITEMS.find((navItem) => window.location.hash.includes(navItem.id));
     if (item) setSection(item.id);
-  }, []);
+  }, [embedded]);
+
+  useEffect(() => {
+    if (requestedSection) setSection(requestedSection);
+  }, [requestedSection]);
 
   const rootMetadata = useMemo(() => systemMetadataRoot(metadata), [metadata]);
   const configSnapshot = useMemo(() => JSON.stringify(config), [config]);
@@ -223,6 +234,7 @@ export default function SettingsPage() {
 
   const changeSection = (next: SettingsSection) => {
     setSection(next);
+    if (embedded) return;
     const hash = next === 'general' ? 'system-config' : next === 'about' ? 'settings-about' : `settings-${next}`;
     window.history.replaceState(null, '', `${window.location.pathname}#${hash}`);
   };
@@ -275,7 +287,7 @@ export default function SettingsPage() {
   const showRotationHint = typeof pendingTotp?.secret === 'string' && pendingTotp.secret.trim().length > 0;
 
   return (
-    <div className="settings-page">
+    <div className={`settings-page${embedded ? ' settings-page--embedded' : ''}`}>
       <header className="settings-page__header">
         <h1 className="settings-page__title">{t(`${prefix}.page.title`)}</h1>
       </header>

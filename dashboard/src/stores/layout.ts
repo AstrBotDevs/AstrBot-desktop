@@ -8,6 +8,7 @@ export const SIDEBAR_DEFAULT_WIDTH = 235;
 export const SIDEBAR_COLLAPSED_WIDTH = 80;
 
 export type ThemeMode = 'light' | 'dark' | 'system';
+export type SettingsSection = 'general' | 'appearance' | 'network' | 'security' | 'maintenance' | 'openapi' | 'about';
 
 function readOpenedGroups(): string[] {
   return openedSidebarGroupsPreference.read();
@@ -40,9 +41,13 @@ type LayoutState = {
   drawerOpen: boolean;
   miniSidebar: boolean;
   openedGroups: string[];
+  settingsOpen: boolean;
+  settingsSection: SettingsSection;
   sidebarWidth: number;
   themeMode: ThemeMode;
   closeDrawer: () => void;
+  closeSettings: () => void;
+  openSettings: (section?: SettingsSection) => void;
   setDrawerOpen: (open: boolean) => void;
   setChatSidebarOpen: (open: boolean) => void;
   setOpenedGroups: (groups: string[]) => void;
@@ -58,9 +63,13 @@ export const useLayoutStore = create<LayoutState>()((set) => ({
   drawerOpen: typeof window === 'undefined' || window.innerWidth >= 768,
   miniSidebar: false,
   openedGroups: readOpenedGroups(),
+  settingsOpen: false,
+  settingsSection: 'general',
   sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
   themeMode: readThemeMode(),
   closeDrawer: () => set({ drawerOpen: false }),
+  closeSettings: () => set({ settingsOpen: false }),
+  openSettings: (settingsSection = 'general') => set({ settingsOpen: true, settingsSection }),
   setDrawerOpen: (drawerOpen) => set({ drawerOpen }),
   setChatSidebarOpen: (chatSidebarOpen) => set({ chatSidebarOpen }),
   setOpenedGroups: (openedGroups) => {

@@ -390,7 +390,8 @@
   font-size: 13px;
 }
 
-.sidebar-footer a {
+.sidebar-footer a,
+.sidebar-footer button {
   display: flex;
   width: 100%;
   min-height: 32px;
@@ -398,7 +399,11 @@
   gap: 9px;
   padding: 6px 10px;
   border-radius: 8px;
+  border: 0;
+  background: transparent;
   color: inherit;
+  cursor: pointer;
+  font: inherit;
   text-decoration: none;
 }
 
@@ -412,7 +417,8 @@
   gap: 9px;
 }
 
-.sidebar-footer a:hover {
+.sidebar-footer a:hover,
+.sidebar-footer button:hover {
   background: var(--astrbot-hover);
 }
 

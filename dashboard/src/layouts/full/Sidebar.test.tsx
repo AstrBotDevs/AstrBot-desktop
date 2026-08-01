@@ -30,8 +30,19 @@ describe('Sidebar', () => {
       drawerOpen: true,
       miniSidebar: false,
       openedGroups: [],
+      settingsOpen: false,
+      settingsSection: 'general',
       sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
     });
+  });
+
+  it('opens settings in a dialog instead of navigating', async () => {
+    const user = userEvent.setup();
+    renderRoute(<Sidebar />, { route: '/welcome' });
+
+    await user.click(screen.getByRole('button', { name: 'core.navigation.settings' }));
+
+    expect(useLayoutStore.getState().settingsOpen).toBe(true);
   });
 
   it('loads plugin navigation and supports keyboard resizing', async () => {

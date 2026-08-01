@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '@/api/http';
 import { selectedModelPreference, selectedProviderPreference } from '@/config/preferences';
+import { useLayoutStore } from '@/stores/layout';
 import {
   createChatSession,
   getChatSession,
@@ -38,6 +39,7 @@ describe('ChatPage', () => {
     resetChatStreamRegistry();
     vi.resetAllMocks();
     localStorage.clear();
+    useLayoutStore.setState({ settingsOpen: false, settingsSection: 'general' });
     vi.mocked(listChatSessions).mockResolvedValue(mockApiResponse({ sessions: [] }));
     vi.mocked(listChatProjects).mockResolvedValue(mockApiResponse({ projects: [] }));
     vi.mocked(listProviders).mockResolvedValue(mockApiResponse({ model_metadata: {}, providers: [] }));
@@ -56,10 +58,13 @@ describe('ChatPage', () => {
   });
 
   it('links sidebar settings to the Bot settings page without duplicate controls', async () => {
+    const user = userEvent.setup();
     renderRoute(<ChatPage />, { route: '/chat' });
 
     await screen.findByText('features.chat.welcome.title');
-    expect(screen.getByRole('link', { name: 'core.common.settings' })).toHaveAttribute('href', '/settings');
+    const settings = screen.getByRole('button', { name: 'core.common.settings' });
+    await user.click(settings);
+    expect(useLayoutStore.getState().settingsOpen).toBe(true);
     expect(screen.queryByText('features.chat.transport.title')).not.toBeInTheDocument();
     expect(screen.queryByText('core.common.language')).not.toBeInTheDocument();
     expect(screen.queryByText('features.chat.modes.darkMode')).not.toBeInTheDocument();

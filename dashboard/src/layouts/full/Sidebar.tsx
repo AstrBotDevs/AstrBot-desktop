@@ -81,12 +81,12 @@ function NavigationEntry({ item, mini }: { item: NavigationItem; mini: boolean }
 
 export function Sidebar() {
   const { t } = useTranslation();
-  const location = useLocation();
   const drawerOpen = useLayoutStore((state) => state.drawerOpen);
   const mini = useLayoutStore((state) => state.miniSidebar);
   const sidebarWidth = useLayoutStore((state) => state.sidebarWidth);
   const setSidebarWidth = useLayoutStore((state) => state.setSidebarWidth);
   const closeDrawer = useLayoutStore((state) => state.closeDrawer);
+  const openSettings = useLayoutStore((state) => state.openSettings);
   const [baseItems, setBaseItems] = useState(readNavigationItems);
   const [pluginItem, setPluginItem] = useState<NavigationItem | null>(null);
   const [resizing, setResizing] = useState(false);
@@ -162,14 +162,16 @@ export function Sidebar() {
         </ul>
         {!mini && (
           <div className="sidebar-footer">
-            <Link
-              aria-current={location.pathname === '/settings' ? 'page' : undefined}
-              className={location.pathname === '/settings' ? 'sidebar-nav__item--active' : undefined}
-              to="/settings"
+            <button
+              onClick={() => {
+                openSettings();
+                if (window.innerWidth < 768) closeDrawer();
+              }}
+              type="button"
             >
               <MdiIcon name="mdi-cog" />
               {t('core.navigation.settings')}
-            </Link>
+            </button>
           </div>
         )}
         {!mini && (

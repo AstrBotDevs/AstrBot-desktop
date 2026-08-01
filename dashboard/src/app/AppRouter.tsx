@@ -1,6 +1,6 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { createHashRouter, Navigate, RouterProvider } from 'react-router-dom';
+import { createHashRouter, Navigate, RouterProvider, useNavigate } from 'react-router-dom';
 
 import { routeLayout, routeManifest, type RouteLayout } from '@/routes/routeManifest';
 import { NotFoundPage } from '@/routes/NotFoundPage';
@@ -8,6 +8,7 @@ import { BlankLayout } from '@/layouts/blank/BlankLayout';
 import { FullLayout } from '@/layouts/full/FullLayout';
 import { coreRouteModuleLoaders } from '@/app/coreRouteModules';
 import { RouteErrorPage } from '@/app/RouteErrorPage';
+import { useLayoutStore } from '@/stores/layout';
 
 const WelcomePage = lazy(() => import('@/routes/welcome/WelcomePage'));
 const AboutPage = lazy(() => import('@/routes/about/AboutPage'));
@@ -16,7 +17,6 @@ const TracePage = lazy(() => import('@/routes/monitoring/TracePage'));
 const ConversationPage = lazy(() => import('@/routes/monitoring/ConversationPage'));
 const PlatformPage = lazy(() => import('@/routes/configuration/PlatformPage'));
 const ConfigPage = lazy(() => import('@/routes/configuration/ConfigPage'));
-const SettingsPage = lazy(() => import('@/routes/configuration/SettingsPage'));
 const PersonaPage = lazy(() => import('@/routes/configuration/PersonaPage'));
 const SubagentPage = lazy(() => import('@/routes/configuration/SubagentPage'));
 const CronPage = lazy(() => import('@/routes/configuration/CronPage'));
@@ -43,6 +43,18 @@ function loading(element: React.ReactNode) {
   return <Suspense fallback={<RouteLoading />}>{element}</Suspense>;
 }
 
+function SettingsRouteRedirect() {
+  const navigate = useNavigate();
+  const openSettings = useLayoutStore((state) => state.openSettings);
+
+  useEffect(() => {
+    openSettings();
+    void navigate('/welcome', { replace: true });
+  }, [navigate, openSettings]);
+
+  return <RouteLoading />;
+}
+
 const reactRouteElements: Partial<Record<string, React.ReactNode>> = {
   '/': <Navigate replace to="/welcome" />,
   '/main': <Navigate replace to="/welcome" />,
@@ -56,8 +68,8 @@ const reactRouteElements: Partial<Record<string, React.ReactNode>> = {
   '/providers': loading(<ProviderPage />),
   '/config': loading(<ConfigPage />),
   '/normal': <Navigate replace to="/config" />,
-  '/system': <Navigate replace to="/settings#system-config" />,
-  '/settings': loading(<SettingsPage />),
+  '/system': <SettingsRouteRedirect />,
+  '/settings': <SettingsRouteRedirect />,
   '/persona': loading(<PersonaPage />),
   '/subagent': loading(<SubagentPage />),
   '/cron': loading(<CronPage />),

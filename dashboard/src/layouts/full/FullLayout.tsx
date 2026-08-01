@@ -4,6 +4,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { Header } from './Header';
 import { FirstNoticeDialog } from './FirstNoticeDialog';
 import { Footer } from './Footer';
+import { SettingsDialog } from './SettingsDialog';
 import { Sidebar } from './Sidebar';
 
 type FullLayoutProps = PropsWithChildren<{
@@ -68,6 +69,7 @@ export function FullLayout({
         <div className={pageClassName}>{children ?? <Outlet />}</div>
       </main>
       {footer != null && <footer className="full-layout__footer">{footer}</footer>}
+      <SettingsDialog />
       <FirstNoticeDialog />
     </div>
   );

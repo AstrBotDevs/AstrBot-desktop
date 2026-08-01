@@ -168,6 +168,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const [, setMediaVersion] = useState(0);
   const layoutChatSidebarOpen = useLayoutStore((state) => state.chatSidebarOpen);
   const setLayoutChatSidebarOpen = useLayoutStore((state) => state.setChatSidebarOpen);
+  const openSettings = useLayoutStore((state) => state.openSettings);
   const abortRef = useRef<AbortController | null>(null);
   const configSaveLockRef = useRef({ current: false });
   const configIdRef = useRef(configId);
@@ -1609,16 +1610,17 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
           </div>
         </div>
         <div className="chat-sessions__footer">
-          <Link
+          <button
             className="chat-sessions__settings"
             onClick={() => {
+              openSettings();
               if (window.innerWidth < 768) setSidebarOpen(false);
             }}
-            to="/settings"
+            type="button"
           >
             <MdiIcon name="mdi-cog-outline" />
             <span className="chat-sessions__settings-label">{t('core.common.settings')}</span>
-          </Link>
+          </button>
         </div>
       </aside>
       {sidebarOpen && (
