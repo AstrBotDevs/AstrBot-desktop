@@ -121,11 +121,6 @@
     "on": "Поток",
     "off": "Обычный"
   },
-  "transport": {
-    "title": "Протокол передачи",
-    "sse": "SSE",
-    "websocket": "WebSocket"
-  },
   "config": {
     "title": "Конфигурация",
     "applyFailed": "Не удалось применить конфигурацию"

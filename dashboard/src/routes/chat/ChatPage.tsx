@@ -144,18 +144,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const [agentRunnerLoading, setAgentRunnerLoading] = useState(true);
   const [commands, setCommands] = useState<CommandSuggestion[]>([]);
   const [wakePrefixes, setWakePrefixes] = useState<string[]>(['/']);
-  const {
-    model,
-    provider,
-    setModel,
-    setProvider,
-    setSettingsSubmenu,
-    setStreaming,
-    setTransportMode,
-    settingsSubmenu,
-    streaming,
-    transportMode,
-  } = useChatPreferences();
+  const { model, provider, setModel, setProvider, setStreaming, streaming, transportMode } = useChatPreferences();
   const [replyTarget, setReplyTarget] = useState<ChatRecord | null>(null);
   const [editingMessage, setEditingMessage] = useState<ChatRecord | null>(null);
   const [editingDraft, setEditingDraft] = useState('');
@@ -192,8 +181,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const activeSessionRef = useRef('');
   const pendingLocalSessionRef = useRef<string | null>(null);
   const modelMenuRef = useRef<HTMLDetailsElement>(null);
-  const settingsMenuRef = useRef<HTMLDetailsElement>(null);
-  const settingsSubmenuTimer = useRef<number | null>(null);
   const messageScrollFrame = useRef<number | null>(null);
   const messageLoadRequestRef = useRef(0);
   const messageEnd = useRef<HTMLDivElement>(null);
@@ -565,7 +552,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   useEffect(
     () => () => {
       audioRecorderRef.current.cancel();
-      if (settingsSubmenuTimer.current != null) window.clearTimeout(settingsSubmenuTimer.current);
       if (messageScrollFrame.current != null) window.cancelAnimationFrame(messageScrollFrame.current);
       Object.values(mediaUrlsRef.current).forEach(revokeObjectUrl);
       mediaUrlsRef.current = {};
@@ -617,17 +603,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     });
     return () => window.cancelAnimationFrame(frame);
   }, [activeThread?.messages, threadSending]);
-  useEffect(() => {
-    const closeSettings = (event: PointerEvent) => {
-      if (!settingsMenuRef.current?.contains(event.target as Node)) {
-        settingsMenuRef.current?.removeAttribute('open');
-        setSettingsSubmenu(null);
-      }
-    };
-    document.addEventListener('pointerdown', closeSettings);
-    return () => document.removeEventListener('pointerdown', closeSettings);
-  }, []);
-
   const createSession = async (projectId = '') => {
     const data = unwrap<JsonObject>(await createChatSession());
     const id = recordId(data, 'session_id', 'id');
@@ -666,20 +641,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     void navigate(basePath);
     setSidebarOpen(false);
     requestAnimationFrame(() => inputRef.current?.focus());
-  };
-
-  const openSettingsSubmenu = () => {
-    if (settingsSubmenuTimer.current != null) window.clearTimeout(settingsSubmenuTimer.current);
-    settingsSubmenuTimer.current = null;
-    setSettingsSubmenu('transport');
-  };
-
-  const scheduleSettingsSubmenuClose = () => {
-    if (settingsSubmenuTimer.current != null) window.clearTimeout(settingsSubmenuTimer.current);
-    settingsSubmenuTimer.current = window.setTimeout(() => {
-      setSettingsSubmenu(null);
-      settingsSubmenuTimer.current = null;
-    }, 120);
   };
 
   const removeSession = async (session: ChatSession) => {
@@ -1648,58 +1609,16 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
           </div>
         </div>
         <div className="chat-sessions__footer">
-          <details
-            className="chat-settings-menu"
-            onToggle={(event) => {
-              if (!event.currentTarget.open) setSettingsSubmenu(null);
+          <Link
+            className="chat-sessions__settings"
+            onClick={() => {
+              if (window.innerWidth < 768) setSidebarOpen(false);
             }}
-            ref={settingsMenuRef}
+            to="/settings"
           >
-            <summary className="chat-sessions__settings">
-              <MdiIcon name="mdi-cog-outline" />
-              <span className="chat-sessions__settings-label">{t('core.common.settings')}</span>
-            </summary>
-            <div className="chat-settings-menu__panel">
-              <div
-                className="chat-settings-menu__item-wrap"
-                onMouseEnter={openSettingsSubmenu}
-                onMouseLeave={scheduleSettingsSubmenuClose}
-              >
-                <button
-                  className={settingsSubmenu === 'transport' ? 'is-active' : ''}
-                  onClick={() => setSettingsSubmenu((value) => (value === 'transport' ? null : 'transport'))}
-                  type="button"
-                >
-                  <MdiIcon name="mdi-connection" />
-                  <span>{t('features.chat.transport.title')}</span>
-                  <small>{t(`features.chat.transport.${transportMode}`)}</small>
-                  <MdiIcon name="mdi-chevron-right" />
-                </button>
-                {settingsSubmenu === 'transport' && (
-                  <div
-                    className="chat-settings-submenu"
-                    onMouseEnter={openSettingsSubmenu}
-                    onMouseLeave={scheduleSettingsSubmenuClose}
-                  >
-                    {(['sse', 'websocket'] as const).map((mode) => (
-                      <button
-                        className={transportMode === mode ? 'is-active' : ''}
-                        key={mode}
-                        onClick={() => {
-                          setTransportMode(mode);
-                          setSettingsSubmenu(null);
-                        }}
-                        type="button"
-                      >
-                        <span>{t(`features.chat.transport.${mode}`)}</span>
-                        {transportMode === mode && <MdiIcon name="mdi-check" />}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </details>
+            <MdiIcon name="mdi-cog-outline" />
+            <span className="chat-sessions__settings-label">{t('core.common.settings')}</span>
+          </Link>
         </div>
       </aside>
       {sidebarOpen && (

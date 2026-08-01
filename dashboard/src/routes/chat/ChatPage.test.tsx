@@ -55,11 +55,12 @@ describe('ChatPage', () => {
     expect(await screen.findByText('features.chat.welcome.title')).toBeInTheDocument();
   });
 
-  it('keeps only transport controls in the sidebar settings menu', async () => {
+  it('links sidebar settings to the Bot settings page without duplicate controls', async () => {
     renderRoute(<ChatPage />, { route: '/chat' });
 
     await screen.findByText('features.chat.welcome.title');
-    expect(screen.getByText('features.chat.transport.title')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'core.common.settings' })).toHaveAttribute('href', '/settings');
+    expect(screen.queryByText('features.chat.transport.title')).not.toBeInTheDocument();
     expect(screen.queryByText('core.common.language')).not.toBeInTheDocument();
     expect(screen.queryByText('features.chat.modes.darkMode')).not.toBeInTheDocument();
     expect(screen.queryByText('features.chat.modes.lightMode')).not.toBeInTheDocument();

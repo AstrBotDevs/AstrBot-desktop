@@ -2,6 +2,14 @@
   "page": {
     "title": "Settings"
   },
+  "chat": {
+    "transport": {
+      "title": "Transport Mode",
+      "subtitle": "Choose the real-time protocol used for generated replies in Chat. This setting is stored in this browser.",
+      "sse": "SSE",
+      "websocket": "WebSocket"
+    }
+  },
   "about": {
     "resources": {
       "changelog": "View updates for current and previous versions.",

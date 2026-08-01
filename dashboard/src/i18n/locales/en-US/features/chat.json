@@ -121,11 +121,6 @@
     "on": "Stream",
     "off": "Normal"
   },
-  "transport": {
-    "title": "Transport Mode",
-    "sse": "SSE",
-    "websocket": "WebSocket"
-  },
   "config": {
     "title": "Config",
     "applyFailed": "Failed to apply configuration"

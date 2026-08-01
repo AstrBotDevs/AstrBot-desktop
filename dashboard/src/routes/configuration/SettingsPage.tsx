@@ -25,6 +25,7 @@ import { LoadingState } from './ConfigurationUi';
 import { errorMessage, type JsonObject, responseData } from './model';
 import { ApiKeySettingsSection } from './ApiKeySettingsSection';
 import { BackupDialog, ProxySelector, SidebarCustomizer, StorageCleanupPanel } from './SettingsExtras';
+import { ChatTransportSetting } from './ChatTransportSetting';
 
 type SettingsSection = 'general' | 'appearance' | 'network' | 'security' | 'maintenance' | 'openapi' | 'about';
 
@@ -325,6 +326,7 @@ export default function SettingsPage() {
                   <div className="settings-section__content">
                     {!loading && section === 'general' && (
                       <>
+                        <ChatTransportSetting />
                         {renderGroup('runtime')}
                         {renderGroup('logs')}
                         {renderGroup('tempStorage')}

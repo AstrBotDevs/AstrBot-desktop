@@ -2,6 +2,14 @@
   "page": {
     "title": "设置"
   },
+  "chat": {
+    "transport": {
+      "title": "通信传输模式",
+      "subtitle": "选择 Chat 页生成回复时使用的实时通信协议，设置保存在当前浏览器中。",
+      "sse": "SSE",
+      "websocket": "WebSocket"
+    }
+  },
   "about": {
     "resources": {
       "changelog": "查看当前版本和历史版本的更新内容。",

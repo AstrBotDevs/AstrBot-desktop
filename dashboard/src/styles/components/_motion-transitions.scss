@@ -3,7 +3,6 @@
 .headless-menu__content,
 .headless-popover__content,
 .provider-source-add[open] > .provider-source-add__menu,
-.chat-settings-menu[open] > .chat-settings-menu__panel,
 .chat-model-menu[open] > .chat-model-menu__panel,
 .chat-composer-menu[open] > .chat-composer-menu__panel,
 .chat-regenerate-menu[open] > .chat-message-action-panel,
@@ -11,9 +10,7 @@
   transform-origin: top right;
   animation: motion-menu-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.chat-settings-menu[open] > .chat-settings-menu__panel { transform-origin: bottom left; }
 .chat-model-menu[open] > .chat-model-menu__panel { transform-origin: top left; }
-.chat-settings-submenu { animation: motion-slide-left-in 0.18s ease-out both; }
 .onboarding-help[open] > :not(summary),
 .chat-message__body details[open] > :not(summary) { animation: motion-expand-content-in 0.2s ease-out both; }
 .sidebar { animation: motion-slide-right-in 0.22s ease-out both; }
