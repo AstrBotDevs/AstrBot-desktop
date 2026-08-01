@@ -75,8 +75,7 @@ html[data-theme='dark'] .chat-shell {
 
 .chat-sessions__actions { display: grid; gap: 2px; padding: 0 16px 6px; }
 .chat-sessions__actions a,
-.chat-sessions__actions button,
-.chat-sessions__settings {
+.chat-sessions__actions button {
   display: flex;
   width: 100%;
   min-height: 36px;
@@ -90,11 +89,9 @@ html[data-theme='dark'] .chat-shell {
   text-align: left;
   text-decoration: none;
 }
-.chat-sessions__actions .chat-sidebar-icon,
-.chat-sessions__settings .mdi { width: 18px; height: 18px; flex: 0 0 18px; font-size: 18px; text-align: center; }
+.chat-sessions__actions .chat-sidebar-icon { width: 18px; height: 18px; flex: 0 0 18px; font-size: 18px; text-align: center; }
 .chat-sessions__actions a:hover,
 .chat-sessions__actions button:hover,
-.chat-sessions__settings:hover,
 .chat-sessions__collapse:hover,
 .chat-sessions__close:hover { background: var(--chat-session-active); }
 
@@ -202,9 +199,7 @@ html[data-theme='dark'] .chat-shell {
 }
 .chat-session-list > div:hover .chat-session-progress,
 .chat-session-list > div:focus-within .chat-session-progress { display: none; }
-.chat-sessions__footer { position: relative; margin-top: auto; padding: 10px 16px 14px; }
-.chat-sessions__settings { display: flex; width: 100%; min-height: 36px; align-items: center; gap: 12px; padding: 7px 10px; border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 14px; font-weight: 500; text-decoration: none; }
-.chat-sessions__settings:hover { background: var(--chat-session-active); }
+.chat-sessions__footer { position: relative; margin-top: auto; }
 @media (min-width: 601px) {
   .chat-shell.is-sidebar-collapsed .chat-sessions__brand { justify-content: center; padding: 0; }
   .chat-shell.is-sidebar-collapsed .chat-sessions__brand-title,

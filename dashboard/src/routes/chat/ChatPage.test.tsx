@@ -62,7 +62,7 @@ describe('ChatPage', () => {
     renderRoute(<ChatPage />, { route: '/chat' });
 
     await screen.findByText('features.chat.welcome.title');
-    const settings = screen.getByRole('button', { name: 'core.common.settings' });
+    const settings = screen.getByRole('button', { name: 'core.navigation.settings' });
     await user.click(settings);
     expect(useLayoutStore.getState().settingsOpen).toBe(true);
     expect(screen.queryByText('features.chat.transport.title')).not.toBeInTheDocument();

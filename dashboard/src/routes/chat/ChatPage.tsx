@@ -1609,7 +1609,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
             ))}
           </div>
         </div>
-        <div className="chat-sessions__footer">
+        <div className="chat-sessions__footer sidebar-footer">
           <button
             className="chat-sessions__settings"
             onClick={() => {
@@ -1618,8 +1618,8 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
             }}
             type="button"
           >
-            <MdiIcon name="mdi-cog-outline" />
-            <span className="chat-sessions__settings-label">{t('core.common.settings')}</span>
+            <MdiIcon name="mdi-cog" />
+            <span className="chat-sessions__settings-label">{t('core.navigation.settings')}</span>
           </button>
         </div>
       </aside>
