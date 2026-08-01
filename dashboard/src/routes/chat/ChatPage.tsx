@@ -1,6 +1,6 @@
 import { type MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 
 import {
   addChatProjectSession,
@@ -55,7 +55,7 @@ import {
 } from './ChatComposer';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatDetailPanels, type ChatThread } from './ChatDetailPanels';
-import { BoxIcon, ChatLogo, PanelLeftIcon, PencilIcon, PlusIcon, SquarePenIcon, TrashIcon } from './ChatIcons';
+import { ChatLogo, PanelLeftIcon, PencilIcon, PlusIcon, SquarePenIcon, TrashIcon } from './ChatIcons';
 import { ChatProjectDialog, type ChatProjectForm } from './ChatProjectDialog';
 import {
   buildWebchatUmo,
@@ -1467,10 +1467,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
           </button>
         </div>
         <nav className="chat-sessions__actions">
-          <Link title={t('features.chat.actions.providerConfig')} to={`${basePath}/models`}>
-            <BoxIcon />
-            <span>{t('features.chat.actions.providerConfig')}</span>
-          </Link>
           <button onClick={newChat} title={t('features.chat.actions.newChat')} type="button">
             <SquarePenIcon />
             <span>{t('features.chat.actions.newChat')}</span>

@@ -74,7 +74,6 @@ html[data-theme='dark'] .chat-shell {
 .chat-sessions__close { display: none; width: 34px; height: 34px; place-items: center; border-radius: 8px !important; font-size: 20px; }
 
 .chat-sessions__actions { display: grid; gap: 2px; padding: 0 16px 6px; }
-.chat-sessions__actions a,
 .chat-sessions__actions button {
   display: flex;
   width: 100%;
@@ -90,7 +89,6 @@ html[data-theme='dark'] .chat-shell {
   text-decoration: none;
 }
 .chat-sessions__actions .chat-sidebar-icon { width: 18px; height: 18px; flex: 0 0 18px; font-size: 18px; text-align: center; }
-.chat-sessions__actions a:hover,
 .chat-sessions__actions button:hover,
 .chat-sessions__collapse:hover,
 .chat-sessions__close:hover { background: var(--chat-session-active); }
@@ -212,7 +210,6 @@ html[data-theme='dark'] .chat-shell {
   .chat-shell.is-sidebar-collapsed .chat-sessions__collapse:hover .chat-sessions__rail-stack > .chat-sidebar-icon,
   .chat-shell.is-sidebar-collapsed .chat-sessions__collapse:focus-visible .chat-sessions__rail-stack > .chat-sidebar-icon { opacity: 1; visibility: visible; }
   .chat-shell.is-sidebar-collapsed .chat-sessions__actions { padding: 0 10px 6px; }
-  .chat-shell.is-sidebar-collapsed .chat-sessions__actions a,
   .chat-shell.is-sidebar-collapsed .chat-sessions__actions button,
   .chat-shell.is-sidebar-collapsed .chat-sessions__settings { width: 36px; justify-content: center; padding: 0; }
   .chat-shell.is-sidebar-collapsed .chat-sessions__actions span { display: none; }

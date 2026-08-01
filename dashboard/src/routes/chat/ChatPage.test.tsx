@@ -55,6 +55,7 @@ describe('ChatPage', () => {
     renderRoute(<ChatPage />, { route: '/chat' });
 
     expect(await screen.findByText('features.chat.welcome.title')).toBeInTheDocument();
+    expect(screen.queryByText('features.chat.actions.providerConfig')).not.toBeInTheDocument();
   });
 
   it('links sidebar settings to the Bot settings page without duplicate controls', async () => {
