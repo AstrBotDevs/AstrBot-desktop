@@ -77,3 +77,14 @@ export function formatRunningTime(
     .filter(Boolean)
     .join(' ');
 }
+
+export function advanceRunningTime(running: RunningStats | undefined, elapsedSeconds: number) {
+  if (!running) return undefined;
+  const snapshotSeconds = running.hours * 3600 + running.minutes * 60 + running.seconds;
+  const totalSeconds = Math.max(0, Math.floor(snapshotSeconds + Math.max(0, elapsedSeconds)));
+  return {
+    hours: Math.floor(totalSeconds / 3600),
+    minutes: Math.floor((totalSeconds % 3600) / 60),
+    seconds: totalSeconds % 60,
+  };
+}

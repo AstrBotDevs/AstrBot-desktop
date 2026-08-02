@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { aggregateProviderSeries, formatRunningTime, makeSparklinePoints } from './statsModel';
+import { advanceRunningTime, aggregateProviderSeries, formatRunningTime, makeSparklinePoints } from './statsModel';
 
 describe('stats model', () => {
   it('normalizes chart values into an SVG polyline', () => {
@@ -19,6 +19,14 @@ describe('stats model', () => {
 
   it('formats runtime counters', () => {
     expect(formatRunningTime({ hours: 1, minutes: 2, seconds: 3 })).toBe('1h 2m 3s');
+  });
+
+  it('advances and normalizes runtime snapshots', () => {
+    expect(advanceRunningTime({ hours: 1, minutes: 59, seconds: 58 }, 3)).toEqual({
+      hours: 2,
+      minutes: 0,
+      seconds: 1,
+    });
   });
 
   it('groups provider series beyond the first four into others', () => {

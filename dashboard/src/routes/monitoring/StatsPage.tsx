@@ -5,6 +5,7 @@ import { getProviderTokenStats, getStats } from '@/api/openapi';
 import { responseData } from '@/api/response';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 import {
+  advanceRunningTime,
   aggregateProviderSeries,
   formatRunningTime,
   makeSparklinePoints,
@@ -19,34 +20,42 @@ const CHART_COLORS = ['#5f7e9b', '#708865', '#9a7557', '#786696', '#5d8985'];
 export default function StatsPage() {
   const { i18n, t } = useTranslation();
   const prefix = 'features.stats';
-  const text = (key: string, values?: Record<string, unknown>) => t(`${prefix}.${key}`, values);
+  const text = useCallback((key: string, values?: Record<string, unknown>) => t(`${prefix}.${key}`, values), [t]);
   const [range, setRange] = useState<TokenRange>(1);
   const [base, setBase] = useState<BaseStats | null>(null);
   const [providers, setProviders] = useState<ProviderStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const initialLoad = useRef(true);
+  const refreshRequestId = useRef(0);
   const number = useMemo(() => new Intl.NumberFormat(i18n.language), [i18n.language]);
 
   const refresh = useCallback(
     async (selectedRange: TokenRange, rangeChange = false) => {
+      const requestId = ++refreshRequestId.current;
       try {
+        setLoading(true);
         setError('');
         const [baseResponse, providerResponse] = await Promise.all([
           getStats({ query: { offset_sec: selectedRange * 86_400 } }),
           getProviderTokenStats({ query: { days: selectedRange } }),
         ]);
+        if (requestId !== refreshRequestId.current) return;
+        const refreshedAt = new Date();
         setBase(responseData<BaseStats>(baseResponse) ?? null);
         setProviders(responseData<ProviderStats>(providerResponse) ?? null);
-        setUpdatedAt(new Date());
+        setUpdatedAt(refreshedAt);
+        setNow(refreshedAt.getTime());
       } catch {
+        if (requestId !== refreshRequestId.current) return;
         setError(text(rangeChange ? 'errors.rangeFailed' : 'errors.loadFailed'));
       } finally {
-        setLoading(false);
+        if (requestId === refreshRequestId.current) setLoading(false);
       }
     },
-    [t],
+    [text],
   );
 
   useEffect(() => {
@@ -57,6 +66,15 @@ export default function StatsPage() {
     const timer = window.setInterval(() => void refresh(range), 60_000);
     return () => window.clearInterval(timer);
   }, [range, refresh]);
+  useEffect(() => {
+    const updateClock = () => setNow(Date.now());
+    const timer = window.setInterval(updateClock, 1000);
+    document.addEventListener('visibilitychange', updateClock);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', updateClock);
+    };
+  }, []);
 
   const compact = (value: number) => {
     if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`;
@@ -85,6 +103,7 @@ export default function StatsPage() {
         },
       )
     : '—';
+  const liveRunning = advanceRunningTime(base?.running, updatedAt ? (now - updatedAt.getTime()) / 1000 : 0);
   const cards: Array<{ icon: `mdi-${string}`; label: string; note: string; value: string }> = [
     {
       icon: 'mdi-robot-outline',
@@ -119,7 +138,7 @@ export default function StatsPage() {
     {
       icon: 'mdi-timer-outline',
       label: text('overviewCards.uptime.label'),
-      value: formatRunningTime(base?.running, {
+      value: formatRunningTime(liveRunning, {
         hours: text('units.hoursShort'),
         minutes: text('units.minutesShort'),
         seconds: text('units.secondsShort'),
@@ -134,20 +153,30 @@ export default function StatsPage() {
   return (
     <div className="stats-page-react">
       <div className="stats-page-react__inner">
-        <header className="stats-header-react">
+        <header className="monitor-header stats-header-react">
           <div>
-            <h1>{text('header.title')}</h1>
+            <div className="stats-header-react__title-row">
+              <h1>{text('header.title')}</h1>
+              <button
+                aria-label={t('core.actions.refresh')}
+                disabled={loading}
+                onClick={() => void refresh(range)}
+                title={t('core.actions.refresh')}
+                type="button"
+              >
+                <MdiIcon className={loading ? 'mdi-spin' : undefined} name="mdi-refresh" />
+                <span>
+                  {updatedAt
+                    ? new Date(now).toLocaleTimeString(i18n.language, {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                      })
+                    : text('header.notUpdated')}
+                </span>
+              </button>
+            </div>
             <p>{text('header.subtitle')}</p>
-          </div>
-          <div>
-            <MdiIcon name="mdi-refresh" />
-            <span>
-              {updatedAt?.toLocaleTimeString(i18n.language, {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-              }) ?? text('header.notUpdated')}
-            </span>
           </div>
         </header>
         {error && (

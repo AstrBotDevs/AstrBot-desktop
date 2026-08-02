@@ -333,10 +333,13 @@
 .stats-page-react { min-height: 100%; padding: 24px 24px 64px; background: var(--astrbot-background); }
 .stats-page-react__inner { width: min(1560px, 100%); margin: 0 auto; }
 .stats-page-react .monitor-error { margin-bottom: 16px; }
-.stats-header-react { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+.stats-header-react { align-items: flex-start; justify-content: flex-start; margin-bottom: 32px; }
+.stats-header-react__title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .stats-header-react h1 { margin: 0; font-size: 24px; font-weight: 700; line-height: 1.2; }
-.stats-header-react p { margin: 4px 0 0; color: color-mix(in srgb, var(--astrbot-text) 68%, transparent); font-size: 14px; }
-.stats-header-react > div:last-child { display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px solid var(--astrbot-border); border-radius: 999px; background: var(--astrbot-surface); color: color-mix(in srgb, var(--astrbot-text) 68%, transparent); font-size: 13px; }
+.stats-header-react p { font-size: 14px; }
+.stats-header-react__title-row > button { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid var(--astrbot-border); border-radius: 999px; background: var(--astrbot-surface); color: color-mix(in srgb, var(--astrbot-text) 68%, transparent); cursor: pointer; font: inherit; font-size: 13px; }
+.stats-header-react__title-row > button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--astrbot-primary) 42%, var(--astrbot-border)); color: var(--astrbot-primary); }
+.stats-header-react__title-row > button:disabled { cursor: wait; opacity: .65; }
 .stats-loading { display: grid; min-height: 300px; place-items: center; color: color-mix(in srgb, var(--astrbot-text) 58%, transparent); font-size: 28px; }
 .stats-overview-react { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
 .stats-card-react { min-width: 0; border: 1px solid var(--astrbot-border); border-radius: 16px; background: var(--astrbot-surface); }
@@ -400,7 +403,6 @@
 }
 @media (max-width: 900px) {
   .stats-overview-react { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .stats-header-react,
   .stats-section-head,
   .stats-chart-card > header { align-items: flex-start; flex-direction: column; }
   .stats-chart-total { align-items: flex-start; }
