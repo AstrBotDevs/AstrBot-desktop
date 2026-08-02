@@ -17,6 +17,7 @@ import {
   readNavigationItems,
   type NavigationItem,
 } from './navigation';
+import { ApplicationMenu } from './ApplicationMenu';
 
 function NavigationEntry({ item, mini }: { item: NavigationItem; mini: boolean }) {
   const { t } = useTranslation();
@@ -172,6 +173,7 @@ export function Sidebar() {
               <MdiIcon name="mdi-cog" />
               {t('core.navigation.settings')}
             </button>
+            <ApplicationMenu />
           </div>
         )}
         {!mini && (

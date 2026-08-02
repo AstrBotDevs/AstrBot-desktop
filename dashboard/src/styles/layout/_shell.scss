@@ -91,9 +91,14 @@
 }
 
 .full-layout__sidebar {
+  position: relative;
   grid-row: 2;
   min-width: 0;
   min-height: 0;
+}
+
+.full-layout__sidebar:has(.application-menu__trigger[aria-expanded='true']) {
+  z-index: 120;
 }
 
 .full-layout__main {
@@ -242,8 +247,7 @@
 }
 
 .app-header--chat .app-header__icon-button,
-.app-header--chat .app-header__mode-switch,
-.app-header--chat .headless-menu {
+.app-header--chat .app-header__mode-switch {
   pointer-events: auto;
 }
 
@@ -375,7 +379,7 @@
 }
 
 .sidebar-footer {
-  display: grid;
+  display: flex;
   flex: 0 0 auto;
   align-items: center;
   gap: 4px;
@@ -400,6 +404,39 @@
   font: inherit;
   text-decoration: none;
 }
+
+.sidebar-footer > button:first-child { min-width: 0; flex: 1; }
+.sidebar-footer .application-menu { flex: 0 0 auto; }
+.sidebar-footer .application-menu__trigger {
+  display: grid;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  place-items: center;
+  font-size: 20px;
+}
+.application-menu__trigger[aria-expanded='true'] { background: var(--astrbot-hover); }
+.application-menu > .headless-menu__content {
+  top: auto;
+  right: 0;
+  bottom: calc(100% + 8px);
+  min-width: 194px;
+  max-height: none;
+  overflow: visible;
+  padding: 5px;
+  border: 0;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--astrbot-text) 5%, var(--astrbot-surface));
+  box-shadow: 0 14px 36px rgb(0 0 0 / 18%);
+}
+.application-menu .headless-menu__item { min-height: 40px; margin: 2px 0; border-radius: 8px; padding: 7px 9px; font-size: 14px; }
+.application-menu .headless-menu__item:hover,
+.application-menu .headless-menu__item:focus-visible,
+.application-menu .headless-menu__item.is-active { background: color-mix(in srgb, var(--astrbot-primary) 10%, transparent); }
+.application-menu .headless-menu__item-label { min-width: 0; flex: 1; gap: 12px; white-space: nowrap; }
+.application-menu .headless-menu__item-label > .mdi { width: 22px; flex: 0 0 22px; color: color-mix(in srgb, var(--astrbot-text) 55%, transparent); font-size: 22px; text-align: center; }
 
 .sidebar-footer .mdi {
   font-size: 18px;
@@ -510,23 +547,6 @@
   background: var(--astrbot-border);
 }
 
-.app-header__menu-button[aria-expanded='true'] { background: var(--astrbot-hover); }
-.app-header__menu > .headless-menu__content {
-  min-width: 194px;
-  max-height: none;
-  overflow: visible;
-  padding: 5px;
-  border: 0;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--astrbot-surface) 98%, transparent);
-  box-shadow: 0 12px 28px rgb(0 0 0 / 8%);
-}
-.app-header__menu .headless-menu__item { min-height: 40px; margin: 2px 0; border-radius: 8px; padding: 7px 9px; font-size: 14px; }
-.app-header__menu .headless-menu__item:hover,
-.app-header__menu .headless-menu__item:focus-visible,
-.app-header__menu .headless-menu__item.is-active { background: color-mix(in srgb, var(--astrbot-primary) 10%, transparent); }
-.app-header__menu .headless-menu__item-label { min-width: 0; flex: 1; gap: 12px; white-space: nowrap; }
-.app-header__menu .headless-menu__item-label > .mdi { width: 22px; flex: 0 0 22px; color: color-mix(in srgb, var(--astrbot-text) 55%, transparent); font-size: 22px; text-align: center; }
 .header-menu-group { position: relative; }
 .header-menu-group__current { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 5px; color: color-mix(in srgb, var(--astrbot-text) 72%, transparent); }
 .header-menu-group__current > span { min-width: 22px; font-size: 12px; text-align: center; }
@@ -535,15 +555,16 @@
 .header-submenu {
   position: absolute;
   z-index: 102;
-  top: -5px;
-  right: calc(100% + 8px);
+  right: auto;
+  bottom: -5px;
+  left: calc(100% + 8px);
   display: grid;
   min-width: 180px;
   gap: 2px;
   padding: 5px;
   border-radius: 14px;
-  background: color-mix(in srgb, var(--astrbot-surface) 98%, transparent);
-  box-shadow: 0 12px 28px rgb(0 0 0 / 8%);
+  background: color-mix(in srgb, var(--astrbot-text) 5%, var(--astrbot-surface));
+  box-shadow: 0 14px 36px rgb(0 0 0 / 18%);
 }
 .header-submenu button {
   display: flex;
@@ -613,6 +634,5 @@
     padding: 0 8px;
   }
 
-  .header-submenu { top: calc(100% + 6px); right: 0; }
 }
 

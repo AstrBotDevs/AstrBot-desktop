@@ -43,6 +43,7 @@ import { errorMessage, isObject, JsonObject, objectList, recordId, responseData 
 import { providerTestResult } from '@/routes/configuration/providerPageModel';
 import { confirmAction, toast } from '@/stores/feedback';
 import { useLayoutStore } from '@/stores/layout';
+import { ApplicationMenu } from '@/layouts/full/ApplicationMenu';
 import { acquireActionLock } from '@/utils/actionLock';
 import ProviderPage from '@/routes/configuration/ProviderPage';
 import { AudioRecorder } from './audioRecorder';
@@ -1617,6 +1618,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
             <MdiIcon name="mdi-cog" />
             <span className="chat-sessions__settings-label">{t('core.navigation.settings')}</span>
           </button>
+          <ApplicationMenu />
         </div>
       </aside>
       {sidebarOpen && (

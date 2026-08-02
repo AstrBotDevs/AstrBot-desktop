@@ -36,6 +36,10 @@ html[data-theme='dark'] .chat-shell {
   background: var(--astrbot-surface);
 }
 
+.chat-sessions:has(.application-menu__trigger[aria-expanded='true']) {
+  z-index: 120;
+}
+
 .chat-sessions button,
 .chat-sessions a,
 .chat-sessions summary,

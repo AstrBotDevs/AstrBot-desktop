@@ -27,6 +27,9 @@ import { chatStreamRegistry, resetChatStreamRegistry } from './chatStreamRegistr
 import ChatPage from './ChatPage';
 
 vi.mock('@/api/openapi');
+vi.mock('@/desktop/DesktopProvider', () => ({
+  useDesktop: () => ({ checkForUpdate: vi.fn(), installUpdate: vi.fn() }),
+}));
 vi.mock('./chatTransport', () => ({ runChatStream: vi.fn() }));
 vi.mock('@/routes/configuration/ProviderPage', () => ({ default: () => <div>provider workspace</div> }));
 
@@ -64,6 +67,7 @@ describe('ChatPage', () => {
 
     await screen.findByText('features.chat.welcome.title');
     const settings = screen.getByRole('button', { name: 'core.navigation.settings' });
+    expect(screen.getByRole('button', { name: 'core.header.buttons.menu' }).closest('.sidebar-footer')).not.toBeNull();
     await user.click(settings);
     expect(useLayoutStore.getState().settingsOpen).toBe(true);
     expect(screen.queryByText('features.chat.transport.title')).not.toBeInTheDocument();

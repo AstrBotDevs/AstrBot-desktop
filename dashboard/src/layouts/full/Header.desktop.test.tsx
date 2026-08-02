@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -24,7 +24,7 @@ describe('desktop header', () => {
     useDesktopStore.setState({ isDesktop: false, runtimeChecked: false });
   });
 
-  it('does not expose account or password controls', () => {
+  it('keeps the application menu out of the header', () => {
     useDesktopStore.setState({ isDesktop: true, runtimeChecked: true });
 
     render(
@@ -33,9 +33,6 @@ describe('desktop header', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByLabelText('core.header.buttons.menu'));
-    expect(screen.getByText('core.common.language')).toBeInTheDocument();
-    expect(screen.getByText('core.header.buttons.theme.title')).toBeInTheDocument();
-    expect(screen.getByText('core.header.updateDialog.title')).toBeInTheDocument();
+    expect(screen.queryByLabelText('core.header.buttons.menu')).not.toBeInTheDocument();
   });
 });

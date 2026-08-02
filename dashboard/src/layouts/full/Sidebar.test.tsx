@@ -11,6 +11,9 @@ import { Sidebar } from './Sidebar';
 const openapiMock = vi.hoisted(() => ({ listPlugins: vi.fn() }));
 
 vi.mock('@/api/openapi', () => ({ listPlugins: openapiMock.listPlugins }));
+vi.mock('@/desktop/DesktopProvider', () => ({
+  useDesktop: () => ({ checkForUpdate: vi.fn(), installUpdate: vi.fn() }),
+}));
 
 describe('Sidebar', () => {
   beforeEach(() => {
@@ -43,6 +46,10 @@ describe('Sidebar', () => {
     await user.click(screen.getByRole('button', { name: 'core.navigation.settings' }));
 
     expect(useLayoutStore.getState().settingsOpen).toBe(true);
+    const menu = screen.getByRole('button', { name: 'core.header.buttons.menu' });
+    expect(menu.closest('.sidebar-footer')).not.toBeNull();
+    await user.click(menu);
+    expect(screen.getByText('core.common.language')).toBeInTheDocument();
   });
 
   it('loads plugin navigation and supports keyboard resizing', async () => {
