@@ -16,10 +16,6 @@
     "deleteSelected": "Delete Selected ({count})",
     "exportSelected": "Export Selected ({count})"
   },
-  "pagination": {
-    "itemsPerPage": "Items per page",
-    "showingItems": "Showing {start}-{end} of {total} items"
-  },
   "table": {
     "headers": {
       "title": "Conversation Title",

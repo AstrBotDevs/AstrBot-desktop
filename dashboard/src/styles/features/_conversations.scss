@@ -52,14 +52,6 @@
 .conversation-row-actions { display: flex; align-items: center; gap: 4px; }
 .conversation-row-actions .button--danger:hover { color: var(--astrbot-error); }
 .conversation-panel .monitor-empty > .mdi { display: block; margin-bottom: 8px; font-size: 30px; }
-.conversation-pagination { display: flex; min-height: 56px; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 16px; border-top: 1px solid var(--astrbot-border); color: color-mix(in srgb, var(--astrbot-text) 65%, transparent); font-size: 12px; }
-.conversation-pagination label,
-.conversation-pagination > div { display: flex; align-items: center; gap: 7px; }
-.conversation-pagination .ui-select-menu > button,
-.conversation-pagination button { height: 32px; border: 1px solid var(--astrbot-border); border-radius: 7px; background: var(--astrbot-surface); color: inherit; }
-.conversation-pagination .ui-select-menu { width: auto; min-width: 72px; }
-.conversation-pagination .ui-select-menu > button { min-height: 32px; padding: 0 8px; }
-.conversation-pagination button { width: 32px; padding: 0; font-size: 18px; }
 .conversation-history { display: flex; max-height: 65vh; flex-direction: column; gap: 10px; overflow: auto; margin: 16px 0; padding: 16px; border-radius: 12px; background: color-mix(in srgb, var(--astrbot-text) 3%, var(--astrbot-surface)); }
 .conversation-history__message { width: min(78%, 720px); padding: 10px 12px; border: 1px solid var(--astrbot-border); border-radius: 12px; background: var(--astrbot-surface); }
 .conversation-history__message--user { margin-left: auto; border-color: color-mix(in srgb, var(--astrbot-primary) 24%, var(--astrbot-border)); background: color-mix(in srgb, var(--astrbot-primary) 9%, var(--astrbot-surface)); }

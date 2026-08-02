@@ -16,10 +16,6 @@
     "deleteSelected": "删除选中 ({count})",
     "exportSelected": "导出选中 ({count})"
   },
-  "pagination": {
-    "itemsPerPage": "每页",
-    "showingItems": "显示 {start}-{end} 项，共 {total} 项"
-  },
   "table": {
     "headers": {
       "title": "标题",

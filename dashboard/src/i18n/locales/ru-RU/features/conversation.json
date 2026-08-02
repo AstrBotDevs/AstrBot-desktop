@@ -16,10 +16,6 @@
         "deleteSelected": "Удалить выбранные ({count})",
         "exportSelected": "Экспорт выбранных ({count})"
     },
-    "pagination": {
-        "itemsPerPage": "на странице",
-        "showingItems": "Показано {start}-{end} из {total}"
-    },
     "table": {
         "headers": {
             "title": "Заголовок диалога",

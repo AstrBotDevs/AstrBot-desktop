@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { type ReactNode, type UIEventHandler } from 'react';
 
 import { AsyncState } from './AsyncState';
 
@@ -26,6 +26,7 @@ export function DataTable<Row>({
   getRowKey,
   loading,
   loadingLabel,
+  onScroll,
   rows,
   selection,
   tableClassName = '',
@@ -37,12 +38,13 @@ export function DataTable<Row>({
   getRowKey: (row: Row) => string;
   loading?: boolean;
   loadingLabel: ReactNode;
+  onScroll?: UIEventHandler<HTMLDivElement>;
   rows: Row[];
   selection?: DataTableSelection<Row>;
   tableClassName?: string;
 }) {
   return (
-    <div className={`ui-data-table${className ? ` ${className}` : ''}`}>
+    <div className={`ui-data-table${className ? ` ${className}` : ''}`} onScroll={onScroll}>
       <table className={`ui-data-table__table${tableClassName ? ` ${tableClassName}` : ''}`}>
         <thead>
           <tr>

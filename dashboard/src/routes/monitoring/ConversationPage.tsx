@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -11,7 +11,6 @@ import {
 } from '@/api/openapi';
 import { decodeApiData, isRecord } from '@/api/response';
 import { conversationFilesApi } from '@/api/services';
-import { paginationDefaults } from '@/config/defaults';
 import { useBrowserCapabilities } from '@/platform/BrowserCapabilitiesProvider';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MonacoEditor } from '@/components/editor/MonacoEditor';
@@ -19,7 +18,6 @@ import { MdiIcon } from '@/components/icons/MdiIcon';
 import { Button, DialogCancel } from '@/components/ui/Button';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { DialogActions } from '@/components/ui/DialogActions';
-import { Pagination } from '@/components/ui/Pagination';
 import { SearchField } from '@/components/ui/SearchField';
 import { SelectControl } from '@/components/ui/SelectControl';
 import { confirmDestructiveAction } from '@/components/ui/confirm';
@@ -34,6 +32,8 @@ import {
 } from './conversationModel';
 import { formatTimestamp } from './model';
 
+const CONVERSATION_BATCH_SIZE = 20;
+
 export default function ConversationPage() {
   const { copyText, downloadBlob } = useBrowserCapabilities();
   const { i18n, t } = useTranslation();
@@ -42,10 +42,7 @@ export default function ConversationPage() {
   const [search, setSearch] = useState('');
   const [messageType, setMessageType] = useState('');
   const [platform, setPlatform] = useState('');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(paginationDefaults.pageSize);
   const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState(() => new Set<string>());
@@ -56,31 +53,52 @@ export default function ConversationPage() {
   const [savingHistory, setSavingHistory] = useState(false);
   const [editing, setEditing] = useState<Conversation | null>(null);
   const [umoDisplay, setUmoDisplay] = useState<'parsed' | 'raw'>('parsed');
+  const loadingRef = useRef(false);
+  const hasMoreRef = useRef(true);
+  const nextPageRef = useRef(1);
+  const requestIdRef = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ append = false }: { append?: boolean } = {}) => {
+    if (append && (loadingRef.current || !hasMoreRef.current)) return;
+    const requestId = ++requestIdRef.current;
+    const requestedPage = append ? nextPageRef.current : 1;
+    loadingRef.current = true;
     setLoading(true);
     setError('');
+    if (!append) {
+      setItems([]);
+      setSelected(new Set());
+      nextPageRef.current = 1;
+      hasMoreRef.current = true;
+    }
     try {
       const response = await listConversations({
         query: {
           include_history: false,
           message_types: messageType || undefined,
-          page,
-          page_size: pageSize,
+          page: requestedPage,
+          page_size: CONVERSATION_BATCH_SIZE,
           platforms: platform.trim() || undefined,
           search: search.trim() || undefined,
         },
       });
       const data = decodeApiData(response, parseConversationList, 'conversation list');
-      setItems(data?.conversations ?? []);
-      setTotal(data?.pagination?.total ?? 0);
-      setTotalPages(data?.pagination?.total_pages ?? 1);
+      if (requestId !== requestIdRef.current) return;
+      const conversations = data.conversations ?? [];
+      setItems((current) => (append ? [...current, ...conversations] : conversations));
+      setTotal(data.pagination?.total ?? conversations.length);
+      nextPageRef.current = requestedPage + 1;
+      hasMoreRef.current = requestedPage < (data.pagination?.total_pages ?? 1);
     } catch (cause) {
+      if (requestId !== requestIdRef.current) return;
       setError(cause instanceof Error ? cause.message : t(`${prefix}.messages.fetchError`));
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        loadingRef.current = false;
+        setLoading(false);
+      }
     }
-  }, [messageType, page, pageSize, platform, search, t]);
+  }, [messageType, platform, search, t]);
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 300);
     return () => window.clearTimeout(timer);
@@ -194,8 +212,10 @@ export default function ConversationPage() {
       toast.error(t(`${prefix}.messages.copyError`));
     }
   };
-  const rangeStart = total ? (page - 1) * pageSize + 1 : 0;
-  const rangeEnd = Math.min(page * pageSize, total);
+  const loadNextBatch = (event: UIEvent<HTMLDivElement>) => {
+    const target = event.currentTarget;
+    if (target.scrollHeight - target.scrollTop - target.clientHeight <= 160) void load({ append: true });
+  };
   const columns: DataTableColumn<Conversation>[] = [
     {
       header: t(`${prefix}.table.headers.title`),
@@ -300,7 +320,6 @@ export default function ConversationPage() {
             <input
               onChange={(event) => {
                 setPlatform(event.target.value);
-                setPage(1);
               }}
               placeholder={t(`${prefix}.filters.platform`)}
               value={platform}
@@ -308,7 +327,6 @@ export default function ConversationPage() {
             <SelectControl
               onChange={(event) => {
                 setMessageType(event.target.value);
-                setPage(1);
               }}
               value={messageType}
             >
@@ -320,7 +338,6 @@ export default function ConversationPage() {
               label={t(`${prefix}.filters.search`)}
               onChange={(value) => {
                 setSearch(value);
-                setPage(1);
               }}
               placeholder={t(`${prefix}.filters.search`)}
               value={search}
@@ -360,6 +377,7 @@ export default function ConversationPage() {
           getRowKey={conversationKey}
           loading={loading}
           loadingLabel={t('core.common.loading')}
+          onScroll={loadNextBatch}
           rows={items}
           selection={{
             allSelected,
@@ -370,25 +388,6 @@ export default function ConversationPage() {
             rowLabel: (item) => item.title || item.cid,
           }}
           tableClassName="monitor-table conversation-table"
-        />
-        <Pagination
-          className="conversation-pagination"
-          labels={{
-            navigation: t('core.common.pagination'),
-            next: t('core.common.nextPage'),
-            pageSize: t(`${prefix}.pagination.itemsPerPage`),
-            previous: t('core.common.previousPage'),
-            range: t(`${prefix}.pagination.showingItems`, { start: rangeStart, end: rangeEnd, total }),
-          }}
-          onPageChange={setPage}
-          onPageSizeChange={(size) => {
-            setPageSize(size);
-            setPage(1);
-          }}
-          page={page}
-          pageSize={pageSize}
-          totalItems={total}
-          totalPages={totalPages}
         />
       </section>
       <Dialog
