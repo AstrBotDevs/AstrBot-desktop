@@ -7,6 +7,7 @@ export type RouteLayout = 'protected-full' | 'protected-blank';
 export const routeManifest: readonly RouteManifestEntry[] = [
   { path: '/' },
   { path: '/main' },
+  { path: '/welcome' },
   { path: '/about' },
   { path: '/capabilities' },
   { path: '/dashboard/default' },

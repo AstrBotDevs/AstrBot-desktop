@@ -10,6 +10,7 @@ import { coreRouteModuleLoaders } from '@/app/coreRouteModules';
 import { RouteErrorPage } from '@/app/RouteErrorPage';
 import { useLayoutStore, type SettingsSection } from '@/stores/layout';
 
+const WelcomePage = lazy(() => import('@/routes/welcome/WelcomePage'));
 const AboutPage = lazy(() => import('@/routes/about/AboutPage'));
 const CapabilityCenterPage = lazy(() => import('@/routes/capabilities/CapabilityCenterPage'));
 const StatsPage = lazy(() => import('@/routes/monitoring/StatsPage'));
@@ -57,6 +58,7 @@ function SettingsRouteRedirect({ section = 'general' }: { section?: SettingsSect
 const reactRouteElements: Partial<Record<string, React.ReactNode>> = {
   '/': <Navigate replace to="/chat" />,
   '/main': <Navigate replace to="/chat" />,
+  '/welcome': loading(<WelcomePage />),
   '/about': loading(<AboutPage />),
   '/capabilities': loading(<CapabilityCenterPage />),
   '/dashboard/default': loading(<StatsPage />),
