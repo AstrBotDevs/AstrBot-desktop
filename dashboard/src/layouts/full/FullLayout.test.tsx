@@ -44,12 +44,12 @@ describe('FullLayout', () => {
     expect(markup).toContain('>Page content<');
   });
 
-  it('hides the sidebar and uses full-screen content on chat routes', () => {
+  it('keeps the shared sidebar available for chat navigation', () => {
     const markup = renderLayout('/chat/conversation-1');
 
     expect(markup).toContain('data-layout-mode="chat"');
-    expect(markup).toContain('full-layout--without-sidebar');
-    expect(markup).not.toContain('full-layout__sidebar');
+    expect(markup).not.toContain('full-layout--without-sidebar');
+    expect(markup).toContain('full-layout__sidebar');
     expect(markup).toContain('full-layout__footer');
     expect(markup).toContain('full-layout__page--fullscreen');
   });

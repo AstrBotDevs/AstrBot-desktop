@@ -34,11 +34,14 @@
   border-left: 1px solid var(--astrbot-border);
   background: var(--chat-page-bg);
   color: var(--astrbot-text);
-  animation: chat-detail-panel-in .2s ease;
+  animation: chat-detail-panel-in 0.2s ease;
 }
 
 @keyframes chat-detail-panel-in {
-  from { opacity: 0; transform: translateX(100%); }
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
 }
 
 .chat-detail-panel > header {
@@ -254,8 +257,17 @@
     left: 8px;
   }
 
+  .chat-shell--integrated .chat-toolbar {
+    right: 0;
+    left: 0;
+  }
+
   .chat-toolbar__sidebar-open {
     display: grid;
+  }
+
+  .chat-shell--integrated .chat-toolbar__sidebar-open {
+    display: none;
   }
 
   .chat-project-workspace {
@@ -272,6 +284,11 @@
   .chat-toolbar {
     right: 108px;
     left: 42px;
+  }
+
+  .chat-shell--integrated .chat-toolbar {
+    right: 0;
+    left: 0;
   }
 
   .chat-composer--v2 .chat-composer-v2__surface,

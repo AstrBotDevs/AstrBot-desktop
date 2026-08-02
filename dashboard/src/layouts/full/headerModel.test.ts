@@ -1,27 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import {
-  getModeSwitchTarget,
-  headerUpdateRuntime,
-  LAST_BOT_ROUTE_KEY,
-  LAST_CHAT_ROUTE_KEY,
-  runHeaderUpdateAction,
-} from './headerModel';
-
-function storage(values: Record<string, string>): Pick<Storage, 'getItem'> {
-  return { getItem: (key) => values[key] ?? null };
-}
-
-describe('header mode switching', () => {
-  it('returns to the last bot route from chat', () => {
-    expect(getModeSwitchTarget('/chat/42', storage({ [LAST_BOT_ROUTE_KEY]: '/settings' }))).toBe('/settings');
-  });
-
-  it('returns to the last conversation from bot mode', () => {
-    expect(getModeSwitchTarget('/settings', storage({ [LAST_CHAT_ROUTE_KEY]: '42' }))).toBe('/chat/42');
-    expect(getModeSwitchTarget('/settings', storage({}))).toBe('/chat');
-  });
-});
+import { headerUpdateRuntime, runHeaderUpdateAction } from './headerModel';
 
 describe('Header update runtime', () => {
   it('routes desktop and web update actions to different providers', () => {

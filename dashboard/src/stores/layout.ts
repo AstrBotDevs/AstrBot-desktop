@@ -9,14 +9,7 @@ export const SIDEBAR_COLLAPSED_WIDTH = 80;
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 export type SettingsSection =
-  | 'general'
-  | 'appearance'
-  | 'network'
-  | 'security'
-  | 'maintenance'
-  | 'openapi'
-  | 'about'
-  | 'config';
+  'general' | 'appearance' | 'network' | 'security' | 'maintenance' | 'openapi' | 'about' | 'config';
 
 function readOpenedGroups(): string[] {
   return openedSidebarGroupsPreference.read();
@@ -45,7 +38,6 @@ export function resolveDarkTheme(mode: ThemeMode, prefersDark: boolean) {
 }
 
 type LayoutState = {
-  chatSidebarOpen: boolean;
   drawerOpen: boolean;
   miniSidebar: boolean;
   openedGroups: string[];
@@ -57,17 +49,14 @@ type LayoutState = {
   closeSettings: () => void;
   openSettings: (section?: SettingsSection) => void;
   setDrawerOpen: (open: boolean) => void;
-  setChatSidebarOpen: (open: boolean) => void;
   setOpenedGroups: (groups: string[]) => void;
   setSidebarWidth: (width: number) => void;
   setThemeMode: (mode: ThemeMode) => void;
   toggleDrawer: () => void;
-  toggleChatSidebar: () => void;
   toggleMiniSidebar: () => void;
 };
 
 export const useLayoutStore = create<LayoutState>()((set) => ({
-  chatSidebarOpen: false,
   drawerOpen: typeof window === 'undefined' || window.innerWidth >= 768,
   miniSidebar: false,
   openedGroups: readOpenedGroups(),
@@ -79,7 +68,6 @@ export const useLayoutStore = create<LayoutState>()((set) => ({
   closeSettings: () => set({ settingsOpen: false }),
   openSettings: (settingsSection = 'general') => set({ settingsOpen: true, settingsSection }),
   setDrawerOpen: (drawerOpen) => set({ drawerOpen }),
-  setChatSidebarOpen: (chatSidebarOpen) => set({ chatSidebarOpen }),
   setOpenedGroups: (openedGroups) => {
     openedSidebarGroupsPreference.write(openedGroups);
     set({ openedGroups });
@@ -94,6 +82,5 @@ export const useLayoutStore = create<LayoutState>()((set) => ({
     set({ themeMode });
   },
   toggleDrawer: () => set((state) => ({ drawerOpen: !state.drawerOpen })),
-  toggleChatSidebar: () => set((state) => ({ chatSidebarOpen: !state.chatSidebarOpen })),
   toggleMiniSidebar: () => set((state) => ({ miniSidebar: !state.miniSidebar })),
 }));

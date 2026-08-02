@@ -42,7 +42,7 @@ describe('ChatPage', () => {
     resetChatStreamRegistry();
     vi.resetAllMocks();
     localStorage.clear();
-    useLayoutStore.setState({ settingsOpen: false, settingsSection: 'general' });
+    useLayoutStore.setState({ drawerOpen: true, miniSidebar: false, settingsOpen: false, settingsSection: 'general' });
     vi.mocked(listChatSessions).mockResolvedValue(mockApiResponse({ sessions: [] }));
     vi.mocked(listChatProjects).mockResolvedValue(mockApiResponse({ projects: [] }));
     vi.mocked(listProviders).mockResolvedValue(mockApiResponse({ model_metadata: {}, providers: [] }));
@@ -55,25 +55,25 @@ describe('ChatPage', () => {
   });
 
   it('renders the successful empty-chat state', async () => {
-    renderRoute(<ChatPage />, { route: '/chat' });
+    const { container } = renderRoute(<ChatPage />, { route: '/chat' });
 
     expect(await screen.findByText('features.chat.welcome.title')).toBeInTheDocument();
+    expect(container.querySelector('.chat-shell--integrated')).not.toBeNull();
     expect(screen.queryByText('features.chat.actions.providerConfig')).not.toBeInTheDocument();
   });
 
-  it('links sidebar settings to the Bot settings page without duplicate controls', async () => {
-    const user = userEvent.setup();
+  it('mounts conversation navigation into the shared Bot sidebar slot', async () => {
+    const slot = document.createElement('div');
+    slot.id = 'chat-sidebar-slot';
+    document.body.append(slot);
+
     renderRoute(<ChatPage />, { route: '/chat' });
 
     await screen.findByText('features.chat.welcome.title');
-    const settings = screen.getByRole('button', { name: 'core.navigation.settings' });
-    expect(screen.getByRole('button', { name: 'core.header.buttons.menu' }).closest('.sidebar-footer')).not.toBeNull();
-    await user.click(settings);
-    expect(useLayoutStore.getState().settingsOpen).toBe(true);
-    expect(screen.queryByText('features.chat.transport.title')).not.toBeInTheDocument();
-    expect(screen.queryByText('core.common.language')).not.toBeInTheDocument();
-    expect(screen.queryByText('features.chat.modes.darkMode')).not.toBeInTheDocument();
-    expect(screen.queryByText('features.chat.modes.lightMode')).not.toBeInTheDocument();
+    await waitFor(() => expect(slot.querySelector('.chat-sessions--integrated')).not.toBeNull());
+    expect(slot).toHaveTextContent('features.chat.actions.newChat');
+    expect(slot.querySelector('.chat-sessions__footer')).toBeNull();
+    slot.remove();
   });
 
   it('shows a page-level error when conversations cannot load', async () => {

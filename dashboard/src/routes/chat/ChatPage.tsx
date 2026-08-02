@@ -1,4 +1,5 @@
 import { type MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -137,6 +138,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const [recordingBusy, setRecordingBusy] = useState(false);
   const [error, setError] = useState('');
   const [chatboxSidebarOpen, setChatboxSidebarOpen] = useState(false);
+  const [sidebarPortalTarget, setSidebarPortalTarget] = useState<HTMLElement | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [configId, setConfigId] = useState(storedChatConfigId);
   const [configRoutes, setConfigRoutes] = useState<ConfigRouteEntry[]>([]);
@@ -167,8 +169,8 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const [sessionTitleDraft, setSessionTitleDraft] = useState('');
   const [sessionTitleSaving, setSessionTitleSaving] = useState(false);
   const [, setMediaVersion] = useState(0);
-  const layoutChatSidebarOpen = useLayoutStore((state) => state.chatSidebarOpen);
-  const setLayoutChatSidebarOpen = useLayoutStore((state) => state.setChatSidebarOpen);
+  const drawerOpen = useLayoutStore((state) => state.drawerOpen);
+  const miniSidebar = useLayoutStore((state) => state.miniSidebar);
   const openSettings = useLayoutStore((state) => state.openSettings);
   const abortRef = useRef<AbortController | null>(null);
   const configSaveLockRef = useRef({ current: false });
@@ -251,14 +253,20 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     };
   }, [currentProvider, messages, model, providerMetadata, providerOverrideEnabled, t]);
   const sending = pendingSessionSending || Boolean(conversationId && runningSessionIds.has(conversationId));
-  const sidebarOpen = chatbox ? chatboxSidebarOpen : layoutChatSidebarOpen;
+  const sidebarOpen = chatboxSidebarOpen;
   const setSidebarOpen = useCallback(
     (open: boolean) => {
       if (chatbox) setChatboxSidebarOpen(open);
-      else setLayoutChatSidebarOpen(open);
     },
-    [chatbox, setLayoutChatSidebarOpen],
+    [chatbox],
   );
+  useEffect(() => {
+    if (chatbox || !drawerOpen || miniSidebar) {
+      setSidebarPortalTarget(null);
+      return;
+    }
+    setSidebarPortalTarget(document.getElementById('chat-sidebar-slot'));
+  }, [chatbox, drawerOpen, miniSidebar]);
   const unwrap = <T,>(response: unknown) => responseData<T>(response);
   const sessionUmo = useCallback(
     (sessionId: string, session?: ChatSession) =>
@@ -1432,9 +1440,9 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     />
   );
 
-  return (
-    <div className={`chat-shell ${chatbox ? 'chat-shell--box' : ''} ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
-      <aside className={`chat-sessions ${sidebarOpen ? 'is-open' : ''}`}>
+  const sessionsSidebar = (
+    <aside className={`chat-sessions${chatbox ? '' : ' chat-sessions--integrated'} ${sidebarOpen ? 'is-open' : ''}`}>
+      {chatbox && (
         <div className="chat-sessions__brand">
           <div className="chat-sessions__brand-title">
             <ChatLogo />
@@ -1467,145 +1475,147 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
             <MdiIcon name="mdi-close" />
           </button>
         </div>
-        <nav className="chat-sessions__actions">
-          <button onClick={newChat} title={t('features.chat.actions.newChat')} type="button">
-            <SquarePenIcon />
-            <span>{t('features.chat.actions.newChat')}</span>
-          </button>
-        </nav>
-        <div className="chat-sessions__content">
-          <section className="chat-project-list">
-            <div className="chat-section-header">
-              <span>{t('features.chat.project.title')}</span>
-              <button
-                aria-label={t('features.chat.project.create')}
-                onClick={openCreateProject}
-                title={t('features.chat.project.create')}
-                type="button"
-              >
-                <PlusIcon />
-              </button>
-            </div>
-            {projects.map((project, index) => {
-              const projectId = recordId(project, 'project_id', 'id');
-              const expanded = expandedProjectIds.has(projectId);
-              return (
-                <div className="chat-project-group" key={projectId || `project-${index}`}>
-                  <div
-                    aria-expanded={expanded}
-                    className={`chat-project-row ${selectedProjectId === projectId ? 'is-active' : ''}`}
-                    onClick={() => selectProjectRow(projectId)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        selectProjectRow(projectId);
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <span>{String(project.emoji || '📁')}</span>
-                    <span className="chat-project-row__title">
-                      <strong>{String(project.title || t('features.chat.project.title'))}</strong>
-                      <MdiIcon name={expanded ? 'mdi-chevron-down' : 'mdi-chevron-right'} />
-                    </span>
-                    <span className="chat-project-row__actions" onClick={(event) => event.stopPropagation()}>
-                      <button
-                        aria-label={t('features.chat.project.edit')}
-                        onClick={() => openEditProject(project)}
-                        title={t('features.chat.project.edit')}
-                        type="button"
-                      >
-                        <PencilIcon />
-                      </button>
-                      <button
-                        aria-label={t('core.common.delete')}
-                        disabled={!projectId || deletingProjectId === projectId}
-                        onClick={() => void removeProject(project)}
-                        title={t('core.common.delete')}
-                        type="button"
-                      >
-                        <TrashIcon />
-                      </button>
-                    </span>
-                  </div>
-                  {expanded && (
-                    <div className="chat-project-session-list">
-                      {loadingProjectIds.has(projectId) ? (
-                        <div className="chat-project-session-empty">{t('features.chat.project.loadingSessions')}</div>
-                      ) : projectSessions[projectId]?.length ? (
-                        projectSessions[projectId].map((session) => (
-                          <div
-                            className={`chat-project-session-row ${session.session_id === conversationId ? 'is-active' : ''}`}
-                            key={session.session_id}
-                          >
-                            <button onClick={() => selectSession(session.session_id)} type="button">
-                              {session.display_name?.trim() || t('features.chat.conversation.newConversation')}
-                            </button>
-                            <span onClick={(event) => event.stopPropagation()}>
-                              <button
-                                aria-label={t('features.chat.conversation.editDisplayName')}
-                                onClick={() => void renameSession(session)}
-                                title={t('features.chat.conversation.editDisplayName')}
-                                type="button"
-                              >
-                                <PencilIcon />
-                              </button>
-                              <button
-                                aria-label={t('features.chat.actions.deleteChat')}
-                                onClick={() => void removeSession(session)}
-                                title={t('features.chat.actions.deleteChat')}
-                                type="button"
-                              >
-                                <TrashIcon />
-                              </button>
-                            </span>
-                            {runningSessionIds.has(session.session_id) && (
-                              <span aria-hidden="true" className="chat-project-session-progress" />
-                            )}
-                          </div>
-                        ))
-                      ) : (
-                        <div className="chat-project-session-empty">{t('features.chat.project.noSessions')}</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </section>
-          <div className="chat-session-list">
-            <div className="chat-session-list__label">{t('features.chat.conversation.title')}</div>
-            {sessions.map((session) => (
-              <div className={session.session_id === conversationId ? 'is-active' : ''} key={session.session_id}>
-                <button onClick={() => selectSession(session.session_id)} type="button">
-                  <span>{session.display_name || session.session_id}</span>
-                  {runningSessionIds.has(session.session_id) && (
-                    <span aria-hidden="true" className="chat-session-progress" />
-                  )}
-                </button>
-                <div>
-                  <button
-                    aria-label={t('features.chat.conversation.editDisplayName')}
-                    onClick={() => void renameSession(session)}
-                    title={t('features.chat.conversation.editDisplayName')}
-                    type="button"
-                  >
-                    <PencilIcon />
-                  </button>
-                  <button
-                    aria-label={t('features.chat.actions.deleteChat')}
-                    onClick={() => void removeSession(session)}
-                    title={t('features.chat.actions.deleteChat')}
-                    type="button"
-                  >
-                    <TrashIcon />
-                  </button>
-                </div>
-              </div>
-            ))}
+      )}
+      <nav className="chat-sessions__actions">
+        <button onClick={newChat} title={t('features.chat.actions.newChat')} type="button">
+          <SquarePenIcon />
+          <span>{t('features.chat.actions.newChat')}</span>
+        </button>
+      </nav>
+      <div className="chat-sessions__content">
+        <section className="chat-project-list">
+          <div className="chat-section-header">
+            <span>{t('features.chat.project.title')}</span>
+            <button
+              aria-label={t('features.chat.project.create')}
+              onClick={openCreateProject}
+              title={t('features.chat.project.create')}
+              type="button"
+            >
+              <PlusIcon />
+            </button>
           </div>
+          {projects.map((project, index) => {
+            const projectId = recordId(project, 'project_id', 'id');
+            const expanded = expandedProjectIds.has(projectId);
+            return (
+              <div className="chat-project-group" key={projectId || `project-${index}`}>
+                <div
+                  aria-expanded={expanded}
+                  className={`chat-project-row ${selectedProjectId === projectId ? 'is-active' : ''}`}
+                  onClick={() => selectProjectRow(projectId)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      selectProjectRow(projectId);
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <span>{String(project.emoji || '📁')}</span>
+                  <span className="chat-project-row__title">
+                    <strong>{String(project.title || t('features.chat.project.title'))}</strong>
+                    <MdiIcon name={expanded ? 'mdi-chevron-down' : 'mdi-chevron-right'} />
+                  </span>
+                  <span className="chat-project-row__actions" onClick={(event) => event.stopPropagation()}>
+                    <button
+                      aria-label={t('features.chat.project.edit')}
+                      onClick={() => openEditProject(project)}
+                      title={t('features.chat.project.edit')}
+                      type="button"
+                    >
+                      <PencilIcon />
+                    </button>
+                    <button
+                      aria-label={t('core.common.delete')}
+                      disabled={!projectId || deletingProjectId === projectId}
+                      onClick={() => void removeProject(project)}
+                      title={t('core.common.delete')}
+                      type="button"
+                    >
+                      <TrashIcon />
+                    </button>
+                  </span>
+                </div>
+                {expanded && (
+                  <div className="chat-project-session-list">
+                    {loadingProjectIds.has(projectId) ? (
+                      <div className="chat-project-session-empty">{t('features.chat.project.loadingSessions')}</div>
+                    ) : projectSessions[projectId]?.length ? (
+                      projectSessions[projectId].map((session) => (
+                        <div
+                          className={`chat-project-session-row ${session.session_id === conversationId ? 'is-active' : ''}`}
+                          key={session.session_id}
+                        >
+                          <button onClick={() => selectSession(session.session_id)} type="button">
+                            {session.display_name?.trim() || t('features.chat.conversation.newConversation')}
+                          </button>
+                          <span onClick={(event) => event.stopPropagation()}>
+                            <button
+                              aria-label={t('features.chat.conversation.editDisplayName')}
+                              onClick={() => void renameSession(session)}
+                              title={t('features.chat.conversation.editDisplayName')}
+                              type="button"
+                            >
+                              <PencilIcon />
+                            </button>
+                            <button
+                              aria-label={t('features.chat.actions.deleteChat')}
+                              onClick={() => void removeSession(session)}
+                              title={t('features.chat.actions.deleteChat')}
+                              type="button"
+                            >
+                              <TrashIcon />
+                            </button>
+                          </span>
+                          {runningSessionIds.has(session.session_id) && (
+                            <span aria-hidden="true" className="chat-project-session-progress" />
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="chat-project-session-empty">{t('features.chat.project.noSessions')}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </section>
+        <div className="chat-session-list">
+          <div className="chat-session-list__label">{t('features.chat.conversation.title')}</div>
+          {sessions.map((session) => (
+            <div className={session.session_id === conversationId ? 'is-active' : ''} key={session.session_id}>
+              <button onClick={() => selectSession(session.session_id)} type="button">
+                <span>{session.display_name || session.session_id}</span>
+                {runningSessionIds.has(session.session_id) && (
+                  <span aria-hidden="true" className="chat-session-progress" />
+                )}
+              </button>
+              <div>
+                <button
+                  aria-label={t('features.chat.conversation.editDisplayName')}
+                  onClick={() => void renameSession(session)}
+                  title={t('features.chat.conversation.editDisplayName')}
+                  type="button"
+                >
+                  <PencilIcon />
+                </button>
+                <button
+                  aria-label={t('features.chat.actions.deleteChat')}
+                  onClick={() => void removeSession(session)}
+                  title={t('features.chat.actions.deleteChat')}
+                  type="button"
+                >
+                  <TrashIcon />
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
+      </div>
+      {chatbox && (
         <div className="chat-sessions__footer sidebar-footer">
           <button
             className="chat-sessions__settings"
@@ -1620,8 +1630,16 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
           </button>
           <ApplicationMenu />
         </div>
-      </aside>
-      {sidebarOpen && (
+      )}
+    </aside>
+  );
+
+  return (
+    <div
+      className={`chat-shell ${chatbox ? 'chat-shell--box' : 'chat-shell--integrated'} ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}
+    >
+      {chatbox ? sessionsSidebar : sidebarPortalTarget ? createPortal(sessionsSidebar, sidebarPortalTarget) : null}
+      {chatbox && sidebarOpen && (
         <button
           aria-label={t('features.chat.accessibility.closeConversations')}
           className="chat-sidebar-backdrop"

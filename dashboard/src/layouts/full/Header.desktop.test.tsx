@@ -35,4 +35,15 @@ describe('desktop header', () => {
 
     expect(screen.queryByLabelText('core.header.buttons.menu')).not.toBeInTheDocument();
   });
+
+  it('keeps the shared Bot header on chat routes', () => {
+    render(
+      <MemoryRouter initialEntries={['/chat/session-1']}>
+        <Header />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('link', { name: /AstrBot/i })).toHaveAttribute('href', '/about');
+    expect(screen.getByRole('button', { name: 'core.header.buttons.collapseSidebar' })).toBeInTheDocument();
+  });
 });

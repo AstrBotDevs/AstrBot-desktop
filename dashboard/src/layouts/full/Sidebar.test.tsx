@@ -52,6 +52,13 @@ describe('Sidebar', () => {
     expect(screen.getByText('core.common.language')).toBeInTheDocument();
   });
 
+  it('provides the shared conversation slot on chat routes', () => {
+    const { container } = renderRoute(<Sidebar />, { route: '/chat/session-1' });
+
+    expect(container.querySelector('.sidebar--chat')).not.toBeNull();
+    expect(container.querySelector('#chat-sidebar-slot')).not.toBeNull();
+  });
+
   it('loads plugin navigation and supports keyboard resizing', async () => {
     const user = userEvent.setup();
     renderRoute(<Sidebar />, { route: '/welcome' });

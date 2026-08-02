@@ -39,11 +39,10 @@ export function FullLayout({
   const { pathname } = useLocation();
   const mode = getFullLayoutMode(pathname);
   const flushTop = pathname === '/capabilities' || pathname === '/extension' || pathname === '/extension-marketplace';
-  const showSidebar = !mode.isChatRoute && sidebar != null;
+  const showSidebar = sidebar != null;
   const layoutClassName = [
     'full-layout',
     !showSidebar && 'full-layout--without-sidebar',
-    mode.isChatRoute && 'full-layout--chat',
   ]
     .filter(Boolean)
     .join(' ');

@@ -40,8 +40,6 @@ export const storageKeys = {
 
 export const sessionStorageKeys = {
   announcementCache: 'astrbot:announcement-cache:v1',
-  lastBotRoute: 'astrbot:last_bot_route',
-  lastChatRoute: 'astrbot:last_chat_route',
   upgradeRecoveryToken: 'astrbot-upgrade-recovery-token',
   upgradeRecoveryDismissed: (coreVersion: string, dashboardVersion: string) =>
     `astrbot-upgrade-recovery-dismissed:${coreVersion}:${dashboardVersion}`,
