@@ -140,7 +140,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const [chatboxSidebarOpen, setChatboxSidebarOpen] = useState(false);
   const [sidebarPortalTarget, setSidebarPortalTarget] = useState<HTMLElement | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarScrolling, setSidebarScrolling] = useState(false);
   const [configId, setConfigId] = useState(storedChatConfigId);
   const [configRoutes, setConfigRoutes] = useState<ConfigRouteEntry[]>([]);
   const [configSaving, setConfigSaving] = useState(false);
@@ -187,7 +186,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const pendingLocalSessionRef = useRef<string | null>(null);
   const modelMenuRef = useRef<HTMLDetailsElement>(null);
   const messageScrollFrame = useRef<number | null>(null);
-  const sidebarScrollTimerRef = useRef<number | null>(null);
   const messageLoadRequestRef = useRef(0);
   const messageEnd = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLElement>(null);
@@ -269,20 +267,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     }
     setSidebarPortalTarget(document.getElementById('chat-sidebar-slot'));
   }, [chatbox, drawerOpen, miniSidebar]);
-  useEffect(
-    () => () => {
-      if (sidebarScrollTimerRef.current != null) window.clearTimeout(sidebarScrollTimerRef.current);
-    },
-    [],
-  );
-  const showSidebarScrollbar = () => {
-    setSidebarScrolling(true);
-    if (sidebarScrollTimerRef.current != null) window.clearTimeout(sidebarScrollTimerRef.current);
-    sidebarScrollTimerRef.current = window.setTimeout(() => {
-      setSidebarScrolling(false);
-      sidebarScrollTimerRef.current = null;
-    }, 700);
-  };
   const unwrap = <T,>(response: unknown) => responseData<T>(response);
   const sessionUmo = useCallback(
     (sessionId: string, session?: ChatSession) =>
@@ -1498,10 +1482,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
           <span>{t('features.chat.actions.newChat')}</span>
         </button>
       </nav>
-      <div
-        className={`chat-sessions__content${sidebarScrolling ? ' is-scrolling' : ''}`}
-        onScroll={showSidebarScrollbar}
-      >
+      <div className="chat-sessions__content">
         <section className="chat-project-list">
           <div className="chat-section-header">
             <span>{t('features.chat.project.title')}</span>

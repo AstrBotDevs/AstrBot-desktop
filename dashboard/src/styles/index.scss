@@ -2,6 +2,7 @@
 @use './base/reset';
 @use './layout/shell';
 @use './components/primitives';
+@use './components/scrollbars';
 @use './features/monitoring-pages';
 @use './features/config-list';
 @use './features/cron';

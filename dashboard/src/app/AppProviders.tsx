@@ -5,6 +5,7 @@ import { subscribeToExpiredSession } from '@/auth/sessionEvents';
 import { i18n } from '@/i18n';
 import { GlobalFeedback } from '@/components/feedback/GlobalFeedback';
 import { UpgradeRecoveryDialog } from '@/components/feedback/UpgradeRecoveryDialog';
+import { AutoHideScrollbars } from '@/components/ui/AutoHideScrollbars';
 import { DesktopProvider, DesktopRestartStatus } from '@/desktop/DesktopProvider';
 import { DesktopAuthGate } from '@/desktop/DesktopAuthGate';
 import { BrowserCapabilitiesProvider } from '@/platform/BrowserCapabilitiesProvider';
@@ -40,6 +41,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
     <I18nextProvider i18n={i18n}>
       <LayoutEffects />
       <AuthSessionEffects />
+      <AutoHideScrollbars />
       <BrowserCapabilitiesProvider>
         <DesktopProvider>
           <DesktopAuthGate>{children}</DesktopAuthGate>

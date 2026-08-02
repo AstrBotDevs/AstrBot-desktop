@@ -1,0 +1,35 @@
+:where(html.auto-hide-scrollbars, html.auto-hide-scrollbars *) {
+  scrollbar-color: transparent transparent;
+  scrollbar-width: thin;
+}
+
+:where(html.auto-hide-scrollbars, html.auto-hide-scrollbars *)::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+:where(html.auto-hide-scrollbars, html.auto-hide-scrollbars *)::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:where(html.auto-hide-scrollbars, html.auto-hide-scrollbars *)::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  background-clip: padding-box;
+}
+
+:where(html.auto-hide-scrollbars, html.auto-hide-scrollbars *)::-webkit-scrollbar-button {
+  display: none;
+}
+
+:where(html.auto-hide-scrollbars[data-scrollbar-active], html.auto-hide-scrollbars [data-scrollbar-active]) {
+  scrollbar-color: color-mix(in srgb, var(--astrbot-text) 45%, transparent) transparent;
+}
+
+:where(
+    html.auto-hide-scrollbars[data-scrollbar-active],
+    html.auto-hide-scrollbars [data-scrollbar-active]
+  )::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--astrbot-text) 45%, transparent);
+}
