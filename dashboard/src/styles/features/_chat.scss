@@ -210,6 +210,28 @@ html[data-theme='dark'] .chat-sessions--integrated {
   gap: 8px;
   padding: 4px 16px 12px;
   overflow: auto;
+  scrollbar-color: transparent transparent;
+}
+.chat-sessions__content::-webkit-scrollbar {
+  width: 10px;
+}
+.chat-sessions__content::-webkit-scrollbar-track {
+  background: transparent;
+}
+.chat-sessions__content::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  background-clip: padding-box;
+}
+.chat-sessions__content::-webkit-scrollbar-button {
+  display: none;
+}
+.chat-sessions__content.is-scrolling {
+  scrollbar-color: color-mix(in srgb, var(--astrbot-text) 45%, transparent) transparent;
+}
+.chat-sessions__content.is-scrolling::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--astrbot-text) 45%, transparent);
 }
 .chat-project-list {
   display: flex;
