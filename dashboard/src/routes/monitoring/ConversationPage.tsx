@@ -292,7 +292,12 @@ export default function ConversationPage() {
       id: 'actions',
       render: (item) => (
         <div className="conversation-row-actions">
-          <button onClick={() => void openDetail(item)} title={t(`${prefix}.actions.view`)} type="button">
+          <button
+            className="conversation-row-actions__view"
+            onClick={() => void openDetail(item)}
+            title={t(`${prefix}.actions.view`)}
+            type="button"
+          >
             <MdiIcon name="mdi-eye" />
           </button>
           <button

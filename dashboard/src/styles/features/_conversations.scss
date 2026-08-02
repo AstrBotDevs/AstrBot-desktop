@@ -50,6 +50,10 @@
 .conversation-umo-cell span { padding: 3px 7px; border-radius: 999px; background: color-mix(in srgb, var(--astrbot-primary) 9%, transparent); color: color-mix(in srgb, var(--astrbot-primary) 82%, var(--astrbot-text)); font-size: 11px; }
 .conversation-umo-cell code { min-width: 0; flex: 1; overflow: hidden; color: color-mix(in srgb, var(--astrbot-text) 62%, transparent); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .conversation-row-actions { display: flex; align-items: center; gap: 4px; }
+.conversation-row-actions .conversation-row-actions__view,
+.conversation-row-actions .conversation-row-actions__view:hover { border-color: transparent; background: transparent; color: var(--astrbot-primary); }
+.conversation-row-actions .button--danger,
+.conversation-row-actions .button--danger:hover { border: 0; }
 .conversation-row-actions .button--danger:hover { color: var(--astrbot-error); }
 .conversation-panel .monitor-empty > .mdi { display: block; margin-bottom: 8px; font-size: 30px; }
 .conversation-history { display: flex; max-height: 65vh; flex-direction: column; gap: 10px; overflow: auto; margin: 16px 0; padding: 16px; border-radius: 12px; background: color-mix(in srgb, var(--astrbot-text) 3%, var(--astrbot-surface)); }
