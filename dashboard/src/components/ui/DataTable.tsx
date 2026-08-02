@@ -1,6 +1,7 @@
 import { type ReactNode, type UIEventHandler } from 'react';
 
 import { AsyncState } from './AsyncState';
+import { SelectionCheckbox } from './SelectionCheckbox';
 
 export type DataTableColumn<Row> = {
   className?: string;
@@ -45,16 +46,15 @@ export function DataTable<Row>({
 }) {
   return (
     <div className={`ui-data-table${className ? ` ${className}` : ''}`} onScroll={onScroll}>
-      <table className={`ui-data-table__table${tableClassName ? ` ${tableClassName}` : ''}`}>
+      <table className={`ui-data-table__table ui-selection-table${tableClassName ? ` ${tableClassName}` : ''}`}>
         <thead>
           <tr>
             {selection ? (
               <th className="ui-data-table__selection">
-                <input
+                <SelectionCheckbox
                   aria-label={selection.headerLabel}
                   checked={selection.allSelected}
                   onChange={selection.onToggleAll}
-                  type="checkbox"
                 />
               </th>
             ) : null}
@@ -70,11 +70,10 @@ export function DataTable<Row>({
             <tr key={getRowKey(row)}>
               {selection ? (
                 <td className="ui-data-table__selection">
-                  <input
+                  <SelectionCheckbox
                     aria-label={selection.rowLabel(row)}
                     checked={selection.isSelected(row)}
                     onChange={() => selection.onToggle(row)}
-                    type="checkbox"
                   />
                 </td>
               ) : null}

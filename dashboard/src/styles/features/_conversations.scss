@@ -27,27 +27,6 @@
 .conversation-table th:last-child { width: 88px; }
 .conversation-table td { vertical-align: middle; }
 .conversation-table .ui-data-table__selection { width: 34px; }
-.conversation-table .ui-data-table__selection input {
-  width: 16px;
-  height: 16px;
-  border: 1px solid color-mix(in srgb, var(--astrbot-text) 28%, transparent);
-  border-radius: 5px;
-  appearance: none;
-  background: transparent;
-  transition: border-color .16s ease, background-color .16s ease, opacity .16s ease;
-}
-.conversation-table .ui-data-table__selection input:hover { border-color: var(--astrbot-primary); }
-.conversation-table .ui-data-table__selection input:checked {
-  border-color: var(--astrbot-primary);
-  background: var(--astrbot-primary) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4 8 2.5 2.5L12 5' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 14px no-repeat;
-}
-.conversation-table .ui-data-table__selection input:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--astrbot-primary) 30%, transparent);
-  outline-offset: 2px;
-}
-.conversation-table tbody .ui-data-table__selection input:not(:checked) { opacity: 0; }
-.conversation-table tbody tr:hover .ui-data-table__selection input,
-.conversation-table tbody .ui-data-table__selection input:focus-visible { opacity: 1; }
 .conversation-table td button + button,
 .conversation-umo-header button + button { margin-left: 0; }
 .conversation-title-cell { min-width: 0; }

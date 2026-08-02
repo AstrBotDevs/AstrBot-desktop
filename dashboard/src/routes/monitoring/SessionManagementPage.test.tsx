@@ -29,10 +29,12 @@ describe('SessionManagementPage', () => {
       rulesResponse([{ rules: { session_service_config: {} }, umo: 'webchat:friend:user-1' }]),
     );
 
-    renderRoute(<SessionManagementPage />, { route: '/session-management' });
+    const { container } = renderRoute(<SessionManagementPage />, { route: '/session-management' });
 
     expect(await screen.findByText('user-1')).toBeInTheDocument();
     expect(screen.getByText('features.session-management.customRules.serviceConfig')).toBeInTheDocument();
+    expect(container.querySelector('.session-rules-table.ui-selection-table')).not.toBeNull();
+    expect(container.querySelectorAll('.ui-selection-checkbox')).toHaveLength(2);
   });
 
   it('shows a page-level error when session rules cannot load', async () => {

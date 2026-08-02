@@ -22,7 +22,6 @@
   align-items: center;
   gap: 16px;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--astrbot-border);
 }
 
 .session-rules-toolbar__title,
@@ -97,7 +96,7 @@
 .session-rules-table-wrap { overflow: auto; }
 .session-rules-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .session-rules-table th,
-.session-rules-table td { padding: 9px 16px; border-bottom: 1px solid var(--astrbot-border); text-align: left; vertical-align: middle; }
+.session-rules-table td { padding: 9px 16px; text-align: left; vertical-align: middle; }
 .session-rules-table th { color: color-mix(in srgb, var(--astrbot-text) 65%, transparent); font-weight: 600; white-space: nowrap; }
 .session-rules-table th:first-child,
 .session-rules-table td:first-child { width: 42px; padding-right: 0; }

@@ -179,6 +179,9 @@ describe('shared UI primitives', () => {
 
     expect(table).toContain('aria-label="Select all plugins"');
     expect(table).toContain('aria-label="Select Calendar"');
+    expect(table).toContain('ui-data-table__table ui-selection-table');
+    expect(table).toContain('ui-selection-checkbox');
+    expect(primitiveStyles).toContain('.ui-selection-table tbody .ui-selection-checkbox:not(:checked)');
     expect(pagination).toContain('aria-label="Pagination"');
     expect(pagination).toContain('Items per page');
     expect(pagination).toContain('disabled=""');

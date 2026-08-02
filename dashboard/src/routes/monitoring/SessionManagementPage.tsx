@@ -18,6 +18,7 @@ import { externalLinks } from '@/config/links';
 import { paginationDefaults } from '@/config/defaults';
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
+import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
 import { SelectControl } from '@/components/ui/SelectControl';
 import { confirmAction, toast } from '@/stores/feedback';
 import { EditorSection, MultiSelect, ProviderSelect, TransferList, UmoDisplay } from './SessionManagementControls';
@@ -510,11 +511,11 @@ export default function SessionManagementPage() {
           </div>
         )}
         <div className="session-rules-table-wrap">
-          <table className="session-rules-table">
+          <table className="session-rules-table ui-selection-table">
             <thead>
               <tr>
                 <th>
-                  <input
+                  <SelectionCheckbox
                     aria-label={text('table.headers.umoInfo')}
                     checked={allPageSelected}
                     onChange={() =>
@@ -525,7 +526,6 @@ export default function SessionManagementPage() {
                         return next;
                       })
                     }
-                    type="checkbox"
                   />
                 </th>
                 <th>{text('table.headers.umoInfo')}</th>
@@ -544,7 +544,8 @@ export default function SessionManagementPage() {
                 return (
                   <tr key={rule.umo}>
                     <td>
-                      <input
+                      <SelectionCheckbox
+                        aria-label={rule.umo}
                         checked={selected.has(rule.umo)}
                         onChange={() =>
                           setSelected((current) => {
@@ -554,7 +555,6 @@ export default function SessionManagementPage() {
                             return next;
                           })
                         }
-                        type="checkbox"
                       />
                     </td>
                     <td>
