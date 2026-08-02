@@ -222,8 +222,8 @@
 .trace-record { display: grid; grid-template-columns: 190px 140px minmax(300px, 1fr); gap: 10px; }
 .trace-record pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 
-/* Platform log and trace views mirror the original dashboard's full-height workspaces. */
-.headless-dialog__content:has(.console-dialog) {
+/* Footer tools share one dialog shell and size. */
+.headless-dialog__content:has(.footer-panel-dialog) {
   display: flex;
   width: min(1180px, calc(100vw - clamp(24px, 9vw, 144px)));
   height: min(680px, calc(100vh - clamp(24px, 12vh, 144px)));
@@ -232,22 +232,21 @@
   overflow: hidden;
   padding: 24px 28px 28px;
 }
-.headless-dialog__content:has(.console-dialog) > .headless-dialog__title {
+.headless-dialog__content:has(.footer-panel-dialog) > .headless-dialog__title {
   flex: 0 0 auto;
   padding-right: 40px;
   font-size: 28px;
   font-weight: 750;
 }
-.console-dialog { flex: 1; min-height: 0; margin-top: 10px; overflow: hidden; }
-.console-dialog-close { position: absolute; top: 19px; right: 22px; display: grid; width: 34px; height: 34px; place-items: center; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--astrbot-text); cursor: pointer; font-size: 21px; }
-.console-dialog-close:hover { background: var(--astrbot-hover); color: var(--astrbot-primary); }
-.headless-dialog__content:has(.footer-navigation-dialog) { display: flex; width: min(1400px, calc(100vw - clamp(24px, 7vw, 112px))); height: min(820px, calc(100vh - clamp(24px, 9vh, 112px))); max-height: calc(100vh - clamp(24px, 9vh, 112px)); flex-direction: column; overflow: hidden; padding: 0; }
-.headless-dialog__content:has(.footer-navigation-dialog) > .headless-dialog__title { position: absolute; width: 1px; height: 1px; padding: 0; clip: rect(0 0 0 0); clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
-.footer-navigation-dialog { flex: 1; min-height: 0; overflow: auto; }
-.footer-navigation-dialog .conversation-panel,
-.footer-navigation-dialog .session-rules-card--table { border: 0; border-radius: 0; }
-.footer-navigation-dialog__close { position: absolute; z-index: 5; top: 16px; right: 18px; display: grid; width: 34px; height: 34px; place-items: center; padding: 0; border: 0; border-radius: 7px; background: color-mix(in srgb, var(--astrbot-surface) 88%, transparent); color: var(--astrbot-text); cursor: pointer; font-size: 21px; }
-.footer-navigation-dialog__close:hover { background: var(--astrbot-hover); color: var(--astrbot-primary); }
+.headless-dialog__content:has(.footer-panel-dialog--page) { padding: 0; }
+.headless-dialog__content:has(.footer-panel-dialog--page) > .headless-dialog__title { position: absolute; width: 1px; height: 1px; padding: 0; clip: rect(0 0 0 0); clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
+.footer-panel-dialog { flex: 1; min-height: 0; overflow: hidden; }
+.footer-panel-dialog--console { margin-top: 10px; }
+.footer-panel-dialog--page { overflow: auto; }
+.footer-panel-dialog .conversation-panel,
+.footer-panel-dialog .session-rules-card--table { border: 0; border-radius: 0; }
+.footer-panel-dialog__close { position: absolute; z-index: 5; top: 19px; right: 22px; display: grid; width: 34px; height: 34px; place-items: center; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--astrbot-text); cursor: pointer; font-size: 21px; }
+.footer-panel-dialog__close:hover { background: var(--astrbot-hover); color: var(--astrbot-primary); }
 .trace-header-react h1 { font-size: 32px; letter-spacing: -.025em; }
 .console-header-actions, .trace-header-actions { min-height: 40px; }
 .console-auto-scroll, .trace-recording-switch { display: inline-flex; align-items: center; gap: 10px; color: color-mix(in srgb, var(--astrbot-text) 68%, transparent); cursor: pointer; font-size: 13px; white-space: nowrap; }
