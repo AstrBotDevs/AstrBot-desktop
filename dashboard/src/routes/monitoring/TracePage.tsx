@@ -99,23 +99,25 @@ export default function TracePage() {
     <div className="monitor-page trace-page">
       <header className="monitor-header trace-header-react">
         <div>
-          <h1>{t('features.trace.title')}</h1>
+          <div className="trace-header-react__title-row">
+            <h1>{t('features.trace.title')}</h1>
+            <div className="monitor-actions trace-header-actions">
+              <label className="trace-recording-switch">
+                <span>{t(`features.trace.${enabled ? 'recording' : 'paused'}`)}</span>
+                <span className="dynamic-switch">
+                  <input
+                    checked={enabled}
+                    disabled={saving}
+                    onChange={(event) => void setTraceEnabled(event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span className="dynamic-switch__track" />
+                </span>
+                {saving && <MdiIcon className="mdi-spin" name="mdi-loading" />}
+              </label>
+            </div>
+          </div>
           <p>{t('features.trace.hint')}</p>
-        </div>
-        <div className="monitor-actions trace-header-actions">
-          <label className="trace-recording-switch">
-            <span>{t(`features.trace.${enabled ? 'recording' : 'paused'}`)}</span>
-            <span className="dynamic-switch">
-              <input
-                checked={enabled}
-                disabled={saving}
-                onChange={(event) => void setTraceEnabled(event.target.checked)}
-                type="checkbox"
-              />
-              <span className="dynamic-switch__track" />
-            </span>
-            {saving && <MdiIcon className="mdi-spin" name="mdi-loading" />}
-          </label>
         </div>
       </header>
       <div className="trace-body-react">

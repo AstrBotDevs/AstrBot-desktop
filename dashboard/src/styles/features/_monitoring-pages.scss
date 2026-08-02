@@ -257,7 +257,7 @@
 }
 .footer-panel-dialog__close { position: absolute; z-index: 5; top: 19px; right: 22px; display: grid; width: 34px; height: 34px; place-items: center; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--astrbot-text); cursor: pointer; font-size: 21px; }
 .footer-panel-dialog__close:hover { background: var(--astrbot-hover); color: var(--astrbot-primary); }
-.trace-header-react h1 { font-size: 32px; letter-spacing: -.025em; }
+.trace-header-react h1 { margin: 0; font-size: 32px; letter-spacing: -.025em; }
 .console-header-actions, .trace-header-actions { min-height: 40px; }
 .console-auto-scroll, .trace-recording-switch { display: inline-flex; align-items: center; gap: 10px; color: color-mix(in srgb, var(--astrbot-text) 68%, transparent); cursor: pointer; font-size: 13px; white-space: nowrap; }
 .trace-recording-switch > .mdi { color: var(--astrbot-primary); }
@@ -304,7 +304,7 @@
 .monitor-button--text { background: transparent; color: var(--astrbot-text); }
 .monitor-button--text:hover { background: color-mix(in srgb, var(--astrbot-text) 6%, transparent); }
 
-.trace-page { height: 100%; min-height: 0; gap: 14px; }
+.trace-page { height: 100%; min-height: 0; gap: 0; }
 .trace-header-react { flex: 0 0 auto; }
 .trace-body-react { min-height: 0; flex: 1; overflow: hidden; }
 .trace-table-react { height: 100%; overflow: auto; color: var(--astrbot-text); font-family: 'Fira Code', SFMono-Regular, Consolas, monospace; }
@@ -333,8 +333,10 @@
 .stats-page-react { min-height: 100%; padding: 24px 24px 64px; background: var(--astrbot-background); }
 .stats-page-react__inner { width: min(1560px, 100%); margin: 0 auto; }
 .stats-page-react .monitor-error { margin-bottom: 16px; }
-.stats-header-react { align-items: flex-start; justify-content: flex-start; margin-bottom: 32px; }
-.stats-header-react__title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.stats-header-react,
+.trace-header-react { align-items: flex-start; justify-content: flex-start; margin-bottom: 32px; }
+.stats-header-react__title-row,
+.trace-header-react__title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .stats-header-react h1 { margin: 0; font-size: 24px; font-weight: 700; line-height: 1.2; }
 .stats-header-react p { font-size: 14px; }
 .stats-header-react__title-row > button { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid var(--astrbot-border); border-radius: 999px; background: var(--astrbot-surface); color: color-mix(in srgb, var(--astrbot-text) 68%, transparent); cursor: pointer; font: inherit; font-size: 13px; }
