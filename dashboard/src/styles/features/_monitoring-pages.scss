@@ -244,6 +244,8 @@
 .headless-dialog__content:has(.footer-navigation-dialog) { display: flex; width: min(1400px, calc(100vw - clamp(24px, 7vw, 112px))); height: min(820px, calc(100vh - clamp(24px, 9vh, 112px))); max-height: calc(100vh - clamp(24px, 9vh, 112px)); flex-direction: column; overflow: hidden; padding: 0; }
 .headless-dialog__content:has(.footer-navigation-dialog) > .headless-dialog__title { position: absolute; width: 1px; height: 1px; padding: 0; clip: rect(0 0 0 0); clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
 .footer-navigation-dialog { flex: 1; min-height: 0; overflow: auto; }
+.footer-navigation-dialog .conversation-panel,
+.footer-navigation-dialog .session-rules-card--table { border: 0; border-radius: 0; }
 .footer-navigation-dialog__close { position: absolute; z-index: 5; top: 16px; right: 18px; display: grid; width: 34px; height: 34px; place-items: center; padding: 0; border: 0; border-radius: 7px; background: color-mix(in srgb, var(--astrbot-surface) 88%, transparent); color: var(--astrbot-text); cursor: pointer; font-size: 21px; }
 .footer-navigation-dialog__close:hover { background: var(--astrbot-hover); color: var(--astrbot-primary); }
 .trace-header-react h1 { font-size: 32px; letter-spacing: -.025em; }
