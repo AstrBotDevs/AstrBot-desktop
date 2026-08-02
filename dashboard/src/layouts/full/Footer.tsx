@@ -1,10 +1,18 @@
 import { lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
+import { NavLink } from 'react-router-dom';
 
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 
 const ConsolePanel = lazy(() => import('@/routes/monitoring/ConsolePage'));
+
+const footerNavigationItems = [
+  { title: 'core.navigation.conversation', icon: 'mdi-database', to: '/conversation' },
+  { title: 'core.navigation.sessionManagement', icon: 'mdi-pencil-ruler', to: '/session-management' },
+  { title: 'core.navigation.dashboard', icon: 'mdi-view-dashboard', to: '/dashboard/default' },
+  { title: 'core.navigation.trace', icon: 'mdi-timeline-text-outline', to: '/trace' },
+] as const;
 
 export function Footer() {
   const { t } = useTranslation();
@@ -12,6 +20,20 @@ export function Footer() {
 
   return (
     <div className="app-footer__items">
+      {footerNavigationItems.map((item) => {
+        const label = t(item.title);
+        return (
+          <NavLink
+            aria-label={label}
+            className={({ isActive }) => `app-footer__item${isActive ? ' app-footer__item--active' : ''}`}
+            data-tooltip={label}
+            key={item.to}
+            to={item.to}
+          >
+            <MdiIcon name={item.icon} />
+          </NavLink>
+        );
+      })}
       <Dialog
         title={consoleLabel}
         trigger={

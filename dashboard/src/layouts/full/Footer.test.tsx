@@ -12,6 +12,22 @@ vi.mock('@/routes/monitoring/ConsolePage', () => ({
 }));
 
 describe('Footer', () => {
+  it('renders monitoring pages as icon-only navigation entries', () => {
+    renderRoute(<Footer />, { route: '/conversation' });
+
+    expect(screen.getByRole('link', { name: 'core.navigation.conversation' })).toHaveAttribute('href', '/conversation');
+    expect(screen.getByRole('link', { name: 'core.navigation.sessionManagement' })).toHaveAttribute(
+      'href',
+      '/session-management',
+    );
+    expect(screen.getByRole('link', { name: 'core.navigation.dashboard' })).toHaveAttribute(
+      'href',
+      '/dashboard/default',
+    );
+    expect(screen.getByRole('link', { name: 'core.navigation.trace' })).toHaveAttribute('href', '/trace');
+    expect(screen.getByRole('link', { name: 'core.navigation.conversation' })).toHaveClass('app-footer__item--active');
+  });
+
   it('opens platform logs in a dialog without navigating', async () => {
     const user = userEvent.setup();
     renderRoute(<Footer />, { route: '/welcome' });

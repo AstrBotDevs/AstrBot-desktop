@@ -13,19 +13,11 @@ export const PLUGIN_SIDEBAR_CHANGED_EVENT = 'astrbot:plugin-sidebar-changed';
 const REMOVED_MAIN_NAVIGATION_TITLES = new Set(['core.navigation.config', 'core.navigation.extension']);
 const REMOVED_MAIN_NAVIGATION_PATHS = new Set(['/config', '/extension', '/extension-marketplace']);
 
-const secondaryItems: NavigationItem[] = [
-  { title: 'core.navigation.conversation', icon: 'mdi-database', to: '/conversation' },
-  { title: 'core.navigation.sessionManagement', icon: 'mdi-pencil-ruler', to: '/session-management' },
-  { title: 'core.navigation.dashboard', icon: 'mdi-view-dashboard', to: '/dashboard/default' },
-  { title: 'core.navigation.trace', icon: 'mdi-timeline-text-outline', to: '/trace' },
-];
-
 export const defaultNavigationItems: NavigationItem[] = [
   { title: 'core.navigation.welcome', icon: 'mdi-hand-wave-outline', to: '/welcome' },
   { title: 'core.navigation.platforms', icon: 'mdi-robot', to: '/platforms' },
   { title: 'core.navigation.providers', icon: 'mdi-creation', to: '/providers' },
   { title: 'core.navigation.capabilityCenter', icon: 'mdi-puzzle', to: '/capabilities' },
-  ...secondaryItems,
 ];
 
 type PluginNavigationRecord = {
@@ -77,9 +69,7 @@ export function mergePluginNavigation(items: NavigationItem[], pluginItem: Navig
   const visiblePluginItems = filterMainNavigationItems([pluginItem]);
   if (!visiblePluginItems.length) return visibleItems;
   const visiblePluginItem = visiblePluginItems[0];
-  const secondaryIndex = visibleItems.findIndex((item) => item.title === secondaryItems[0]?.title);
-  if (secondaryIndex < 0) return [...visibleItems, visiblePluginItem];
-  return [...visibleItems.slice(0, secondaryIndex), visiblePluginItem, ...visibleItems.slice(secondaryIndex)];
+  return [...visibleItems, visiblePluginItem];
 }
 
 export function filterMainNavigationItems(items: NavigationItem[]): NavigationItem[] {

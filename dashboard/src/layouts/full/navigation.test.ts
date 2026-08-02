@@ -46,16 +46,12 @@ describe('sidebar navigation compatibility', () => {
     ).toBe(false);
   });
 
-  it('shows former more-feature entries directly in the sidebar', () => {
+  it('keeps footer monitoring entries out of the sidebar', () => {
     expect(defaultNavigationItems.map((item) => item.to)).toEqual([
       '/welcome',
       '/platforms',
       '/providers',
       '/capabilities',
-      '/conversation',
-      '/session-management',
-      '/dashboard/default',
-      '/trace',
     ]);
     expect(defaultNavigationItems.every((item) => item.children == null)).toBe(true);
   });
@@ -95,16 +91,12 @@ describe('sidebar navigation compatibility', () => {
       moreItems: ['core.navigation.welcome', 'core.navigation.dashboard'],
     });
 
-    expect(result[0].title).toBe('core.navigation.trace');
+    expect(result[0].title).toBe('core.navigation.welcome');
     expect(result.map((item) => item.title)).toEqual([
-      'core.navigation.trace',
       'core.navigation.welcome',
-      'core.navigation.dashboard',
       'core.navigation.platforms',
       'core.navigation.providers',
       'core.navigation.capabilityCenter',
-      'core.navigation.conversation',
-      'core.navigation.sessionManagement',
     ]);
     expect(result.some((item) => item.title === 'core.navigation.platforms')).toBe(true);
   });
@@ -122,14 +114,12 @@ describe('sidebar navigation compatibility', () => {
       }),
     ]);
     const merged = mergePluginNavigation(defaultNavigationItems, group);
-    expect(merged.findIndex((item) => item === group)).toBe(
-      merged.findIndex((item) => item.to === '/conversation') - 1,
-    );
+    expect(merged.at(-1)).toBe(group);
   });
 
-  it('marks direct entries as active', () => {
-    const trace = defaultNavigationItems.find((item) => item.to === '/trace')!;
-    expect(navigationItemActive(trace, '/trace', '')).toBe(true);
-    expect(navigationItemActive(trace, '/settings', '')).toBe(false);
+  it('marks direct sidebar entries as active', () => {
+    const capabilities = defaultNavigationItems.find((item) => item.to === '/capabilities')!;
+    expect(navigationItemActive(capabilities, '/capabilities', '')).toBe(true);
+    expect(navigationItemActive(capabilities, '/settings', '')).toBe(false);
   });
 });
