@@ -17,6 +17,7 @@ describe('route manifest contract', () => {
       '/main',
       '/welcome',
       '/about',
+      '/capabilities',
       '/dashboard/default',
       '/trace',
       '/conversation',

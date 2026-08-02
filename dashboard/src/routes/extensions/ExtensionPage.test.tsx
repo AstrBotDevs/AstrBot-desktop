@@ -51,6 +51,13 @@ describe('ExtensionPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('plugin service unavailable');
   });
 
+  it('reuses extension content without its own tabs inside the capability center', () => {
+    renderRoute(<ExtensionPage embedded />, { route: '/capabilities#skills' });
+
+    expect(screen.getByText('skills')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'features.extension.title' })).not.toBeInTheDocument();
+  });
+
   it('accepts the empty keyed failed-plugin payload returned by the backend', async () => {
     vi.mocked(listPlugins).mockResolvedValue(
       plugins([{ activated: true, display_name: 'Calendar', name: 'calendar', version: '1.0.0' }]),

@@ -75,15 +75,15 @@ import { PluginDetail } from './PluginDetail';
 type ExtensionTab = 'installed' | 'components' | 'mcp' | 'skills' | 'market';
 const validTabs: ExtensionTab[] = ['installed', 'market', 'components', 'mcp', 'skills'];
 
-export default function ExtensionPage() {
+export default function ExtensionPage({ embedded = false }: { embedded?: boolean }) {
   const { pluginId: routePluginId } = useParams();
   const location = useLocation();
   if (routePluginId)
     return <PluginDetail pluginId={routePluginId} source={location.hash === '#market' ? 'market' : 'installed'} />;
-  return <ExtensionHome marketplaceRoute={location.pathname === '/extension-marketplace'} />;
+  return <ExtensionHome embedded={embedded} marketplaceRoute={location.pathname === '/extension-marketplace'} />;
 }
 
-function ExtensionHome({ marketplaceRoute }: { marketplaceRoute: boolean }) {
+function ExtensionHome({ embedded, marketplaceRoute }: { embedded: boolean; marketplaceRoute: boolean }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
@@ -92,42 +92,46 @@ function ExtensionHome({ marketplaceRoute }: { marketplaceRoute: boolean }) {
   const activeTab = validTabs.includes(requested as ExtensionTab) ? (requested as ExtensionTab) : 'installed';
   const selectTab = (tab: ExtensionTab) => navigate(`/extension#${tab}`);
   return (
-    <div className="extension-page">
-      <nav aria-label={e('title')} className="extension-tabs">
-        {validTabs.map((tab) => (
-          <button aria-pressed={activeTab === tab} key={tab} onClick={() => selectTab(tab)} type="button">
-            <MdiIcon
-              name={
+    <div className={`extension-page${embedded ? ' extension-page--embedded' : ''}`}>
+      {!embedded && (
+        <nav aria-label={e('title')} className="extension-tabs">
+          {validTabs.map((tab) => (
+            <button aria-pressed={activeTab === tab} key={tab} onClick={() => selectTab(tab)} type="button">
+              <MdiIcon
+                name={
+                  tab === 'installed'
+                    ? 'mdi-puzzle'
+                    : tab === 'components'
+                      ? 'mdi-tune-variant'
+                      : tab === 'mcp'
+                        ? 'mdi-server'
+                        : tab === 'skills'
+                          ? 'mdi-lightning-bolt'
+                          : 'mdi-store'
+                }
+              />
+              {e(
                 tab === 'installed'
-                  ? 'mdi-puzzle'
+                  ? 'tabs.installedPlugins'
                   : tab === 'components'
-                    ? 'mdi-tune-variant'
+                    ? 'tabs.handlersOperation'
                     : tab === 'mcp'
-                      ? 'mdi-server'
+                      ? 'tabs.installedMcpServers'
                       : tab === 'skills'
-                        ? 'mdi-lightning-bolt'
-                        : 'mdi-store'
-              }
-            />
-            {e(
-              tab === 'installed'
-                ? 'tabs.installedPlugins'
-                : tab === 'components'
-                  ? 'tabs.handlersOperation'
-                  : tab === 'mcp'
-                    ? 'tabs.installedMcpServers'
-                    : tab === 'skills'
-                      ? 'tabs.skills'
-                      : 'tabs.market',
-            )}
-          </button>
-        ))}
-      </nav>
-      {activeTab === 'installed' && <InstalledPlugins />}
-      {activeTab === 'components' && <ComponentsSection />}
-      {activeTab === 'mcp' && <McpSection />}
-      {activeTab === 'skills' && <SkillsSection />}
-      {activeTab === 'market' && <PluginMarket />}
+                        ? 'tabs.skills'
+                        : 'tabs.market',
+              )}
+            </button>
+          ))}
+        </nav>
+      )}
+      <div className="extension-content">
+        {activeTab === 'installed' && <InstalledPlugins />}
+        {activeTab === 'components' && <ComponentsSection />}
+        {activeTab === 'mcp' && <McpSection />}
+        {activeTab === 'skills' && <SkillsSection />}
+        {activeTab === 'market' && <PluginMarket />}
+      </div>
     </div>
   );
 }

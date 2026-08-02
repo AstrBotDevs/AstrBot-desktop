@@ -61,4 +61,15 @@ describe('FullLayout', () => {
     expect(markup).toContain('full-layout__sidebar');
     expect(markup).toContain('full-layout__page--plugin');
   });
+
+  it.each(['/extension', '/extension-marketplace', '/capabilities'])(
+    'aligns the page navigation to the top for %s',
+    (pathname) => {
+      expect(renderLayout(pathname)).toContain('full-layout__page--flush-top');
+    },
+  );
+
+  it('keeps plugin detail content spacing unchanged', () => {
+    expect(renderLayout('/extension/example')).not.toContain('full-layout__page--flush-top');
+  });
 });

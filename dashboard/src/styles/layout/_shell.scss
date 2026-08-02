@@ -129,6 +129,11 @@
   padding: 0;
 }
 
+.full-layout__page--flush-top {
+  padding-top: 0;
+  padding-left: 0;
+}
+
 .full-layout__page--plugin {
   position: relative;
 }

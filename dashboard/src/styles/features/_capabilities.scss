@@ -1,0 +1,80 @@
+.capability-center-page {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.capability-center-tabs {
+  display: flex;
+  width: max-content;
+  max-width: 100%;
+  flex: 0 0 auto;
+  gap: 3px;
+  overflow-x: auto;
+  margin-bottom: 24px;
+  padding: 4px;
+  border-radius: 11px;
+  background: var(--astrbot-surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 4%);
+  scrollbar-width: none;
+}
+
+.capability-center-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.capability-center-tabs button {
+  display: inline-flex;
+  min-height: 38px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: color-mix(in srgb, var(--astrbot-text) 62%, transparent);
+  cursor: pointer;
+  font-weight: 600;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.capability-center-tabs button:hover {
+  background: color-mix(in srgb, var(--astrbot-text) 5%, transparent);
+  color: var(--astrbot-text);
+}
+
+.capability-center-tabs button[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--astrbot-primary) 12%, var(--astrbot-surface));
+  color: var(--astrbot-primary);
+}
+
+.capability-center-content {
+  width: min(1400px, 100%);
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  margin: 0 auto;
+  padding: 26px 28px 48px 36px;
+}
+
+.capability-center-content > .knowledge-list-page,
+.capability-center-content > .persona-page,
+.capability-center-content > .subagent-page-react,
+.capability-center-content > .cron-page-react {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+@media (max-width: 700px) {
+  .capability-center-content {
+    padding: 24px 16px 16px 24px;
+  }
+}

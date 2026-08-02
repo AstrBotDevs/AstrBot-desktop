@@ -10,6 +10,7 @@
   "subagent": "子代理编排",
   "toolUse": "MCP",
   "extension": "插件",
+  "capabilityCenter": "能力中心",
   "extensionTabs": {
     "installed": "AstrBot 插件",
     "market": "插件市场",
@@ -33,9 +34,6 @@
   "faq": "FAQ",
   "github": "GitHub",
   "drag": "拖拽",
-  "groups": {
-    "more": "更多功能"
-  },
   "changelogDialog": {
     "title": "更新日志",
     "loading": "加载中...",

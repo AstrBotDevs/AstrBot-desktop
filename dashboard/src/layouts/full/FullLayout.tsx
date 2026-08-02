@@ -38,6 +38,7 @@ export function FullLayout({
 }: FullLayoutProps) {
   const { pathname } = useLocation();
   const mode = getFullLayoutMode(pathname);
+  const flushTop = pathname === '/capabilities' || pathname === '/extension' || pathname === '/extension-marketplace';
   const showSidebar = !mode.isChatRoute && sidebar != null;
   const layoutClassName = [
     'full-layout',
@@ -50,6 +51,7 @@ export function FullLayout({
     'full-layout__page',
     mode.isFullScreenRoute && 'full-layout__page--fullscreen',
     mode.isPluginPageRoute && 'full-layout__page--plugin',
+    flushTop && 'full-layout__page--flush-top',
   ]
     .filter(Boolean)
     .join(' ');

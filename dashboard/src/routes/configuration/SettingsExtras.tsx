@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -29,12 +29,7 @@ import {
   selectedGithubProxyPreference,
   sidebarCustomizationPreference,
 } from '@/config/preferences';
-import {
-  defaultNavigationItems,
-  MORE_GROUP_KEY,
-  readNavigationItems,
-  type NavigationItem,
-} from '@/layouts/full/navigation';
+import { defaultNavigationItems, readNavigationItems, type NavigationItem } from '@/layouts/full/navigation';
 import { useBrowserCapabilities } from '@/platform/BrowserCapabilitiesProvider';
 import { confirmAction, toast } from '@/stores/feedback';
 import { errorMessage, isObject, objectList, responseData, type JsonObject } from './model';
@@ -43,61 +38,42 @@ import { formatBackupDate, formatBytes } from './settingsExtrasModel';
 const GITHUB_PROXIES = githubProxyOptions;
 
 function flatNavigation() {
-  const main = defaultNavigationItems.filter((item) => item.title !== MORE_GROUP_KEY);
-  const more = defaultNavigationItems.find((item) => item.title === MORE_GROUP_KEY)?.children ?? [];
-  return { all: new Map([...main, ...more].map((item) => [item.title, item])), main, more };
-}
-
-function splitNavigation(items: NavigationItem[]) {
-  return {
-    main: items.filter((item) => item.title !== MORE_GROUP_KEY),
-    more: items.find((item) => item.title === MORE_GROUP_KEY)?.children ?? [],
-  };
+  return defaultNavigationItems;
 }
 
 export function SidebarCustomizer() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const initial = useMemo(() => splitNavigation(readNavigationItems()), [open]);
-  const [main, setMain] = useState(initial.main);
-  const [more, setMore] = useState(initial.more);
-  const dragging = useRef<{ index: number; list: 'main' | 'more' } | null>(null);
+  const [items, setItems] = useState(readNavigationItems);
+  const dragging = useRef<number | null>(null);
 
   const show = () => {
-    const next = splitNavigation(readNavigationItems());
-    setMain(next.main);
-    setMore(next.more);
+    setItems(readNavigationItems());
     setOpen(true);
   };
-  const move = (source: 'main' | 'more', index: number, target: 'main' | 'more', targetIndex?: number) => {
-    const sourceList = source === 'main' ? main : more;
-    const item = sourceList[index];
+  const move = (index: number, targetIndex: number) => {
+    const item = items[index];
     if (!item) return;
-    const nextMain = main.filter((_, itemIndex) => source !== 'main' || itemIndex !== index);
-    const nextMore = more.filter((_, itemIndex) => source !== 'more' || itemIndex !== index);
-    const targetList = target === 'main' ? nextMain : nextMore;
-    targetList.splice(targetIndex ?? targetList.length, 0, item);
-    setMain(nextMain);
-    setMore(nextMore);
+    const next = items.filter((_, itemIndex) => itemIndex !== index);
+    next.splice(index < targetIndex ? targetIndex - 1 : targetIndex, 0, item);
+    setItems(next);
   };
-  const drop = (event: DragEvent, target: 'main' | 'more', index?: number) => {
+  const drop = (event: DragEvent, index: number) => {
     event.preventDefault();
-    if (dragging.current) move(dragging.current.list, dragging.current.index, target, index);
+    if (dragging.current !== null) move(dragging.current, index);
     dragging.current = null;
   };
   const save = () => {
     sidebarCustomizationPreference.write({
-      mainItems: main.map((item) => item.title),
-      moreItems: more.map((item) => item.title),
+      mainItems: items.map((item) => item.title),
+      moreItems: [],
     });
     window.dispatchEvent(new CustomEvent('sidebar-customization-changed'));
     setOpen(false);
   };
   const reset = () => {
     sidebarCustomizationPreference.remove();
-    const defaults = flatNavigation();
-    setMain(defaults.main);
-    setMore(defaults.more);
+    setItems(flatNavigation());
     window.dispatchEvent(new CustomEvent('sidebar-customization-changed'));
   };
 
@@ -111,23 +87,11 @@ export function SidebarCustomizer() {
           <p>{t('features.settings.sidebar.customize.subtitle')}</p>
           <div className="sidebar-customizer__columns">
             <SidebarItemList
-              items={main}
+              items={items}
               label={t('features.settings.sidebar.customize.mainItems')}
-              list="main"
               move={move}
-              onDragStart={(list, index) => {
-                dragging.current = { list, index };
-              }}
-              onDrop={drop}
-              t={t}
-            />
-            <SidebarItemList
-              items={more}
-              label={t('features.settings.sidebar.customize.moreItems')}
-              list="more"
-              move={move}
-              onDragStart={(list, index) => {
-                dragging.current = { list, index };
+              onDragStart={(index) => {
+                dragging.current = index;
               }}
               onDrop={drop}
               t={t}
@@ -154,7 +118,6 @@ export function SidebarCustomizer() {
 function SidebarItemList({
   items,
   label,
-  list,
   move,
   onDragStart,
   onDrop,
@@ -162,44 +125,40 @@ function SidebarItemList({
 }: {
   items: NavigationItem[];
   label: string;
-  list: 'main' | 'more';
-  move: (source: 'main' | 'more', index: number, target: 'main' | 'more', targetIndex?: number) => void;
-  onDragStart: (list: 'main' | 'more', index: number) => void;
-  onDrop: (event: DragEvent, list: 'main' | 'more', index?: number) => void;
+  move: (index: number, targetIndex: number) => void;
+  onDragStart: (index: number) => void;
+  onDrop: (event: DragEvent, index: number) => void;
   t: (key: string) => string;
 }) {
-  const target = list === 'main' ? 'more' : 'main';
   return (
     <section>
       <h3>{label}</h3>
       <div
         className="sidebar-customizer__list"
         onDragOver={(event) => event.preventDefault()}
-        onDrop={(event) => onDrop(event, list)}
+        onDrop={(event) => onDrop(event, items.length)}
       >
         {items.map((item, index) => (
           <article
             draggable
             key={item.title}
-            onDragStart={() => onDragStart(list, index)}
+            onDragStart={() => onDragStart(index)}
             onDrop={(event) => {
               event.stopPropagation();
-              onDrop(event, list, index);
+              onDrop(event, index);
             }}
           >
             <MdiIcon name={item.icon} />
             <span>{t(item.title)}</span>
-            <button
-              aria-label={t(
-                target === 'more'
-                  ? 'features.settings.sidebar.customize.moreItems'
-                  : 'features.settings.sidebar.customize.mainItems',
-              )}
-              onClick={() => move(list, index, target)}
-              type="button"
-            >
-              <MdiIcon name={target === 'more' ? 'mdi-arrow-right' : 'mdi-arrow-left'} />
-            </button>
+            {index > 0 && (
+              <button
+                aria-label={`${t('features.settings.sidebar.customize.mainItems')}: ${t(item.title)}`}
+                onClick={() => move(index, index - 1)}
+                type="button"
+              >
+                <MdiIcon name="mdi-arrow-up" />
+              </button>
+            )}
           </article>
         ))}
       </div>

@@ -152,10 +152,9 @@
     "title": "Sidebar",
     "customize": {
       "title": "Customize Sidebar",
-      "subtitle": "Drag to reorder modules, or move modules in/out of the \"More Features\" group. Settings are saved locally in your browser.",
+      "subtitle": "Drag to reorder modules. Settings are saved locally in your browser.",
       "reset": "Reset to Default",
-      "mainItems": "Main Modules",
-      "moreItems": "More Features"
+      "mainItems": "Main Modules"
     }
   },
   "backup": {

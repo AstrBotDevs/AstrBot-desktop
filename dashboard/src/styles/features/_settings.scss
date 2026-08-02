@@ -115,7 +115,7 @@
 
 .headless-dialog__content:has(.sidebar-customizer) { width: min(700px, calc(100vw - 32px)); }
 .sidebar-customizer > p { color: color-mix(in srgb, var(--astrbot-text) 64%, transparent); font-size: 13px; }
-.sidebar-customizer__columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.sidebar-customizer__columns { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .sidebar-customizer__columns h3 { margin: 0 0 8px; font-size: 14px; }
 .sidebar-customizer__list { min-height: 220px; padding: 8px; border: 1px dashed var(--astrbot-border); border-radius: 8px; }
 .sidebar-customizer__list article { display: grid; grid-template-columns: 22px minmax(0, 1fr) 30px; align-items: center; gap: 7px; margin-bottom: 6px; padding: 7px 8px; border: 1px solid var(--astrbot-border); border-radius: 7px; background: var(--astrbot-surface); cursor: move; font-size: 13px; }

@@ -10,6 +10,7 @@
     "subagent": "Субагенты",
     "toolUse": "Инструменты MCP",
     "extension": "Плагины",
+    "capabilityCenter": "Центр возможностей",
     "extensionTabs": {
         "installed": "Плагины AstrBot",
         "market": "Магазин плагинов",
@@ -33,9 +34,6 @@
     "faq": "FAQ",
     "github": "GitHub",
     "drag": "Перетащить",
-    "groups": {
-        "more": "Дополнительно"
-    },
     "changelogDialog": {
         "title": "Журнал изменений",
         "loading": "Загрузка...",

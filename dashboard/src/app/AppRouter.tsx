@@ -12,6 +12,7 @@ import { useLayoutStore, type SettingsSection } from '@/stores/layout';
 
 const WelcomePage = lazy(() => import('@/routes/welcome/WelcomePage'));
 const AboutPage = lazy(() => import('@/routes/about/AboutPage'));
+const CapabilityCenterPage = lazy(() => import('@/routes/capabilities/CapabilityCenterPage'));
 const StatsPage = lazy(() => import('@/routes/monitoring/StatsPage'));
 const TracePage = lazy(() => import('@/routes/monitoring/TracePage'));
 const ConversationPage = lazy(() => import('@/routes/monitoring/ConversationPage'));
@@ -59,6 +60,7 @@ const reactRouteElements: Partial<Record<string, React.ReactNode>> = {
   '/main': <Navigate replace to="/welcome" />,
   '/welcome': loading(<WelcomePage />),
   '/about': loading(<AboutPage />),
+  '/capabilities': loading(<CapabilityCenterPage />),
   '/dashboard/default': loading(<StatsPage />),
   '/trace': loading(<TracePage />),
   '/conversation': loading(<ConversationPage />),

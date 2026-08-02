@@ -13,6 +13,7 @@
   "chat": "Chat",
   "cron": "Future Tasks",
   "extension": "Extensions",
+  "capabilityCenter": "Capability Center",
   "extensionTabs": {
     "installed": "AstrBot Plugins",
     "market": "Plugin Market",
@@ -33,9 +34,6 @@
   "faq": "FAQ",
   "github": "GitHub",
   "drag": "Drag",
-  "groups": {
-    "more": "More Features"
-  },
   "changelogDialog": {
     "title": "Changelog",
     "loading": "Loading...",
