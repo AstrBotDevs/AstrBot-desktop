@@ -63,8 +63,7 @@ export default function ConversationPage() {
     try {
       const response = await listConversations({
         query: {
-          exclude_ids: 'astrbot',
-          exclude_platforms: 'webchat',
+          include_history: false,
           message_types: messageType || undefined,
           page,
           page_size: pageSize,
