@@ -248,6 +248,10 @@
 .footer-panel-dialog .conversation-page-react,
 .footer-panel-dialog .conversation-panel { height: 100%; min-height: 0; }
 .footer-panel-dialog .conversation-panel { display: flex; flex-direction: column; }
+.footer-panel-dialog .conversation-panel__toolbar,
+.footer-panel-dialog .conversation-table th,
+.footer-panel-dialog .conversation-table td,
+.footer-panel-dialog .conversation-pagination { border-top: 0; border-bottom: 0; }
 .footer-panel-dialog .conversation-panel > .monitor-table-wrap { min-height: 0; flex: 1; }
 @media (min-width: 901px) {
   .footer-panel-dialog .conversation-filters { min-width: 0; flex: 0 1 auto; }
