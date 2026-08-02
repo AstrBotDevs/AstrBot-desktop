@@ -10,22 +10,27 @@ import { Footer } from './Footer';
 vi.mock('@/routes/monitoring/ConsolePage', () => ({
   default: () => <div>Console panel</div>,
 }));
+vi.mock('@/routes/monitoring/ConversationPage', () => ({ default: () => <div>Conversation panel</div> }));
+vi.mock('@/routes/monitoring/SessionManagementPage', () => ({ default: () => <div>Rules panel</div> }));
+vi.mock('@/routes/monitoring/StatsPage', () => ({ default: () => <div>Stats panel</div> }));
+vi.mock('@/routes/monitoring/TracePage', () => ({ default: () => <div>Trace panel</div> }));
 
 describe('Footer', () => {
-  it('renders monitoring pages as icon-only navigation entries', () => {
-    renderRoute(<Footer />, { route: '/conversation' });
+  it('opens monitoring pages in dialogs without navigating', async () => {
+    const user = userEvent.setup();
+    renderRoute(<Footer />, { route: '/welcome' });
 
-    expect(screen.getByRole('link', { name: 'core.navigation.conversation' })).toHaveAttribute('href', '/conversation');
-    expect(screen.getByRole('link', { name: 'core.navigation.sessionManagement' })).toHaveAttribute(
-      'href',
-      '/session-management',
-    );
-    expect(screen.getByRole('link', { name: 'core.navigation.dashboard' })).toHaveAttribute(
-      'href',
-      '/dashboard/default',
-    );
-    expect(screen.getByRole('link', { name: 'core.navigation.trace' })).toHaveAttribute('href', '/trace');
-    expect(screen.getByRole('link', { name: 'core.navigation.conversation' })).toHaveClass('app-footer__item--active');
+    const triggers = [
+      'core.navigation.conversation',
+      'core.navigation.sessionManagement',
+      'core.navigation.dashboard',
+      'core.navigation.trace',
+    ];
+    triggers.forEach((name) => expect(screen.getByRole('button', { name })).toHaveAttribute('aria-haspopup', 'dialog'));
+
+    await user.click(screen.getByRole('button', { name: 'core.navigation.conversation' }));
+    expect(await screen.findByText('Conversation panel')).toBeInTheDocument();
+    expect(window.location.hash).toBe('');
   });
 
   it('opens platform logs in a dialog without navigating', async () => {

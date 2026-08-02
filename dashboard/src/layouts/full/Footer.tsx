@@ -1,17 +1,20 @@
 import { lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NavLink } from 'react-router-dom';
 
 import { Dialog, DialogClose } from '@/components/headless/Dialog';
 import { MdiIcon } from '@/components/icons/MdiIcon';
 
 const ConsolePanel = lazy(() => import('@/routes/monitoring/ConsolePage'));
+const ConversationPanel = lazy(() => import('@/routes/monitoring/ConversationPage'));
+const SessionManagementPanel = lazy(() => import('@/routes/monitoring/SessionManagementPage'));
+const StatsPanel = lazy(() => import('@/routes/monitoring/StatsPage'));
+const TracePanel = lazy(() => import('@/routes/monitoring/TracePage'));
 
 const footerNavigationItems = [
-  { title: 'core.navigation.conversation', icon: 'mdi-database', to: '/conversation' },
-  { title: 'core.navigation.sessionManagement', icon: 'mdi-pencil-ruler', to: '/session-management' },
-  { title: 'core.navigation.dashboard', icon: 'mdi-view-dashboard', to: '/dashboard/default' },
-  { title: 'core.navigation.trace', icon: 'mdi-timeline-text-outline', to: '/trace' },
+  { title: 'core.navigation.conversation', icon: 'mdi-database', panel: ConversationPanel },
+  { title: 'core.navigation.sessionManagement', icon: 'mdi-pencil-ruler', panel: SessionManagementPanel },
+  { title: 'core.navigation.dashboard', icon: 'mdi-view-dashboard', panel: StatsPanel },
+  { title: 'core.navigation.trace', icon: 'mdi-timeline-text-outline', panel: TracePanel },
 ] as const;
 
 export function Footer() {
@@ -22,16 +25,34 @@ export function Footer() {
     <div className="app-footer__items">
       {footerNavigationItems.map((item) => {
         const label = t(item.title);
+        const Panel = item.panel;
         return (
-          <NavLink
-            aria-label={label}
-            className={({ isActive }) => `app-footer__item${isActive ? ' app-footer__item--active' : ''}`}
-            data-tooltip={label}
-            key={item.to}
-            to={item.to}
+          <Dialog
+            key={item.title}
+            title={label}
+            trigger={
+              <button aria-label={label} className="app-footer__item" data-tooltip={label} type="button">
+                <MdiIcon name={item.icon} />
+              </button>
+            }
           >
-            <MdiIcon name={item.icon} />
-          </NavLink>
+            <div className="footer-navigation-dialog">
+              <Suspense
+                fallback={
+                  <div className="monitor-loading" role="status">
+                    {t('core.common.loading')}
+                  </div>
+                }
+              >
+                <Panel />
+              </Suspense>
+            </div>
+            <DialogClose asChild>
+              <button aria-label={t('core.common.close')} className="footer-navigation-dialog__close" type="button">
+                <MdiIcon name="mdi-close" />
+              </button>
+            </DialogClose>
+          </Dialog>
         );
       })}
       <Dialog
