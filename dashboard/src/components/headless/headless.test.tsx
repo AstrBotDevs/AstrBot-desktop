@@ -1,3 +1,6 @@
+// @vitest-environment jsdom
+
+import { render } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
@@ -37,5 +40,20 @@ describe('headless interaction primitives', () => {
     expect(popover).toContain('aria-expanded="false"');
     expect(dialog).toContain('aria-haspopup="dialog"');
     expect(dialog).toContain('data-state="closed"');
+  });
+
+  it('wraps each open dialog in an independent stacking layer', () => {
+    const { container } = render(
+      <Dialog open title="First dialog">
+        First content
+      </Dialog>,
+    );
+
+    const dialog = document.querySelector('.headless-dialog__content');
+    const layer = dialog?.parentElement;
+
+    expect(container).toBeEmptyDOMElement();
+    expect(layer).toHaveClass('headless-dialog__layer');
+    expect(layer?.querySelector('.headless-dialog__overlay')).not.toBeNull();
   });
 });

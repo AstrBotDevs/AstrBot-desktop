@@ -409,11 +409,19 @@
   text-align: center;
 }
 
-.headless-dialog__overlay {
+.headless-dialog__layer {
   position: fixed;
   z-index: 1000;
   inset: 0;
+  pointer-events: none;
+}
+
+.headless-dialog__overlay {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
   background: rgb(0 0 0 / 45%);
+  pointer-events: auto;
 }
 
 .headless-dialog__overlay[data-state='open'] { animation: motion-fade-in 0.2s ease-out both; }
@@ -421,7 +429,7 @@
 
 .headless-dialog__content {
   position: fixed;
-  z-index: 1001;
+  z-index: 1;
   top: 50%;
   left: 50%;
   width: min(560px, calc(100vw - 32px));
@@ -432,6 +440,7 @@
   border-radius: var(--astrbot-radius-card);
   background: var(--astrbot-surface);
   color: var(--astrbot-text);
+  pointer-events: auto;
   transform: translate(-50%, -50%);
 }
 

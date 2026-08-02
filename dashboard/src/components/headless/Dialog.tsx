@@ -15,16 +15,18 @@ export function Dialog({ children, description, onOpenChange, open, title, trigg
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       {trigger ? <DialogPrimitive.Trigger asChild>{trigger}</DialogPrimitive.Trigger> : null}
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="headless-dialog__overlay" />
-        <DialogPrimitive.Content className="headless-dialog__content">
-          <DialogPrimitive.Title className="headless-dialog__title">{title}</DialogPrimitive.Title>
-          {description ? (
-            <DialogPrimitive.Description className="headless-dialog__description">
-              {description}
-            </DialogPrimitive.Description>
-          ) : null}
-          {children}
-        </DialogPrimitive.Content>
+        <div className="headless-dialog__layer">
+          <DialogPrimitive.Overlay className="headless-dialog__overlay" />
+          <DialogPrimitive.Content className="headless-dialog__content">
+            <DialogPrimitive.Title className="headless-dialog__title">{title}</DialogPrimitive.Title>
+            {description ? (
+              <DialogPrimitive.Description className="headless-dialog__description">
+                {description}
+              </DialogPrimitive.Description>
+            ) : null}
+            {children}
+          </DialogPrimitive.Content>
+        </div>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
   );
