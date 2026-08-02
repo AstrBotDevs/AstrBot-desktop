@@ -21,6 +21,8 @@ import { DialogActions } from '@/components/ui/DialogActions';
 import { SearchField } from '@/components/ui/SearchField';
 import { SelectControl } from '@/components/ui/SelectControl';
 import { confirmDestructiveAction } from '@/components/ui/confirm';
+import { ChatMessageList } from '@/routes/chat/ChatMessageList';
+import type { ChatPart, ChatRecord } from '@/routes/chat/model';
 import { toast } from '@/stores/feedback';
 import {
   conversationKey,
@@ -33,6 +35,38 @@ import {
 import { formatTimestamp } from './model';
 
 const CONVERSATION_BATCH_SIZE = 20;
+
+function conversationPreviewParts(value: unknown): ChatPart[] {
+  if (typeof value === 'string') return value ? [{ type: 'plain', text: value }] : [];
+  if (!Array.isArray(value)) return value == null ? [] : [{ type: 'plain', text: String(value) }];
+  return value.map((part) => {
+    if (!isRecord(part)) return { type: 'plain', text: String(part ?? '') };
+    const type = String(part.type || 'plain');
+    if (type === 'text' || type === 'plain')
+      return { ...part, type: 'plain', text: String(part.text ?? '') } as ChatPart;
+    if (type === 'think' || type === 'reasoning') {
+      return { ...part, type: 'think', think: String(part.think ?? part.text ?? '') } as ChatPart;
+    }
+    return { ...part, type } as ChatPart;
+  });
+}
+
+function conversationPreviewMessages(history: Array<Record<string, unknown>>): ChatRecord[] {
+  return history.flatMap((message, index) => {
+    const role = String(message.role ?? '');
+    if (role !== 'user' && role !== 'assistant') return [];
+    const parts = conversationPreviewParts(message.content);
+    if (role === 'assistant' && Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+      parts.push({ type: 'tool_call', tool_calls: message.tool_calls } as ChatPart);
+    }
+    return [
+      {
+        id: String(message.id ?? `conversation-history-${index}`),
+        content: { message: parts, type: role === 'user' ? 'user' : 'bot' },
+      } as ChatRecord,
+    ];
+  });
+}
 
 export default function ConversationPage() {
   const { copyText, downloadBlob } = useBrowserCapabilities();
@@ -58,47 +92,50 @@ export default function ConversationPage() {
   const nextPageRef = useRef(1);
   const requestIdRef = useRef(0);
 
-  const load = useCallback(async ({ append = false }: { append?: boolean } = {}) => {
-    if (append && (loadingRef.current || !hasMoreRef.current)) return;
-    const requestId = ++requestIdRef.current;
-    const requestedPage = append ? nextPageRef.current : 1;
-    loadingRef.current = true;
-    setLoading(true);
-    setError('');
-    if (!append) {
-      setItems([]);
-      setSelected(new Set());
-      nextPageRef.current = 1;
-      hasMoreRef.current = true;
-    }
-    try {
-      const response = await listConversations({
-        query: {
-          include_history: false,
-          message_types: messageType || undefined,
-          page: requestedPage,
-          page_size: CONVERSATION_BATCH_SIZE,
-          platforms: platform.trim() || undefined,
-          search: search.trim() || undefined,
-        },
-      });
-      const data = decodeApiData(response, parseConversationList, 'conversation list');
-      if (requestId !== requestIdRef.current) return;
-      const conversations = data.conversations ?? [];
-      setItems((current) => (append ? [...current, ...conversations] : conversations));
-      setTotal(data.pagination?.total ?? conversations.length);
-      nextPageRef.current = requestedPage + 1;
-      hasMoreRef.current = requestedPage < (data.pagination?.total_pages ?? 1);
-    } catch (cause) {
-      if (requestId !== requestIdRef.current) return;
-      setError(cause instanceof Error ? cause.message : t(`${prefix}.messages.fetchError`));
-    } finally {
-      if (requestId === requestIdRef.current) {
-        loadingRef.current = false;
-        setLoading(false);
+  const load = useCallback(
+    async ({ append = false }: { append?: boolean } = {}) => {
+      if (append && (loadingRef.current || !hasMoreRef.current)) return;
+      const requestId = ++requestIdRef.current;
+      const requestedPage = append ? nextPageRef.current : 1;
+      loadingRef.current = true;
+      setLoading(true);
+      setError('');
+      if (!append) {
+        setItems([]);
+        setSelected(new Set());
+        nextPageRef.current = 1;
+        hasMoreRef.current = true;
       }
-    }
-  }, [messageType, platform, search, t]);
+      try {
+        const response = await listConversations({
+          query: {
+            include_history: false,
+            message_types: messageType || undefined,
+            page: requestedPage,
+            page_size: CONVERSATION_BATCH_SIZE,
+            platforms: platform.trim() || undefined,
+            search: search.trim() || undefined,
+          },
+        });
+        const data = decodeApiData(response, parseConversationList, 'conversation list');
+        if (requestId !== requestIdRef.current) return;
+        const conversations = data.conversations ?? [];
+        setItems((current) => (append ? [...current, ...conversations] : conversations));
+        setTotal(data.pagination?.total ?? conversations.length);
+        nextPageRef.current = requestedPage + 1;
+        hasMoreRef.current = requestedPage < (data.pagination?.total_pages ?? 1);
+      } catch (cause) {
+        if (requestId !== requestIdRef.current) return;
+        setError(cause instanceof Error ? cause.message : t(`${prefix}.messages.fetchError`));
+      } finally {
+        if (requestId === requestIdRef.current) {
+          loadingRef.current = false;
+          setLoading(false);
+        }
+      }
+    },
+    [messageType, platform, search, t],
+  );
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 300);
     return () => window.clearTimeout(timer);
@@ -158,6 +195,8 @@ export default function ConversationPage() {
     }
   };
   const selectedItems = useMemo(() => items.filter((item) => selected.has(conversationKey(item))), [items, selected]);
+  const previewMessages = useMemo(() => conversationPreviewMessages(history), [history]);
+  const detailUmo = detail ? parseUmo(detail.user_id) : null;
   const saveHistory = async () => {
     if (!detail) return;
     let parsed: Array<Record<string, unknown>>;
@@ -398,42 +437,72 @@ export default function ConversationPage() {
       <Dialog
         onOpenChange={(open) => !open && setDetail(null)}
         open={Boolean(detail)}
-        title={detail?.title || t(`${prefix}.status.noTitle`)}
+        title={
+          <span className="conversation-detail-title">
+            <span>{detail?.title || t(`${prefix}.status.noTitle`)}</span>
+            {detailUmo ? (
+              <small>
+                <span>{detailUmo.platform || t(`${prefix}.status.unknown`)}</span>
+                <span>
+                  {detailUmo.messageType === 'GroupMessage'
+                    ? t(`${prefix}.messageTypes.group`)
+                    : detailUmo.messageType === 'FriendMessage'
+                      ? t(`${prefix}.messageTypes.friend`)
+                      : detailUmo.messageType || t(`${prefix}.status.unknown`)}
+                </span>
+                <code title={detailUmo.sessionId}>{detailUmo.sessionId}</code>
+              </small>
+            ) : null}
+          </span>
+        }
       >
-        <DialogActions>
-          <Button onClick={() => setEditingHistory((value) => !value)}>
-            {t(`${prefix}.dialogs.view.${editingHistory ? 'previewMode' : 'editMode'}`)}
-          </Button>
-          {editingHistory && (
-            <Button disabled={savingHistory} onClick={() => void saveHistory()} variant="primary">
-              {t(`${prefix}.dialogs.view.saveChanges`)}
+        <div className="conversation-detail-dialog">
+          <div className="conversation-detail-dialog__toolbar">
+            <Button
+              icon={<MdiIcon name={editingHistory ? 'mdi-eye-outline' : 'mdi-pencil-outline'} />}
+              onClick={() => setEditingHistory((value) => !value)}
+            >
+              {t(`${prefix}.dialogs.view.${editingHistory ? 'previewMode' : 'editMode'}`)}
             </Button>
-          )}
-        </DialogActions>
-        {editingHistory ? (
-          <div className="json-editor">
-            <MonacoEditor language="json" onChange={setHistoryJson} value={historyJson} />
+            {editingHistory && (
+              <Button
+                disabled={savingHistory}
+                icon={<MdiIcon name="mdi-content-save-outline" />}
+                onClick={() => void saveHistory()}
+                variant="primary"
+              >
+                {t(`${prefix}.dialogs.view.saveChanges`)}
+              </Button>
+            )}
           </div>
-        ) : history.length ? (
-          <div className="conversation-history">
-            {history.map((message, index) => {
-              const role = String(message.role ?? 'message');
-              return (
-                <article className={`conversation-history__message conversation-history__message--${role}`} key={index}>
-                  <strong>{role}</strong>
-                  <pre>
-                    {typeof message.content === 'string' ? message.content : JSON.stringify(message.content, null, 2)}
-                  </pre>
-                </article>
-              );
-            })}
+          <div className="conversation-detail-dialog__body">
+            {editingHistory ? (
+              <div className="json-editor">
+                <MonacoEditor language="json" onChange={setHistoryJson} value={historyJson} />
+              </div>
+            ) : previewMessages.length ? (
+              <div className="conversation-history">
+                <ChatMessageList
+                  className="conversation-history__messages"
+                  enableEdit={false}
+                  enableRetry={false}
+                  enableThreadSelection={false}
+                  messages={previewMessages}
+                />
+              </div>
+            ) : (
+              <div className="monitor-empty">
+                <MdiIcon name="mdi-chat-remove-outline" />
+                <span>{t(`${prefix}.status.emptyContent`)}</span>
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="monitor-empty">{t(`${prefix}.status.emptyContent`)}</div>
-        )}
-        <DialogClose asChild>
-          <button type="button">{t(`${prefix}.dialogs.view.close`)}</button>
-        </DialogClose>
+          <div className="conversation-detail-dialog__footer">
+            <DialogClose asChild>
+              <Button variant="text">{t(`${prefix}.dialogs.view.close`)}</Button>
+            </DialogClose>
+          </div>
+        </div>
       </Dialog>
       <Dialog
         onOpenChange={(open) => !open && setEditing(null)}

@@ -3,7 +3,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { listConversations } from '@/api/openapi';
+import { getConversation, listConversations } from '@/api/openapi';
 import { mockApiResponse, renderRoute } from '@/test/render';
 import ConversationPage from './ConversationPage';
 
@@ -75,5 +75,33 @@ describe('ConversationPage', () => {
       query: expect.objectContaining({ page: 2, page_size: 20 }),
     });
     expect(container.querySelector('.conversation-pagination')).not.toBeInTheDocument();
+  });
+
+  it('renders conversation details with the shared chat message presentation', async () => {
+    vi.mocked(listConversations).mockResolvedValue(
+      mockApiResponse({
+        conversations: [conversation(1)],
+        pagination: { page: 1, page_size: 20, total: 1, total_pages: 1 },
+      }),
+    );
+    vi.mocked(getConversation).mockResolvedValue(
+      mockApiResponse({
+        ...conversation(1),
+        history: [
+          { content: [{ text: 'History question', type: 'text' }], role: 'user' },
+          { content: 'History answer', role: 'assistant' },
+        ],
+      }),
+    );
+
+    const { container } = renderRoute(<ConversationPage />);
+
+    await screen.findByText('Chat conversation 1');
+    fireEvent.click(container.querySelector<HTMLButtonElement>('.conversation-row-actions__view')!);
+
+    expect(await screen.findByText('History question')).toBeInTheDocument();
+    expect(screen.getByText('History answer')).toBeInTheDocument();
+    expect(document.querySelector('.conversation-detail-dialog')).not.toBeNull();
+    expect(document.querySelector('.conversation-history__messages')).not.toBeNull();
   });
 });
