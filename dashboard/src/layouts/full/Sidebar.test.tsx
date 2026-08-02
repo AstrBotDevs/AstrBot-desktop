@@ -11,6 +11,10 @@ import { Sidebar } from './Sidebar';
 const openapiMock = vi.hoisted(() => ({ listPlugins: vi.fn() }));
 
 vi.mock('@/api/openapi', () => ({ listPlugins: openapiMock.listPlugins }));
+vi.mock('@/routes/chat/ChatPage', () => ({
+  default: ({ sidebarOnly }: { sidebarOnly?: boolean }) =>
+    sidebarOnly ? <div data-testid="persistent-chat-sidebar" /> : null,
+}));
 vi.mock('@/desktop/DesktopProvider', () => ({
   useDesktop: () => ({ checkForUpdate: vi.fn(), installUpdate: vi.fn() }),
 }));
@@ -52,11 +56,12 @@ describe('Sidebar', () => {
     expect(screen.getByText('core.common.language')).toBeInTheDocument();
   });
 
-  it('provides the shared conversation slot on chat routes', () => {
-    const { container } = renderRoute(<Sidebar />, { route: '/chat/session-1' });
+  it.each(['/welcome', '/chat/session-1'])('keeps one conversation navigation mounted on %s', (route) => {
+    const { container } = renderRoute(<Sidebar />, { route });
 
-    expect(container.querySelector('.sidebar--chat')).not.toBeNull();
-    expect(container.querySelector('#chat-sidebar-slot')).not.toBeNull();
+    expect(screen.getByTestId('persistent-chat-sidebar')).toBeInTheDocument();
+    expect(container.querySelector('.sidebar--chat')).toBeNull();
+    expect(container.querySelector('#chat-sidebar-slot')).toBeNull();
   });
 
   it('loads plugin navigation and supports keyboard resizing', async () => {

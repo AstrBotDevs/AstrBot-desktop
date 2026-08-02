@@ -6,6 +6,7 @@ import { MdiIcon } from '@/components/icons/MdiIcon';
 import { ExpandCollapse } from '@/components/motion/ExpandCollapse';
 import { listPlugins } from '@/api/openapi';
 import { storageKeys } from '@/config/storageKeys';
+import ChatPage from '@/routes/chat/ChatPage';
 import { objectList, responseData } from '@/routes/configuration/model';
 import { SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, useLayoutStore } from '@/stores/layout';
 import {
@@ -82,7 +83,6 @@ function NavigationEntry({ item, mini }: { item: NavigationItem; mini: boolean }
 
 export function Sidebar() {
   const { t } = useTranslation();
-  const location = useLocation();
   const drawerOpen = useLayoutStore((state) => state.drawerOpen);
   const mini = useLayoutStore((state) => state.miniSidebar);
   const sidebarWidth = useLayoutStore((state) => state.sidebarWidth);
@@ -93,8 +93,6 @@ export function Sidebar() {
   const [pluginItem, setPluginItem] = useState<NavigationItem | null>(null);
   const [resizing, setResizing] = useState(false);
   const items = mergePluginNavigation(baseItems, pluginItem);
-  const isChat = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
-
   useEffect(() => {
     const refresh = () => setBaseItems(readNavigationItems());
     const onStorage = (event: StorageEvent) => {
@@ -155,7 +153,7 @@ export function Sidebar() {
       <button aria-label={t('core.common.close')} className="sidebar-backdrop" onClick={closeDrawer} type="button" />
       <nav
         aria-label={t('core.navigation.title')}
-        className={`sidebar${mini ? ' sidebar--mini' : ''}${isChat ? ' sidebar--chat' : ''}`}
+        className={`sidebar${mini ? ' sidebar--mini' : ''}`}
         style={{ width }}
       >
         <ul className="sidebar-nav">
@@ -163,7 +161,11 @@ export function Sidebar() {
             <NavigationEntry item={item} key={item.title} mini={mini} />
           ))}
         </ul>
-        {!mini && isChat && <div className="sidebar-chat-slot" id="chat-sidebar-slot" />}
+        {!mini && (
+          <div className="sidebar-chat-slot">
+            <ChatPage sidebarOnly />
+          </div>
+        )}
         {!mini && (
           <div className="sidebar-footer">
             <button

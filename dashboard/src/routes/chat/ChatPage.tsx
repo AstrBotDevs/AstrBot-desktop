@@ -1,5 +1,4 @@
 import { type MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -85,7 +84,7 @@ import {
   usesLocalProviderOverride,
 } from './model';
 
-type ChatPageProps = { chatbox?: boolean };
+type ChatPageProps = { chatbox?: boolean; sidebarOnly?: boolean };
 type StagedFile = { attachment_id: string; filename: string; preview_url?: string; type: StagedAttachmentType };
 type ProviderConfig = ProviderDto & { model: string };
 type CommandSuggestion = JsonObject & {
@@ -101,7 +100,7 @@ function isMissingChatSessionError(cause: unknown) {
   return cause instanceof Error && /\bsession\b.+\bnot found\b/i.test(cause.message.trim());
 }
 
-export default function ChatPage({ chatbox = false }: ChatPageProps) {
+export default function ChatPage({ chatbox = false, sidebarOnly = false }: ChatPageProps) {
   const { downloadBlob } = useBrowserCapabilities();
   const { create: createObjectUrl, revoke: revokeObjectUrl } = useObjectUrlRegistry();
   const { i18n, t } = useTranslation();
@@ -138,7 +137,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const [recordingBusy, setRecordingBusy] = useState(false);
   const [error, setError] = useState('');
   const [chatboxSidebarOpen, setChatboxSidebarOpen] = useState(false);
-  const [sidebarPortalTarget, setSidebarPortalTarget] = useState<HTMLElement | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [configId, setConfigId] = useState(storedChatConfigId);
   const [configRoutes, setConfigRoutes] = useState<ConfigRouteEntry[]>([]);
@@ -169,8 +167,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
   const [sessionTitleDraft, setSessionTitleDraft] = useState('');
   const [sessionTitleSaving, setSessionTitleSaving] = useState(false);
   const [, setMediaVersion] = useState(0);
-  const drawerOpen = useLayoutStore((state) => state.drawerOpen);
-  const miniSidebar = useLayoutStore((state) => state.miniSidebar);
   const openSettings = useLayoutStore((state) => state.openSettings);
   const abortRef = useRef<AbortController | null>(null);
   const configSaveLockRef = useRef({ current: false });
@@ -260,13 +256,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     },
     [chatbox],
   );
-  useEffect(() => {
-    if (chatbox || !drawerOpen || miniSidebar) {
-      setSidebarPortalTarget(null);
-      return;
-    }
-    setSidebarPortalTarget(document.getElementById('chat-sidebar-slot'));
-  }, [chatbox, drawerOpen, miniSidebar]);
   const unwrap = <T,>(response: unknown) => responseData<T>(response);
   const sessionUmo = useCallback(
     (sessionId: string, session?: ChatSession) =>
@@ -1634,11 +1623,84 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
     </aside>
   );
 
+  const sidebarDialogs = (
+    <>
+      <Dialog
+        onOpenChange={(open) => {
+          if (!open && !sessionTitleSaving) {
+            setRenamingSession(null);
+            setSessionTitleDraft('');
+          }
+        }}
+        open={renamingSession !== null}
+        title={t('features.chat.conversation.editDisplayName')}
+      >
+        <div className="chat-session-rename-dialog">
+          <input
+            autoFocus
+            onChange={(event) => setSessionTitleDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                void saveSessionTitle();
+              }
+            }}
+            placeholder={t('features.chat.conversation.displayName')}
+            value={sessionTitleDraft}
+          />
+          <div className="dialog-actions">
+            <button
+              disabled={sessionTitleSaving}
+              onClick={() => {
+                setRenamingSession(null);
+                setSessionTitleDraft('');
+              }}
+              type="button"
+            >
+              {t('core.common.cancel')}
+            </button>
+            <button
+              className="button--primary"
+              disabled={sessionTitleSaving || !sessionTitleDraft.trim()}
+              onClick={() => void saveSessionTitle()}
+              type="button"
+            >
+              {t('core.common.save')}
+            </button>
+          </div>
+        </div>
+      </Dialog>
+      <ChatProjectDialog
+        error={projectError}
+        onOpenChange={(open) => {
+          setProjectDialogOpen(open);
+          if (!open) {
+            setProjectError('');
+            setEditingProject(null);
+          }
+        }}
+        onSave={(form) => void saveProject(form)}
+        open={projectDialogOpen}
+        project={editingProjectForm}
+        saving={projectSaving}
+      />
+    </>
+  );
+
+  if (sidebarOnly) {
+    return (
+      <>
+        {sessionsSidebar}
+        {sidebarDialogs}
+      </>
+    );
+  }
+
   return (
     <div
       className={`chat-shell ${chatbox ? 'chat-shell--box' : 'chat-shell--integrated'} ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}
     >
-      {chatbox ? sessionsSidebar : sidebarPortalTarget ? createPortal(sessionsSidebar, sidebarPortalTarget) : null}
+      {chatbox ? sessionsSidebar : null}
       {chatbox && sidebarOpen && (
         <button
           aria-label={t('features.chat.accessibility.closeConversations')}
@@ -1911,51 +1973,7 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
             {t('features.chat.thread.askInThread')}
           </button>
         )}
-        <Dialog
-          onOpenChange={(open) => {
-            if (!open && !sessionTitleSaving) {
-              setRenamingSession(null);
-              setSessionTitleDraft('');
-            }
-          }}
-          open={renamingSession !== null}
-          title={t('features.chat.conversation.editDisplayName')}
-        >
-          <div className="chat-session-rename-dialog">
-            <input
-              autoFocus
-              onChange={(event) => setSessionTitleDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-                  event.preventDefault();
-                  void saveSessionTitle();
-                }
-              }}
-              placeholder={t('features.chat.conversation.displayName')}
-              value={sessionTitleDraft}
-            />
-            <div className="dialog-actions">
-              <button
-                disabled={sessionTitleSaving}
-                onClick={() => {
-                  setRenamingSession(null);
-                  setSessionTitleDraft('');
-                }}
-                type="button"
-              >
-                {t('core.common.cancel')}
-              </button>
-              <button
-                className="button--primary"
-                disabled={sessionTitleSaving || !sessionTitleDraft.trim()}
-                onClick={() => void saveSessionTitle()}
-                type="button"
-              >
-                {t('core.common.save')}
-              </button>
-            </div>
-          </div>
-        </Dialog>
+        {sidebarDialogs}
         <ChatDetailPanels
           activeThread={activeThread}
           imagePreview={imagePreview}
@@ -1981,20 +1999,6 @@ export default function ChatPage({ chatbox = false }: ChatPageProps) {
           threadDraft={threadDraft}
           threadMessagesRef={threadMessagesRef}
           threadSending={threadSending}
-        />
-        <ChatProjectDialog
-          error={projectError}
-          onOpenChange={(open) => {
-            setProjectDialogOpen(open);
-            if (!open) {
-              setProjectError('');
-              setEditingProject(null);
-            }
-          }}
-          onSave={(form) => void saveProject(form)}
-          open={projectDialogOpen}
-          project={editingProjectForm}
-          saving={projectSaving}
         />
       </main>
     </div>

@@ -62,18 +62,19 @@ describe('ChatPage', () => {
     expect(screen.queryByText('features.chat.actions.providerConfig')).not.toBeInTheDocument();
   });
 
-  it('mounts conversation navigation into the shared Bot sidebar slot', async () => {
-    const slot = document.createElement('div');
-    slot.id = 'chat-sidebar-slot';
-    document.body.append(slot);
-
-    renderRoute(<ChatPage />, { route: '/chat' });
+  it('leaves shared conversation navigation to the application sidebar', async () => {
+    const { container } = renderRoute(<ChatPage />, { route: '/chat' });
 
     await screen.findByText('features.chat.welcome.title');
-    await waitFor(() => expect(slot.querySelector('.chat-sessions--integrated')).not.toBeNull());
-    expect(slot).toHaveTextContent('features.chat.actions.newChat');
-    expect(slot.querySelector('.chat-sessions__footer')).toBeNull();
-    slot.remove();
+    expect(container.querySelector('.chat-sessions')).toBeNull();
+  });
+
+  it('renders persistent sidebar navigation without the chat workspace', async () => {
+    const { container } = renderRoute(<ChatPage sidebarOnly />, { route: '/welcome' });
+
+    await screen.findByText('features.chat.actions.newChat');
+    expect(container.querySelector('.chat-sessions--integrated')).not.toBeNull();
+    expect(container.querySelector('.chat-main')).toBeNull();
   });
 
   it('shows a page-level error when conversations cannot load', async () => {

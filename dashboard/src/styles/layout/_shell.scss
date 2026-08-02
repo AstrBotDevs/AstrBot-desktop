@@ -286,7 +286,7 @@
 }
 
 .sidebar-nav {
-  flex: 1;
+  flex: 0 0 auto;
   min-height: 0;
   margin: 0;
   padding: 16px;
@@ -415,10 +415,6 @@
   border-radius: 14px;
   background: color-mix(in srgb, var(--astrbot-text) 5%, var(--astrbot-surface));
   box-shadow: 0 14px 36px rgb(0 0 0 / 18%);
-}
-
-.sidebar--chat .sidebar-nav {
-  flex: 0 0 auto;
 }
 
 .sidebar-chat-slot {
