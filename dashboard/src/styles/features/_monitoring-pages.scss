@@ -252,6 +252,8 @@
 @media (min-width: 901px) {
   .footer-panel-dialog .conversation-filters { min-width: 0; flex: 0 1 auto; }
   .footer-panel-dialog .conversation-filters > label { width: 280px; min-width: 180px; flex: 0 1 280px; }
+  .footer-panel-dialog .session-rules-toolbar { grid-template-columns: auto minmax(240px, 360px) minmax(0, 1fr); }
+  .footer-panel-dialog .session-rules-toolbar__actions { justify-content: flex-start; }
 }
 .footer-panel-dialog__close { position: absolute; z-index: 5; top: 19px; right: 22px; display: grid; width: 34px; height: 34px; place-items: center; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--astrbot-text); cursor: pointer; font-size: 21px; }
 .footer-panel-dialog__close:hover { background: var(--astrbot-hover); color: var(--astrbot-primary); }
