@@ -1,6 +1,7 @@
 import { type MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import {
   addChatProjectSession,
@@ -84,7 +85,7 @@ import {
   usesLocalProviderOverride,
 } from './model';
 
-type ChatPageProps = { chatbox?: boolean; sidebarOnly?: boolean };
+type ChatPageProps = { chatbox?: boolean; layoutManaged?: boolean };
 type StagedFile = { attachment_id: string; filename: string; preview_url?: string; type: StagedAttachmentType };
 type ProviderConfig = ProviderDto & { model: string };
 type CommandSuggestion = JsonObject & {
@@ -100,11 +101,18 @@ function isMissingChatSessionError(cause: unknown) {
   return cause instanceof Error && /\bsession\b.+\bnot found\b/i.test(cause.message.trim());
 }
 
-export default function ChatPage({ chatbox = false, sidebarOnly = false }: ChatPageProps) {
+export default function ChatPage({ chatbox = false, layoutManaged = false }: ChatPageProps) {
   const { downloadBlob } = useBrowserCapabilities();
   const { create: createObjectUrl, revoke: revokeObjectUrl } = useObjectUrlRegistry();
   const { i18n, t } = useTranslation();
-  const { conversationId = '' } = useParams();
+  const { conversationId: routeConversationId = '' } = useParams();
+  const location = useLocation();
+  const managedConversationMatch = layoutManaged ? location.pathname.match(/^\/chat\/([^/]+)$/) : null;
+  const conversationId = layoutManaged
+    ? managedConversationMatch
+      ? decodeURIComponent(managedConversationMatch[1])
+      : ''
+    : routeConversationId;
   const navigate = useNavigate();
   const basePath = chatbox ? '/chatbox' : '/chat';
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -137,6 +145,8 @@ export default function ChatPage({ chatbox = false, sidebarOnly = false }: ChatP
   const [recordingBusy, setRecordingBusy] = useState(false);
   const [error, setError] = useState('');
   const [chatboxSidebarOpen, setChatboxSidebarOpen] = useState(false);
+  const [managedSidebarTarget, setManagedSidebarTarget] = useState<HTMLElement | null>(null);
+  const [managedRouteTarget, setManagedRouteTarget] = useState<HTMLElement | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [configId, setConfigId] = useState(storedChatConfigId);
   const [configRoutes, setConfigRoutes] = useState<ConfigRouteEntry[]>([]);
@@ -167,6 +177,9 @@ export default function ChatPage({ chatbox = false, sidebarOnly = false }: ChatP
   const [sessionTitleDraft, setSessionTitleDraft] = useState('');
   const [sessionTitleSaving, setSessionTitleSaving] = useState(false);
   const [, setMediaVersion] = useState(0);
+  const drawerOpen = useLayoutStore((state) => state.drawerOpen);
+  const miniSidebar = useLayoutStore((state) => state.miniSidebar);
+  const closeDrawer = useLayoutStore((state) => state.closeDrawer);
   const openSettings = useLayoutStore((state) => state.openSettings);
   const abortRef = useRef<AbortController | null>(null);
   const configSaveLockRef = useRef({ current: false });
@@ -253,9 +266,25 @@ export default function ChatPage({ chatbox = false, sidebarOnly = false }: ChatP
   const setSidebarOpen = useCallback(
     (open: boolean) => {
       if (chatbox) setChatboxSidebarOpen(open);
+      else if (layoutManaged && !open && window.innerWidth < 768) closeDrawer();
     },
-    [chatbox],
+    [chatbox, closeDrawer, layoutManaged],
   );
+  useEffect(() => {
+    if (!layoutManaged) {
+      setManagedSidebarTarget(null);
+      setManagedRouteTarget(null);
+      return;
+    }
+    setManagedSidebarTarget(
+      drawerOpen && !miniSidebar ? document.getElementById('shared-chat-sidebar-slot') : null,
+    );
+    setManagedRouteTarget(
+      location.pathname === '/chat' || location.pathname.startsWith('/chat/')
+        ? document.getElementById('shared-chat-route-slot')
+        : null,
+    );
+  }, [drawerOpen, layoutManaged, location.pathname, miniSidebar]);
   const unwrap = <T,>(response: unknown) => responseData<T>(response);
   const sessionUmo = useCallback(
     (sessionId: string, session?: ChatSession) =>
@@ -1687,18 +1716,9 @@ export default function ChatPage({ chatbox = false, sidebarOnly = false }: ChatP
     </>
   );
 
-  if (sidebarOnly) {
-    return (
-      <>
-        {sessionsSidebar}
-        {sidebarDialogs}
-      </>
-    );
-  }
-
-  return (
+  const workspace = (
     <div
-      className={`chat-shell ${chatbox ? 'chat-shell--box' : 'chat-shell--integrated'} ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}
+      className={`chat-shell ${chatbox ? 'chat-shell--box' : 'chat-shell--integrated'} ${chatbox && sidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}
     >
       {chatbox ? sessionsSidebar : null}
       {chatbox && sidebarOpen && (
@@ -1973,7 +1993,6 @@ export default function ChatPage({ chatbox = false, sidebarOnly = false }: ChatP
             {t('features.chat.thread.askInThread')}
           </button>
         )}
-        {sidebarDialogs}
         <ChatDetailPanels
           activeThread={activeThread}
           imagePreview={imagePreview}
@@ -2002,6 +2021,23 @@ export default function ChatPage({ chatbox = false, sidebarOnly = false }: ChatP
         />
       </main>
     </div>
+  );
+
+  if (layoutManaged) {
+    return (
+      <>
+        {managedSidebarTarget ? createPortal(sessionsSidebar, managedSidebarTarget) : null}
+        {managedRouteTarget ? createPortal(workspace, managedRouteTarget) : null}
+        {sidebarDialogs}
+      </>
+    );
+  }
+
+  return (
+    <>
+      {workspace}
+      {sidebarDialogs}
+    </>
   );
 }
 

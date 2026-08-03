@@ -145,9 +145,15 @@
   position: relative;
 }
 
-.full-layout[data-layout-mode='chat'] .full-layout__main,
-.full-layout[data-layout-mode='chat'] .full-layout__page {
+.full-layout[data-layout-mode='workspace'] .full-layout__main,
+.full-layout[data-layout-mode='workspace'] .full-layout__page {
   overflow: hidden;
+}
+
+.chat-route-slot {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
 }
 
 .app-footer__items {
@@ -227,8 +233,7 @@
   background: var(--astrbot-surface);
 }
 
-.app-header__icon-button,
-.app-header__mode-switch {
+.app-header__icon-button {
   min-width: 36px;
   min-height: 36px;
   border: 0;
@@ -242,8 +247,7 @@
   font-size: 24px;
 }
 
-.app-header__icon-button:hover,
-.app-header__mode-switch:hover {
+.app-header__icon-button:hover {
   background: var(--astrbot-hover);
 }
 
@@ -261,19 +265,6 @@
 
 .app-header__spacer {
   flex: 1;
-}
-
-.app-header__mode-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 12px;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.app-header__mode-switch .mdi {
-  font-size: 19px;
 }
 
 .sidebar {
@@ -687,7 +678,4 @@
     background: rgb(0 0 0 / 35%);
   }
 
-  .app-header__mode-switch {
-    padding: 0 8px;
-  }
 }

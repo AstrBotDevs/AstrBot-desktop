@@ -1,6 +1,7 @@
 import type { PropsWithChildren, ReactNode } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 
+import ChatPage from '@/routes/chat/ChatPage';
 import { Header } from './Header';
 import { FirstNoticeDialog } from './FirstNoticeDialog';
 import { Footer } from './Footer';
@@ -11,22 +12,23 @@ type FullLayoutProps = PropsWithChildren<{
   footer?: ReactNode;
   header?: ReactNode;
   sidebar?: ReactNode;
+  workspace?: ReactNode;
 }>;
 
 export type FullLayoutMode = {
-  isChatRoute: boolean;
   isPluginPageRoute: boolean;
   isFullScreenRoute: boolean;
+  isWorkspaceRoute: boolean;
 };
 
 export function getFullLayoutMode(pathname: string): FullLayoutMode {
-  const isChatRoute = pathname === '/chat' || pathname.startsWith('/chat/');
+  const isWorkspaceRoute = pathname === '/chat' || pathname.startsWith('/chat/');
   const isPluginPageRoute = pathname.startsWith('/plugin-page/');
 
   return {
-    isChatRoute,
     isPluginPageRoute,
-    isFullScreenRoute: isChatRoute || isPluginPageRoute,
+    isFullScreenRoute: isWorkspaceRoute || isPluginPageRoute,
+    isWorkspaceRoute,
   };
 }
 
@@ -35,6 +37,7 @@ export function FullLayout({
   footer = <Footer />,
   header = <Header />,
   sidebar = <Sidebar />,
+  workspace = <ChatPage layoutManaged />,
 }: FullLayoutProps) {
   const { pathname } = useLocation();
   const mode = getFullLayoutMode(pathname);
@@ -59,7 +62,7 @@ export function FullLayout({
     <div
       className={layoutClassName}
       data-layout="full"
-      data-layout-mode={mode.isChatRoute ? 'chat' : mode.isPluginPageRoute ? 'plugin' : 'standard'}
+      data-layout-mode={mode.isPluginPageRoute ? 'plugin' : mode.isWorkspaceRoute ? 'workspace' : 'standard'}
     >
       {header != null && <header className="full-layout__header">{header}</header>}
       {showSidebar && <aside className="full-layout__sidebar">{sidebar}</aside>}
@@ -69,6 +72,7 @@ export function FullLayout({
       {footer != null && <footer className="full-layout__footer">{footer}</footer>}
       <SettingsDialog />
       <FirstNoticeDialog />
+      {workspace}
     </div>
   );
 }

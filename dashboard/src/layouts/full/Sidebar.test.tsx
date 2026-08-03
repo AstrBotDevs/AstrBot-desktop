@@ -11,10 +11,6 @@ import { Sidebar } from './Sidebar';
 const openapiMock = vi.hoisted(() => ({ listPlugins: vi.fn() }));
 
 vi.mock('@/api/openapi', () => ({ listPlugins: openapiMock.listPlugins }));
-vi.mock('@/routes/chat/ChatPage', () => ({
-  default: ({ sidebarOnly }: { sidebarOnly?: boolean }) =>
-    sidebarOnly ? <div data-testid="persistent-chat-sidebar" /> : null,
-}));
 vi.mock('@/desktop/DesktopProvider', () => ({
   useDesktop: () => ({ checkForUpdate: vi.fn(), installUpdate: vi.fn() }),
 }));
@@ -59,7 +55,7 @@ describe('Sidebar', () => {
   it.each(['/welcome', '/chat/session-1'])('keeps one conversation navigation mounted on %s', (route) => {
     const { container } = renderRoute(<Sidebar />, { route });
 
-    expect(screen.getByTestId('persistent-chat-sidebar')).toBeInTheDocument();
+    expect(container.querySelectorAll('#shared-chat-sidebar-slot')).toHaveLength(1);
     expect(container.querySelector('.sidebar--chat')).toBeNull();
     expect(container.querySelector('#chat-sidebar-slot')).toBeNull();
   });

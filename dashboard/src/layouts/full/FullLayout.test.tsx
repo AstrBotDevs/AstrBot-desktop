@@ -1,8 +1,10 @@
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { renderStatic } from '@/test/render';
 import { FullLayout, getFullLayoutMode } from './FullLayout';
+
+vi.mock('@/routes/chat/ChatPage', () => ({ default: () => null }));
 
 function renderLayout(pathname: string) {
   return renderStatic(
@@ -17,14 +19,14 @@ function renderLayout(pathname: string) {
 describe('getFullLayoutMode', () => {
   it('identifies chat and plugin pages as full-screen routes', () => {
     expect(getFullLayoutMode('/chat/conversation-1')).toEqual({
-      isChatRoute: true,
       isPluginPageRoute: false,
       isFullScreenRoute: true,
+      isWorkspaceRoute: true,
     });
     expect(getFullLayoutMode('/plugin-page/example/settings')).toEqual({
-      isChatRoute: false,
       isPluginPageRoute: true,
       isFullScreenRoute: true,
+      isWorkspaceRoute: false,
     });
     expect(getFullLayoutMode('/settings').isFullScreenRoute).toBe(false);
   });
@@ -47,7 +49,7 @@ describe('FullLayout', () => {
   it('keeps the shared sidebar available for chat navigation', () => {
     const markup = renderLayout('/chat/conversation-1');
 
-    expect(markup).toContain('data-layout-mode="chat"');
+    expect(markup).toContain('data-layout-mode="workspace"');
     expect(markup).not.toContain('full-layout--without-sidebar');
     expect(markup).toContain('full-layout__sidebar');
     expect(markup).toContain('full-layout__footer');

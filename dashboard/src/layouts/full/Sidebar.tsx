@@ -6,7 +6,6 @@ import { MdiIcon } from '@/components/icons/MdiIcon';
 import { ExpandCollapse } from '@/components/motion/ExpandCollapse';
 import { listPlugins } from '@/api/openapi';
 import { storageKeys } from '@/config/storageKeys';
-import ChatPage from '@/routes/chat/ChatPage';
 import { objectList, responseData } from '@/routes/configuration/model';
 import { SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, useLayoutStore } from '@/stores/layout';
 import {
@@ -161,11 +160,7 @@ export function Sidebar() {
             <NavigationEntry item={item} key={item.title} mini={mini} />
           ))}
         </ul>
-        {!mini && (
-          <div className="sidebar-chat-slot">
-            <ChatPage sidebarOnly />
-          </div>
-        )}
+        {!mini && <div className="sidebar-chat-slot" id="shared-chat-sidebar-slot" />}
         {!mini && (
           <div className="sidebar-footer">
             <button

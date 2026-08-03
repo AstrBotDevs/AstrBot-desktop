@@ -69,12 +69,20 @@ describe('ChatPage', () => {
     expect(container.querySelector('.chat-sessions')).toBeNull();
   });
 
-  it('renders persistent sidebar navigation without the chat workspace', async () => {
-    const { container } = renderRoute(<ChatPage sidebarOnly />, { route: '/welcome' });
+  it('renders one layout-managed instance into the shared sidebar and route slots', async () => {
+    const sidebarSlot = document.createElement('div');
+    sidebarSlot.id = 'shared-chat-sidebar-slot';
+    const routeSlot = document.createElement('div');
+    routeSlot.id = 'shared-chat-route-slot';
+    document.body.append(sidebarSlot, routeSlot);
+
+    renderRoute(<ChatPage layoutManaged />, { route: '/chat' });
 
     await screen.findByText('features.chat.actions.newChat');
-    expect(container.querySelector('.chat-sessions--integrated')).not.toBeNull();
-    expect(container.querySelector('.chat-main')).toBeNull();
+    await waitFor(() => expect(sidebarSlot.querySelector('.chat-sessions--integrated')).not.toBeNull());
+    expect(routeSlot.querySelector('.chat-main')).not.toBeNull();
+    sidebarSlot.remove();
+    routeSlot.remove();
   });
 
   it('shows a page-level error when conversations cannot load', async () => {

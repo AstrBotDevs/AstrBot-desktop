@@ -43,6 +43,10 @@ function loading(element: React.ReactNode) {
   return <Suspense fallback={<RouteLoading />}>{element}</Suspense>;
 }
 
+function ChatRouteSlot() {
+  return <div className="chat-route-slot" id="shared-chat-route-slot" />;
+}
+
 function SettingsRouteRedirect({ section = 'general' }: { section?: SettingsSection }) {
   const navigate = useNavigate();
   const openSettings = useLayoutStore((state) => state.openSettings);
@@ -82,8 +86,8 @@ const reactRouteElements: Partial<Record<string, React.ReactNode>> = {
   '/knowledge-base/:kbId': loading(<KnowledgeBaseDetailPage />),
   '/knowledge-base/:kbId/document/:docId': loading(<DocumentDetailPage />),
   '/alkaid/knowledge-base': loading(<KnowledgeBaseListPage />),
-  '/chat': loading(<ChatPage />),
-  '/chat/:conversationId': loading(<ChatPage />),
+  '/chat': <ChatRouteSlot />,
+  '/chat/:conversationId': <ChatRouteSlot />,
   '/chatbox': loading(<ChatPage chatbox />),
   '/chatbox/:conversationId': loading(<ChatPage chatbox />),
 };
