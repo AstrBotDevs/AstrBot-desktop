@@ -70,6 +70,27 @@ test('macOS workflow prepares resources before optional pre-signing', async () =
   );
 });
 
+test('macOS build reuses the imported signing identity', async () => {
+  const workflowObject = await readWorkflowObject(WORKFLOW_FILE);
+  const steps = extractWorkflowJobSteps(workflowObject, BUILD_MACOS_JOB);
+  const importStep = findStep(
+    steps,
+    'Import Apple Developer Certificate',
+    (step) => step.name === 'Import Apple Developer Certificate',
+  );
+  const buildStep = findStep(
+    steps,
+    'build app bundle step',
+    (step) => BUILD_APP_BUNDLE_RUN.test(step.run ?? ''),
+  );
+
+  assert.equal(importStep.env?.APPLE_CERTIFICATE, '${{ secrets.APPLE_CERTIFICATE }}');
+  assert.equal(importStep.env?.APPLE_CERTIFICATE_PASSWORD, '${{ secrets.APPLE_CERTIFICATE_PASSWORD }}');
+  assert.equal(buildStep.env?.APPLE_CERTIFICATE, undefined);
+  assert.equal(buildStep.env?.APPLE_CERTIFICATE_PASSWORD, undefined);
+  assert.equal(buildStep.env?.APPLE_ID, '${{ secrets.APPLE_ID }}');
+});
+
 test('release workflow disables generated release notes for nightly builds', async () => {
   const workflowObject = await readWorkflowObject(WORKFLOW_FILE);
   const steps = extractWorkflowJobSteps(workflowObject, RELEASE_JOB);
