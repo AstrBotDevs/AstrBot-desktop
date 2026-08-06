@@ -54,6 +54,7 @@
 | 变量 | 用途 | 默认值/行为 |
 | --- | --- | --- |
 | `ASTRBOT_DESKTOP_CLIENT` | 标记桌面客户端环境 | 打包态启动后端时写入 `1` |
+| `ASTRBOT_INSTALLATION_SOURCE` | 标记 AstrBot 匿名指标中的安装来源 | 打包态启动后端时写入 `desktop` |
 | `ASTRBOT_BACKEND_STARTUP_HEARTBEAT_PATH` | 桌面端写给后端启动器的 heartbeat 文件路径 | 打包态默认写到 `ASTRBOT_ROOT/data/backend-startup-heartbeat.json` |
 
 ### 局域网访问 WebUI
