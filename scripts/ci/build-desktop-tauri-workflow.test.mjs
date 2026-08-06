@@ -97,7 +97,7 @@ test('Linux workflow publishes signed AppImage updater artifacts', async () => {
   assert.match(uploadStep.with?.path ?? '', /appimage\/\*\.AppImage\.sig/);
 });
 
-test('macOS workflow builds a drag-to-Applications DMG alongside updater archives', async () => {
+test('macOS workflow packages a drag-to-Applications DMG alongside updater archives', async () => {
   const workflowObject = await readWorkflowObject(WORKFLOW_FILE);
   const steps = extractWorkflowJobSteps(workflowObject, BUILD_MACOS_JOB);
   const buildStep = findStep(
@@ -116,8 +116,12 @@ test('macOS workflow builds a drag-to-Applications DMG alongside updater archive
     (step) => step.name === 'Upload artifacts' && /^actions\/upload-artifact@/.test(step.uses ?? ''),
   );
 
-  assert.match(buildStep.run, /--bundles app,dmg/);
-  assert.match(buildStep.run, /cleanup-dmg\.sh/);
+  assert.match(buildStep.run, /--bundles app(?:\s|$)/);
+  assert.doesNotMatch(buildStep.run, /--bundles app,dmg/);
+  assert.match(collectStep.run, /ln -s \/Applications/);
+  assert.match(collectStep.run, /hdiutil create/);
+  assert.match(collectStep.run, /-srcfolder/);
+  assert.match(collectStep.run, /-format UDZO/);
   assert.match(collectStep.run, /hdiutil verify/);
   assert.match(collectStep.run, /AstrBot_\$\{ASTRBOT_VERSION\}_macos_\$\{\{ matrix\.arch \}\}\.dmg/);
   assert.match(uploadStep.with?.path ?? '', /release-artifacts\/\*\.dmg/);

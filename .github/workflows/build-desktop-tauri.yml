@@ -412,22 +412,14 @@ jobs:
           retry_sleep_seconds="${ASTRBOT_MACOS_BUILD_RETRY_SLEEP_SECONDS}"
           # Resources are already prepared and, when available, pre-signed in earlier steps.
           tauri_config_override='{"build":{"beforeBuildCommand":""}}'
-          cleanup_script="scripts/ci/cleanup-dmg.sh"
-          if [ ! -f "${cleanup_script}" ]; then
-            echo "Missing DMG cleanup script: ${cleanup_script}" >&2
-            exit 1
-          fi
-
-          # Retry known transient cargo/crates network and DMG detach failures.
+          # Retry known transient cargo/crates network failures.
           # Spurious retry hints emitted by cargo.
           transient_retry_spurious='spurious network error|network failure seems to have happened'
           # HTTP-layer transient fetch failures (rate limits and 5xx responses).
           transient_retry_http='failed to download from|failed to get successful HTTP response|received HTTP code (429|5[0-9][0-9])'
           # Transport-layer transient failures.
           transient_retry_transport='Operation timed out|Connection reset by peer|Connection refused|Temporary failure in name resolution'
-          # Disk image detach failures observed on hosted macOS runners.
-          transient_retry_dmg='hdiutil: detach:.*(timeout|not detached)|DiskArbitration expired'
-          retry_pattern="${transient_retry_spurious}|${transient_retry_http}|${transient_retry_transport}|${transient_retry_dmg}"
+          retry_pattern="${transient_retry_spurious}|${transient_retry_http}|${transient_retry_transport}"
 
           case "${max_attempts}" in
             ''|*[!0-9]*|0) max_attempts="${max_attempts_default}" ;;
@@ -443,10 +435,8 @@ jobs:
           echo "macOS build retry config: max_attempts=${max_attempts}, retry_sleep_seconds=${retry_sleep_seconds}, max_attempts_upper_bound=${max_attempts_upper_bound}"
 
           for attempt in $(seq 1 "${max_attempts}"); do
-            echo "Cleaning stale DMG state before attempt ${attempt}/${max_attempts}..."
-            bash "${cleanup_script}"
             build_log="$(mktemp -t tauri-macos-build.XXXXXX.log)"
-            if cargo tauri build --verbose --target ${{ matrix.target }} --bundles app,dmg --config "${tauri_config_override}" 2>&1 | tee "${build_log}"; then
+            if cargo tauri build --verbose --target ${{ matrix.target }} --bundles app --config "${tauri_config_override}" 2>&1 | tee "${build_log}"; then
               rm -f "${build_log}" || true
               break
             fi
@@ -484,7 +474,6 @@ jobs:
           set -euo pipefail
           bundle_root="src-tauri/target/${{ matrix.target }}/release/bundle"
           bundle_dir="${bundle_root}/macos"
-          dmg_dir="${bundle_root}/dmg"
           release_dir="${bundle_root}/release-artifacts"
           app_bundle_name="${RESOLVED_APP_BUNDLE_NAME}"
           app_bundle_name_source="${RESOLVED_APP_BUNDLE_NAME_SOURCE}"
@@ -531,21 +520,29 @@ jobs:
           cp "${updater_signature}" "${release_dir}/${release_base}.sig"
           echo "Collected ${release_dir}/${release_base}"
 
-          if [ ! -d "${dmg_dir}" ]; then
-            echo "Expected Tauri DMG bundle directory not found: ${dmg_dir}" >&2
-            ls -la "${bundle_root}" || true
+          app_bundle="${bundle_dir}/${app_bundle_name}.app"
+          if [ ! -d "${app_bundle}" ]; then
+            echo "Expected signed macOS app bundle not found: ${app_bundle}" >&2
+            ls -la "${bundle_dir}" || true
             exit 1
           fi
-          shopt -s nullglob
-          dmg_files=("${dmg_dir}"/*.dmg)
-          if [ "${#dmg_files[@]}" -ne 1 ]; then
-            echo "Expected exactly one DMG in ${dmg_dir}, found ${#dmg_files[@]}." >&2
-            ls -la "${dmg_dir}" || true
-            exit 1
-          fi
-          hdiutil verify "${dmg_files[0]}"
+
+          # create-dmg mounts and mutates a writable image, which is prone to
+          # DiskArbitration detach timeouts on hosted Intel runners. Building
+          # directly from a prepared source folder produces the same drag-to-
+          # Applications layout without an explicit attach/detach cycle.
+          dmg_staging_dir="$(mktemp -d "${RUNNER_TEMP}/astrbot-dmg-${{ matrix.arch }}.XXXXXX")"
+          ditto "${app_bundle}" "${dmg_staging_dir}/${app_bundle_name}.app"
+          ln -s /Applications "${dmg_staging_dir}/Applications"
           dmg_release_name="AstrBot_${ASTRBOT_VERSION}_macos_${{ matrix.arch }}.dmg"
-          cp "${dmg_files[0]}" "${release_dir}/${dmg_release_name}"
+          dmg_release_path="${release_dir}/${dmg_release_name}"
+          hdiutil create \
+            -volname "${app_bundle_name}" \
+            -srcfolder "${dmg_staging_dir}" \
+            -ov \
+            -format UDZO \
+            "${dmg_release_path}"
+          hdiutil verify "${dmg_release_path}"
           echo "Collected ${release_dir}/${dmg_release_name}"
 
       - name: Upload artifacts
