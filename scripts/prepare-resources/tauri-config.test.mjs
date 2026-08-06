@@ -35,3 +35,16 @@ test('main Tauri window starts hidden to avoid silent-launch flash', async () =>
     'expected the main window to stay hidden until startup settings are applied',
   );
 });
+
+test('desktop updater channels use the dedicated R2 manifest origin', async () => {
+  const tauriConfig = JSON.parse(await readFile(tauriConfigPath, 'utf8'));
+  const updater = tauriConfig?.plugins?.updater;
+  const stableEndpoint = 'https://releases.astrbot.app/desktop/channels/stable/latest.json';
+  const nightlyEndpoint = 'https://releases.astrbot.app/desktop/channels/nightly/latest.json';
+
+  assert.deepEqual(updater?.endpoints, [stableEndpoint]);
+  assert.deepEqual(updater?.channelEndpoints, {
+    stable: stableEndpoint,
+    nightly: nightlyEndpoint,
+  });
+});
