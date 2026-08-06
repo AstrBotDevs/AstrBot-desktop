@@ -8,6 +8,7 @@ import {
 } from './workflow-test-utils.mjs';
 
 const WORKFLOW_FILE = 'build-desktop-tauri.yml';
+const BUILD_LINUX_JOB = 'build-linux';
 const BUILD_MACOS_JOB = 'build-macos';
 const RELEASE_JOB = 'release';
 const PREPARE_RESOURCES_RUN = /pnpm run prepare:resources/;
@@ -68,6 +69,58 @@ test('macOS workflow prepares resources before optional pre-signing', async () =
     buildStep.run,
     /Resources are already prepared/,
   );
+});
+
+test('Linux workflow publishes signed AppImage updater artifacts', async () => {
+  const workflowObject = await readWorkflowObject(WORKFLOW_FILE);
+  const steps = extractWorkflowJobSteps(workflowObject, BUILD_LINUX_JOB);
+  const buildStep = findStep(
+    steps,
+    'Build desktop installers (Linux)',
+    (step) => step.name === 'Build desktop installers (Linux)',
+  );
+  const verifyStep = findStep(
+    steps,
+    'Verify Linux AppImage updater artifacts',
+    (step) => step.name === 'Verify Linux AppImage updater artifacts',
+  );
+  const uploadStep = findStep(
+    steps,
+    'Linux artifact upload',
+    (step) => step.name === 'Upload artifacts' && /^actions\/upload-artifact@/.test(step.uses ?? ''),
+  );
+
+  assert.match(buildStep.run, /--bundles deb,rpm,appimage/);
+  assert.match(verifyStep.run, /\.AppImage/);
+  assert.match(verifyStep.run, /updater_signature="\$\{appimages\[0\]\}\.sig"/);
+  assert.match(uploadStep.with?.path ?? '', /appimage\/\*\.AppImage/);
+  assert.match(uploadStep.with?.path ?? '', /appimage\/\*\.AppImage\.sig/);
+});
+
+test('macOS workflow builds a drag-to-Applications DMG alongside updater archives', async () => {
+  const workflowObject = await readWorkflowObject(WORKFLOW_FILE);
+  const steps = extractWorkflowJobSteps(workflowObject, BUILD_MACOS_JOB);
+  const buildStep = findStep(
+    steps,
+    'Build desktop app bundle (macOS)',
+    (step) => step.name === 'Build desktop app bundle (macOS)',
+  );
+  const collectStep = findStep(
+    steps,
+    'Collect macOS release artifacts',
+    (step) => step.name === 'Collect macOS release artifacts',
+  );
+  const uploadStep = findStep(
+    steps,
+    'macOS artifact upload',
+    (step) => step.name === 'Upload artifacts' && /^actions\/upload-artifact@/.test(step.uses ?? ''),
+  );
+
+  assert.match(buildStep.run, /--bundles app,dmg/);
+  assert.match(buildStep.run, /cleanup-dmg\.sh/);
+  assert.match(collectStep.run, /hdiutil verify/);
+  assert.match(collectStep.run, /AstrBot_\$\{ASTRBOT_VERSION\}_macos_\$\{\{ matrix\.arch \}\}\.dmg/);
+  assert.match(uploadStep.with?.path ?? '', /release-artifacts\/\*\.dmg/);
 });
 
 test('release workflow disables generated release notes for nightly builds', async () => {

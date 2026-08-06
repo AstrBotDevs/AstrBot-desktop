@@ -56,6 +56,8 @@ AstrBot Desktop 是面向本地桌面使用的 AstrBot 打包发行版。它内�
 - [Stable](https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest)：适合大多数用户日常使用。
 - [Nightly](https://github.com/AstrBotDevs/AstrBot-desktop/releases/tag/nightly)：基于较新的上游改动自动构建，适合提前体验新功能或修复。
 - 下载时请按操作系统与 CPU 架构选择对应安装包。
+- macOS 请下载 `.dmg`，打开后将 AstrBot 拖入 Applications（应用程序）目录。
+- Linux 如需应用内热更新请使用 AppImage；`deb` / `rpm` 仍由系统包方式安装，更新时会提示手动下载。
 
 <!-- section: data-and-configuration-location -->
 ## 数据与配置位置
