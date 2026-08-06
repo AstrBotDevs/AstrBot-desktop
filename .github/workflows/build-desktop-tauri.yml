@@ -217,7 +217,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Building Linux release bundles (deb, rpm, and AppImage)."
-          cargo tauri build --bundles deb,rpm,appimage
+          pnpm exec tauri build --bundles deb,rpm,appimage
 
       - name: Verify Linux AppImage updater artifacts
         shell: bash
@@ -436,7 +436,7 @@ jobs:
 
           for attempt in $(seq 1 "${max_attempts}"); do
             build_log="$(mktemp -t tauri-macos-build.XXXXXX.log)"
-            if cargo tauri build --verbose --target ${{ matrix.target }} --bundles app --config "${tauri_config_override}" 2>&1 | tee "${build_log}"; then
+            if pnpm exec tauri build --verbose --target ${{ matrix.target }} --bundles app --config "${tauri_config_override}" 2>&1 | tee "${build_log}"; then
               rm -f "${build_log}" || true
               break
             fi

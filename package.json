@@ -10,10 +10,11 @@
     "prepare:webui": "node scripts/prepare-resources.mjs webui",
     "prepare:backend": "node scripts/prepare-resources.mjs backend",
     "prepare:resources": "pnpm run prepare:webui && pnpm run prepare:backend",
-    "dev": "cargo tauri dev",
-    "build": "cargo tauri build"
+    "dev": "tauri dev",
+    "build": "tauri build"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "2.10.0",
     "yaml": "^2.8.1"
   }
 }
