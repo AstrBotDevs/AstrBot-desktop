@@ -84,3 +84,58 @@ test('release workflow disables generated release notes for nightly builds', asy
     "${{ needs.resolve_build_context.outputs.build_mode != 'nightly' }}",
   );
 });
+
+test('release workflow publishes immutable R2 objects before promoting the channel manifest', async () => {
+  const workflowObject = await readWorkflowObject(WORKFLOW_FILE);
+  const steps = extractWorkflowJobSteps(workflowObject, RELEASE_JOB);
+  const immutableUploadIndex = findStepIndex(
+    steps,
+    (step) => step.name === 'Upload immutable release objects to Cloudflare R2',
+    'immutable R2 upload step',
+  );
+  const publicObjectVerificationIndex = findStepIndex(
+    steps,
+    (step) => step.name === 'Verify immutable R2 updater objects on public origin',
+    'public R2 object verification step',
+  );
+  const githubReleaseIndex = findStepIndex(
+    steps,
+    (step) => step.name === 'Create or update release',
+    'GitHub release step',
+  );
+  const channelPromotionIndex = findStepIndex(
+    steps,
+    (step) => step.name === 'Promote Cloudflare R2 updater channel',
+    'R2 channel promotion step',
+  );
+
+  assert.ok(immutableUploadIndex < publicObjectVerificationIndex);
+  assert.ok(publicObjectVerificationIndex < githubReleaseIndex);
+  assert.ok(githubReleaseIndex < channelPromotionIndex);
+  assert.match(steps[immutableUploadIndex].run, /--phase artifacts/);
+  assert.match(steps[publicObjectVerificationIndex].run, /urlsplit\(url\)/);
+  assert.match(steps[publicObjectVerificationIndex].run, /--retry-max-time 300/);
+  assert.match(steps[channelPromotionIndex].run, /--phase channel/);
+  assert.match(steps[channelPromotionIndex].run, /--retry-max-time 300/);
+  assert.match(
+    steps[channelPromotionIndex].run,
+    /desktop\/channels\/\$\{UPDATER_CHANNEL\}\/latest\.json/,
+  );
+});
+
+test('updater manifest generation points release artifacts at the R2 public origin', async () => {
+  const workflowObject = await readWorkflowObject(WORKFLOW_FILE);
+  const steps = extractWorkflowJobSteps(workflowObject, RELEASE_JOB);
+  const manifestStep = findStep(
+    steps,
+    'Generate Tauri updater manifest',
+    (step) => step.name === 'Generate Tauri updater manifest',
+  );
+
+  assert.equal(manifestStep.id, 'updater_manifest');
+  assert.match(
+    manifestStep.run,
+    /--asset-base-url "\$\{R2_PUBLIC_BASE_URL%\/\}\/desktop\/releases\/\$\{RELEASE_VERSION\}\/\$\{R2_RELEASE_ID\}"/,
+  );
+  assert.equal(manifestStep.env?.R2_RELEASE_ID, '${{ github.run_id }}-${{ github.run_attempt }}');
+});

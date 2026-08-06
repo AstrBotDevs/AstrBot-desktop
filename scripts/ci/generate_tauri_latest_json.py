@@ -6,6 +6,7 @@ import argparse
 import json
 import re
 from pathlib import Path
+from urllib.parse import quote, urlsplit
 
 from scripts.ci.lib.artifact_arch import normalize_arch_alias
 from scripts.ci.lib.nightly_version import NIGHTLY_CANONICAL_FORMAT, NIGHTLY_VERSION_RE
@@ -32,7 +33,33 @@ def read_signature(path: Path) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-def asset_url(repo: str, tag: str, filename: str) -> str:
+def normalize_asset_base_url(asset_base_url: str | None) -> str | None:
+    if asset_base_url is None:
+        return None
+
+    normalized = asset_base_url.strip().rstrip("/")
+    if not normalized:
+        return None
+
+    parsed = urlsplit(normalized)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ValueError(
+            "Asset base URL must be an absolute HTTPS URL, "
+            f"got {asset_base_url!r}"
+        )
+    if parsed.query or parsed.fragment:
+        raise ValueError("Asset base URL must not contain a query or fragment")
+    return normalized
+
+
+def asset_url(
+    repo: str,
+    tag: str,
+    filename: str,
+    asset_base_url: str | None = None,
+) -> str:
+    if normalized_base_url := normalize_asset_base_url(asset_base_url):
+        return f"{normalized_base_url}/{quote(filename)}"
     return f"https://github.com/{repo}/releases/download/{tag}/{filename}"
 
 
@@ -137,6 +164,7 @@ def add_platform(
     signature_path: Path,
     repo: str,
     tag: str,
+    asset_base_url: str | None = None,
 ) -> None:
     if platform_key in platforms:
         raise ValueError(
@@ -146,7 +174,7 @@ def add_platform(
 
     platforms[platform_key] = {
         "signature": read_signature(signature_path),
-        "url": asset_url(repo, tag, artifact_name),
+        "url": asset_url(repo, tag, artifact_name, asset_base_url),
     }
 
 
@@ -162,6 +190,7 @@ def collect_platforms(
     *,
     version: str,
     channel: str,
+    asset_base_url: str | None = None,
 ) -> dict[str, dict[str, str]]:
     platforms: dict[str, dict[str, str]] = {}
     # Fail fast on any unknown signature file so release packaging problems are
@@ -187,6 +216,7 @@ def collect_platforms(
                 sig_path,
                 repo,
                 tag,
+                asset_base_url,
             )
             continue
 
@@ -207,6 +237,7 @@ def collect_platforms(
                 sig_path,
                 repo,
                 tag,
+                asset_base_url,
             )
             continue
 
@@ -230,6 +261,13 @@ def main() -> int:
     parser.add_argument("--channel", choices=["stable", "nightly"])
     parser.add_argument("--output", required=True)
     parser.add_argument("--notes", default="")
+    parser.add_argument(
+        "--asset-base-url",
+        help=(
+            "Optional HTTPS directory containing the normalized updater artifacts. "
+            "Defaults to the GitHub release download directory."
+        ),
+    )
     args = parser.parse_args()
 
     root = Path(args.artifacts_root)
@@ -244,6 +282,7 @@ def main() -> int:
             args.tag,
             version=args.version,
             channel=channel,
+            asset_base_url=args.asset_base_url,
         )
         if not platforms:
             raise ValueError("No updater signatures found under artifacts root")

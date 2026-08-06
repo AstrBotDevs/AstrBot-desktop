@@ -43,6 +43,27 @@ class GenerateTauriLatestJsonTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, r"Unsupported macOS arch: ppc64le"):
             MODULE.platform_key_for_macos("ppc64le")
 
+    def test_asset_url_uses_normalized_https_base_url(self):
+        self.assertEqual(
+            MODULE.asset_url(
+                "AstrBotDevs/AstrBot-desktop",
+                "v4.29.0",
+                "AstrBot 4.29.0.exe",
+                "https://releases.astrbot.app/desktop/releases/4.29.0/",
+            ),
+            "https://releases.astrbot.app/desktop/releases/4.29.0/"
+            "AstrBot%204.29.0.exe",
+        )
+
+    def test_asset_url_rejects_non_https_base_url(self):
+        with self.assertRaisesRegex(ValueError, "absolute HTTPS URL"):
+            MODULE.asset_url(
+                "AstrBotDevs/AstrBot-desktop",
+                "v4.29.0",
+                "AstrBot.exe",
+                "http://releases.astrbot.app/desktop/releases/4.29.0",
+            )
+
     def test_derive_release_metadata_validates_and_returns_expected_values(self):
         self.assertEqual(
             MODULE.derive_release_metadata("4.29.0", None),
@@ -162,6 +183,44 @@ class GenerateTauriLatestJsonTests(unittest.TestCase):
         self.assertEqual(
             payload["platforms"]["windows-x86_64"]["signature"],
             "sig-win",
+        )
+
+    def test_main_writes_r2_asset_urls_when_base_url_is_set(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            output = root / "latest-stable.json"
+            (root / "AstrBot_4.29.0_windows_amd64_setup.exe.sig").write_text(
+                "sig-win"
+            )
+
+            argv = [
+                str(SCRIPT_PATH),
+                "--artifacts-root",
+                str(root),
+                "--repo",
+                "AstrBotDevs/AstrBot-desktop",
+                "--tag",
+                "v4.29.0",
+                "--version",
+                "4.29.0",
+                "--channel",
+                "stable",
+                "--asset-base-url",
+                "https://releases.astrbot.app/desktop/releases/4.29.0",
+                "--output",
+                str(output),
+            ]
+
+            with mock.patch("sys.argv", argv):
+                exit_code = MODULE.main()
+
+            payload = json.loads(output.read_text())
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            payload["platforms"]["windows-x86_64"]["url"],
+            "https://releases.astrbot.app/desktop/releases/4.29.0/"
+            "AstrBot_4.29.0_windows_amd64_setup.exe",
         )
 
     def test_main_fails_when_no_signatures_found(self):

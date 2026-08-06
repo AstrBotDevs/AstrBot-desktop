@@ -44,6 +44,9 @@ env:
   ASTRBOT_NIGHTLY_SCHEDULE_CRON: ${{ vars.ASTRBOT_NIGHTLY_SCHEDULE_CRON || '7 3 * * *' }}
   ASTRBOT_NIGHTLY_UTC_HOUR: ${{ vars.ASTRBOT_NIGHTLY_UTC_HOUR || '3' }}
   ASTRBOT_DESKTOP_UPDATER_PUBLIC_KEY: ${{ vars.ASTRBOT_DESKTOP_UPDATER_PUBLIC_KEY || '' }}
+  R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID || '' }}
+  R2_BUCKET: ${{ vars.R2_BUCKET || 'astrbot-desktop-releases' }}
+  R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL || 'https://releases.astrbot.app' }}
 
 jobs:
   resolve_build_context:
@@ -644,11 +647,14 @@ jobs:
           python3 scripts/ci/validate-release-artifacts.py release-artifacts
 
       - name: Generate Tauri updater manifest
+        id: updater_manifest
         if: ${{ needs.resolve_build_context.outputs.build_mode != 'custom' }}
         env:
           RELEASE_TAG: ${{ needs.resolve_build_context.outputs.release_tag }}
           RELEASE_VERSION: ${{ needs.resolve_build_context.outputs.astrbot_version }}
           BUILD_MODE: ${{ needs.resolve_build_context.outputs.build_mode }}
+          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
+          R2_RELEASE_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         shell: bash
         run: |
           set -euo pipefail
@@ -666,7 +672,93 @@ jobs:
             --tag "${RELEASE_TAG}" \
             --version "${RELEASE_VERSION}" \
             --channel "${manifest_channel}" \
+            --asset-base-url "${R2_PUBLIC_BASE_URL%/}/desktop/releases/${RELEASE_VERSION}/${R2_RELEASE_ID}" \
             --output "${manifest_output}"
+
+          printf 'channel=%s\n' "${manifest_channel}" >> "${GITHUB_OUTPUT}"
+          printf 'path=%s\n' "${manifest_output}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload immutable release objects to Cloudflare R2
+        if: ${{ needs.resolve_build_context.outputs.build_mode != 'custom' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          RELEASE_VERSION: ${{ needs.resolve_build_context.outputs.astrbot_version }}
+          R2_RELEASE_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          R2_ACCOUNT_ID: ${{ env.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ env.R2_BUCKET }}
+          UPDATER_CHANNEL: ${{ steps.updater_manifest.outputs.channel }}
+          UPDATER_MANIFEST: ${{ steps.updater_manifest.outputs.path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ]; then
+            echo "::error::R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY repository secrets are required."
+            exit 1
+          fi
+          if [ -z "${R2_ACCOUNT_ID}" ]; then
+            echo "::error::R2_ACCOUNT_ID repository variable is required."
+            exit 1
+          fi
+
+          aws --version
+          python3 -m scripts.ci.publish_r2_release \
+            --artifacts-root release-artifacts \
+            --manifest "${UPDATER_MANIFEST}" \
+            --version "${RELEASE_VERSION}" \
+            --release-id "${R2_RELEASE_ID}" \
+            --channel "${UPDATER_CHANNEL}" \
+            --phase artifacts \
+            --bucket "${R2_BUCKET}" \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+      - name: Verify immutable R2 updater objects on public origin
+        if: ${{ needs.resolve_build_context.outputs.build_mode != 'custom' }}
+        env:
+          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
+          UPDATER_MANIFEST: ${{ steps.updater_manifest.outputs.path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          updater_urls_file="${RUNNER_TEMP}/r2-updater-urls.txt"
+          python3 - "${UPDATER_MANIFEST}" "${R2_PUBLIC_BASE_URL%/}" > "${updater_urls_file}" <<'PY'
+          import json
+          import sys
+          from urllib.parse import urlsplit
+
+          manifest_path, expected_origin = sys.argv[1:]
+          with open(manifest_path, encoding="utf-8") as file:
+              manifest = json.load(file)
+
+          expected = urlsplit(expected_origin)
+          if expected.scheme != "https" or not expected.netloc:
+              raise SystemExit(f"Invalid R2 public origin: {expected_origin!r}")
+
+          urls = sorted(
+              platform.get("url", "")
+              for platform in manifest.get("platforms", {}).values()
+          )
+          if not urls or any(not url for url in urls):
+              raise SystemExit("Updater manifest has no complete platform URLs")
+
+          for url in urls:
+              parsed = urlsplit(url)
+              if (parsed.scheme, parsed.netloc) != (expected.scheme, expected.netloc):
+                  raise SystemExit(
+                      f"Updater artifact URL is outside the configured R2 origin: {url!r}"
+                  )
+              print(url)
+          PY
+
+          while IFS= read -r updater_url; do
+            echo "Waiting for public R2 object: ${updater_url}"
+            curl --fail --silent --show-error --location --head \
+              --retry 20 --retry-delay 10 --retry-max-time 300 --retry-all-errors \
+              "${updater_url}" >/dev/null
+          done < "${updater_urls_file}"
 
       - name: Remove existing assets from target release
         env:
@@ -693,6 +785,50 @@ jobs:
           overwrite_files: true
           files: release-artifacts/**/*
           fail_on_unmatched_files: true
+
+      - name: Promote Cloudflare R2 updater channel
+        if: ${{ needs.resolve_build_context.outputs.build_mode != 'custom' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          RELEASE_VERSION: ${{ needs.resolve_build_context.outputs.astrbot_version }}
+          R2_RELEASE_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          R2_ACCOUNT_ID: ${{ env.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ env.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
+          UPDATER_CHANNEL: ${{ steps.updater_manifest.outputs.channel }}
+          UPDATER_MANIFEST: ${{ steps.updater_manifest.outputs.path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 -m scripts.ci.publish_r2_release \
+            --artifacts-root release-artifacts \
+            --manifest "${UPDATER_MANIFEST}" \
+            --version "${RELEASE_VERSION}" \
+            --release-id "${R2_RELEASE_ID}" \
+            --channel "${UPDATER_CHANNEL}" \
+            --phase channel \
+            --bucket "${R2_BUCKET}" \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+          public_manifest_url="${R2_PUBLIC_BASE_URL%/}/desktop/channels/${UPDATER_CHANNEL}/latest.json"
+          curl --fail --silent --show-error \
+            --retry 20 --retry-delay 10 --retry-max-time 300 --retry-all-errors \
+            "${public_manifest_url}?version=${RELEASE_VERSION}" \
+            --output published-latest.json
+          python3 - "${RELEASE_VERSION}" <<'PY'
+          import json
+          import sys
+
+          with open("published-latest.json", encoding="utf-8") as file:
+              published = json.load(file)
+          if published.get("version") != sys.argv[1]:
+              raise SystemExit(
+                  f"Published updater version mismatch: {published.get('version')!r}"
+              )
+          PY
 
       - name: Demote previous prerelease marker
         if: ${{ needs.resolve_build_context.outputs.release_prerelease == 'true' && needs.resolve_build_context.outputs.build_mode == 'nightly' }}
