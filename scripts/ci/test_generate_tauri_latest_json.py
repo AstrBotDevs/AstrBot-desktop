@@ -43,6 +43,33 @@ class GenerateTauriLatestJsonTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, r"Unsupported macOS arch: ppc64le"):
             MODULE.platform_key_for_macos("ppc64le")
 
+    def test_platform_key_for_linux_appimage_unsupported_arch(self):
+        with self.assertRaisesRegex(
+            ValueError, r"Unsupported Linux AppImage arch: ppc64le"
+        ):
+            MODULE.platform_key_for_linux_appimage("ppc64le")
+
+    def test_asset_url_uses_normalized_https_base_url(self):
+        self.assertEqual(
+            MODULE.asset_url(
+                "AstrBotDevs/AstrBot-desktop",
+                "v4.29.0",
+                "AstrBot 4.29.0.exe",
+                "https://releases.astrbot.app/desktop/releases/4.29.0/",
+            ),
+            "https://releases.astrbot.app/desktop/releases/4.29.0/"
+            "AstrBot%204.29.0.exe",
+        )
+
+    def test_asset_url_rejects_non_https_base_url(self):
+        with self.assertRaisesRegex(ValueError, "absolute HTTPS URL"):
+            MODULE.asset_url(
+                "AstrBotDevs/AstrBot-desktop",
+                "v4.29.0",
+                "AstrBot.exe",
+                "http://releases.astrbot.app/desktop/releases/4.29.0",
+            )
+
     def test_derive_release_metadata_validates_and_returns_expected_values(self):
         self.assertEqual(
             MODULE.derive_release_metadata("4.29.0", None),
@@ -116,6 +143,23 @@ class GenerateTauriLatestJsonTests(unittest.TestCase):
             "AstrBot_4.29.0_macos_arm64_nightly_abcd1234.app.tar.gz",
         )
 
+    def test_canonical_linux_appimage_filename_outputs_expected_names(self):
+        self.assertEqual(
+            MODULE.canonical_linux_appimage_filename(
+                "AstrBot", "x86_64", "4.29.0", "stable"
+            ),
+            "AstrBot_4.29.0_linux_amd64.AppImage",
+        )
+        self.assertEqual(
+            MODULE.canonical_linux_appimage_filename(
+                "AstrBot",
+                "aarch64",
+                "4.29.0-nightly.20260307.abcd1234",
+                "nightly",
+            ),
+            "AstrBot_4.29.0_linux_arm64_nightly_abcd1234.AppImage",
+        )
+
     def test_main_writes_expected_manifest_json(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -162,6 +206,44 @@ class GenerateTauriLatestJsonTests(unittest.TestCase):
         self.assertEqual(
             payload["platforms"]["windows-x86_64"]["signature"],
             "sig-win",
+        )
+
+    def test_main_writes_r2_asset_urls_when_base_url_is_set(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            output = root / "latest-stable.json"
+            (root / "AstrBot_4.29.0_windows_amd64_setup.exe.sig").write_text(
+                "sig-win"
+            )
+
+            argv = [
+                str(SCRIPT_PATH),
+                "--artifacts-root",
+                str(root),
+                "--repo",
+                "AstrBotDevs/AstrBot-desktop",
+                "--tag",
+                "v4.29.0",
+                "--version",
+                "4.29.0",
+                "--channel",
+                "stable",
+                "--asset-base-url",
+                "https://releases.astrbot.app/desktop/releases/4.29.0",
+                "--output",
+                str(output),
+            ]
+
+            with mock.patch("sys.argv", argv):
+                exit_code = MODULE.main()
+
+            payload = json.loads(output.read_text())
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            payload["platforms"]["windows-x86_64"]["url"],
+            "https://releases.astrbot.app/desktop/releases/4.29.0/"
+            "AstrBot_4.29.0_windows_amd64_setup.exe",
         )
 
     def test_main_fails_when_no_signatures_found(self):
@@ -460,23 +542,48 @@ class GenerateTauriLatestJsonTests(unittest.TestCase):
 
         self.assertIn("darwin-aarch64", platforms)
 
-    def test_collect_platforms_rejects_linux_appimage_signature_files(self):
+    def test_collect_platforms_accepts_linux_appimage_signature_files(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (
                 root / "AstrBot_4.29.0_linux_arm64_nightly_abcd1234.AppImage.sig"
             ).write_text("sig-linux")
 
+            platforms = MODULE.collect_platforms(
+                root,
+                "AstrBotDevs/AstrBot-desktop",
+                "nightly",
+                version="4.29.0-nightly.20260307.abcd1234",
+                channel="nightly",
+                asset_base_url="https://releases.astrbot.app/desktop/releases/4.29.0/run-1",
+            )
+
+        self.assertEqual(
+            platforms["linux-aarch64-appimage"],
+            {
+                "signature": "sig-linux",
+                "url": (
+                    "https://releases.astrbot.app/desktop/releases/4.29.0/run-1/"
+                    "AstrBot_4.29.0_linux_arm64_nightly_abcd1234.AppImage"
+                ),
+            },
+        )
+
+    def test_collect_platforms_rejects_duplicate_linux_appimage_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "AstrBot_4.29.0_linux_amd64.AppImage.sig").write_text("sig-1")
+            (root / "AstrBot_4.29.0_x86_64.AppImage.sig").write_text("sig-2")
+
             with self.assertRaisesRegex(
-                ValueError,
-                "Unsupported updater signature files under artifacts root",
+                ValueError, r"Duplicate Linux AppImage artifact.*linux-x86_64-appimage"
             ):
                 MODULE.collect_platforms(
                     root,
                     "AstrBotDevs/AstrBot-desktop",
-                    "nightly",
-                    version="4.29.0-nightly.20260307.abcd1234",
-                    channel="nightly",
+                    "v4.29.0",
+                    version="4.29.0",
+                    channel="stable",
                 )
 
     def test_collect_platforms_invalid_windows_sig_raises(self):

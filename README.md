@@ -56,6 +56,8 @@ If you only want to use the app and do not need to build it locally, download th
 - [Stable](https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest): recommended for most users.
 - [Nightly](https://github.com/AstrBotDevs/AstrBot-desktop/releases/tag/nightly): automatically built from newer upstream changes for early access to fixes and features.
 - Choose the package that matches your operating system and CPU architecture.
+- On macOS, download the `.dmg`, open it, and drag AstrBot into Applications.
+- On Linux, use the AppImage for in-app self-updates; `deb` and `rpm` remain system-package installs with manual update prompts.
 
 <!-- section: data-and-configuration-location -->
 ## Data and Configuration Location
