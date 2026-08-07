@@ -56,6 +56,7 @@
 | `ASTRBOT_DESKTOP_CLIENT` | 标记桌面客户端环境 | 打包态启动后端时写入 `1` |
 | `ASTRBOT_DESKTOP_MANAGED` | 标记后端由桌面进程托管 | 桌面端启动后端时写入 `1`（包括开发态与打包态）；桌面免密会话必须同时具备此标记 |
 | `ASTRBOT_DESKTOP_SESSION_SECRET` | 桌面原生层与托管后端之间的内部会话密钥 | 每次桌面进程启动时随机生成 256 位值，仅通过子进程环境和本机回环请求传递，不落盘且不应由用户设置 |
+| `ASTRBOT_INSTALLATION_SOURCE` | 标记 AstrBot 匿名指标中的安装来源 | 打包态启动后端时写入 `desktop` |
 | `ASTRBOT_BACKEND_STARTUP_HEARTBEAT_PATH` | 桌面端写给后端启动器的 heartbeat 文件路径 | 打包态默认写到 `ASTRBOT_ROOT/data/backend-startup-heartbeat.json` |
 
 ### 局域网访问 WebUI
@@ -88,6 +89,21 @@ Windows 对应路径通常为 `C:\Users\<用户名>\.astrbot\data\cmd_config.jso
 | `ASTRBOT_DESKTOP_UPDATER_PUBLIC_KEY` | updater 公钥透传到构建步骤 | 默认空；当前由 `.github/workflows/build-desktop-tauri.yml` 传递，Rust 运行时不直接解析 |
 | `ASTRBOT_DESKTOP_TARGET_ARCH` | 透传矩阵目标架构给资源准备脚本 | 默认空；Windows workflow 当前会传 `matrix.arch`，避免在 WOA 上误用仿真层 Node 的 `process.arch` |
 | `ASTRBOT_DESKTOP_WINDOWS_ARM_BACKEND_ARCH` | 透传 Windows ARM64 backend runtime 架构覆盖配置到构建步骤 | 默认空；具体取值与默认行为见第 2 节 |
+| `R2_ACCOUNT_ID` | Cloudflare 账户 ID，用于拼接 R2 S3 endpoint | GitHub Actions repository variable；发布 stable/nightly 时必填 |
+| `R2_BUCKET` | Desktop 发布对象所在的 R2 bucket | GitHub Actions repository variable；默认 `astrbot-desktop-releases` |
+| `R2_PUBLIC_BASE_URL` | manifest 和 updater 产物的公网基地址 | GitHub Actions repository variable；默认 `https://releases.astrbot.app` |
+| `R2_ACCESS_KEY_ID` | R2 S3 API Access Key ID | GitHub Actions repository secret；仅授予发布 bucket 的 Object Read & Write |
+| `R2_SECRET_ACCESS_KEY` | R2 S3 API Secret Access Key | GitHub Actions repository secret；禁止写入仓库、日志或构建产物 |
+
+R2 发布目录约定：
+
+```text
+desktop/releases/<version>/<github-run-id>-<run-attempt>/<artifact>
+desktop/releases/<version>/<github-run-id>-<run-attempt>/latest-<channel>.json
+desktop/channels/<channel>/latest.json
+```
+
+`desktop/releases/` 下只保存原生 updater 使用的安装包、签名与版本 manifest，对象不可变并使用长期缓存；每次 workflow attempt 使用独立目录，安全支持失败重试。`desktop/channels/` 下仅保留通道指针并使用 `no-store`。CI 先上传并校验不可变对象，再发布 GitHub Release，最后替换通道 manifest，避免客户端观察到尚未上传完整的版本。
 
 ## 5. 维护约定
 

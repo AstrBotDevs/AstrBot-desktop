@@ -12,9 +12,9 @@ fi
 
 if ! (
   cd "${root_dir}"
-  cargo tauri -V >/dev/null 2>&1
+  pnpm exec tauri -V >/dev/null 2>&1
 ); then
-  echo "Tauri CLI is required to build Windows installers (expected: cargo tauri)." >&2
+  echo "Tauri CLI is required to build Windows installers (expected: pnpm exec tauri)." >&2
   exit 1
 fi
 
@@ -27,5 +27,5 @@ fi
 echo "Building Windows installers with bundles: ${bundles}"
 (
   cd "${root_dir}"
-  cargo tauri build --bundles "${bundles}"
+  pnpm exec tauri build --bundles "${bundles}"
 )

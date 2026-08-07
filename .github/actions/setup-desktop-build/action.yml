@@ -18,11 +18,6 @@ inputs:
     description: pnpm version.
     required: false
     default: 10.28.2
-  tauri-cli-version:
-    description: tauri-cli version.
-    required: false
-    default: 2.10.0
-
 runs:
   using: composite
   steps:
@@ -41,16 +36,6 @@ runs:
       uses: dtolnay/rust-toolchain@v1
       with:
         toolchain: ${{ inputs.rust-toolchain }}
-
-    - name: Install Tauri CLI (non-Windows)
-      if: runner.os != 'Windows'
-      shell: bash
-      run: cargo install tauri-cli --version "${{ inputs.tauri-cli-version }}" --locked
-
-    - name: Install Tauri CLI (Windows)
-      if: runner.os == 'Windows'
-      shell: pwsh
-      run: cargo install tauri-cli --version "${{ inputs.tauri-cli-version }}" --locked
 
     - name: Install dependencies (non-Windows)
       if: runner.os != 'Windows'

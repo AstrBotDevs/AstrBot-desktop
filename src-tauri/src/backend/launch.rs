@@ -33,6 +33,8 @@ const ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV: &str =
 const DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV: &str = "DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH";
 const ASTRBOT_DESKTOP_CLIENT_ENV: &str = "ASTRBOT_DESKTOP_CLIENT";
 const ASTRBOT_DESKTOP_MANAGED_ENV: &str = "ASTRBOT_DESKTOP_MANAGED";
+const ASTRBOT_INSTALLATION_SOURCE_ENV: &str = "ASTRBOT_INSTALLATION_SOURCE";
+const DESKTOP_INSTALLATION_SOURCE: &str = "desktop";
 const ENABLED_ENV_VALUE: &str = "1";
 const DEFAULT_DASHBOARD_HOST: &str = "127.0.0.1";
 const DEFAULT_DASHBOARD_PORT: &str = "6185";
@@ -145,6 +147,7 @@ fn mark_as_desktop_managed(
     command.env(DESKTOP_SESSION_SECRET_ENV, desktop_session_secret.as_str());
     if packaged_mode {
         command.env(ASTRBOT_DESKTOP_CLIENT_ENV, ENABLED_ENV_VALUE);
+        command.env(ASTRBOT_INSTALLATION_SOURCE_ENV, DESKTOP_INSTALLATION_SOURCE);
     }
 }
 
@@ -556,9 +559,10 @@ mod tests {
         read_cmd_config_file_with_retry_and_hook, sanitize_packaged_python_environment,
         ASTRBOT_DASHBOARD_HOST_ENV, ASTRBOT_DASHBOARD_PORT_ENV,
         ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV, ASTRBOT_DESKTOP_CLIENT_ENV,
-        ASTRBOT_DESKTOP_MANAGED_ENV, CMD_CONFIG_RELATIVE_PATH, DASHBOARD_HOST_ENV,
-        DASHBOARD_PORT_ENV, DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV, DEFAULT_DASHBOARD_HOST,
-        DEFAULT_DASHBOARD_PORT, ENABLED_ENV_VALUE,
+        ASTRBOT_DESKTOP_MANAGED_ENV, ASTRBOT_INSTALLATION_SOURCE_ENV, CMD_CONFIG_RELATIVE_PATH,
+        DASHBOARD_HOST_ENV, DASHBOARD_PORT_ENV, DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV,
+        DEFAULT_DASHBOARD_HOST, DEFAULT_DASHBOARD_PORT, DESKTOP_INSTALLATION_SOURCE,
+        ENABLED_ENV_VALUE,
     };
     use crate::desktop_auth::{DesktopSessionSecret, DESKTOP_SESSION_SECRET_ENV};
 
@@ -666,6 +670,10 @@ mod tests {
             get_command_env_value(&command, DESKTOP_SESSION_SECRET_ENV),
             Some(Some(desktop_session_secret.as_str().to_string()))
         );
+        assert_eq!(
+            get_command_env_value(&command, ASTRBOT_INSTALLATION_SOURCE_ENV),
+            Some(Some(DESKTOP_INSTALLATION_SOURCE.to_string()))
+        );
     }
 
     #[test]
@@ -687,6 +695,10 @@ mod tests {
         assert_eq!(
             get_command_env_value(&command, DESKTOP_SESSION_SECRET_ENV),
             Some(Some(desktop_session_secret.as_str().to_string()))
+        );
+        assert_eq!(
+            get_command_env_value(&command, ASTRBOT_INSTALLATION_SOURCE_ENV),
+            None
         );
     }
 
