@@ -217,9 +217,14 @@
         window.location.hash = '/welcome';
       }
       return result;
-    })().finally(() => {
-      desktopAuthRefreshPromise = null;
-    });
+    })()
+      .catch((error) => {
+        devWarn('astrbotDesktop: failed to refresh desktop authentication', error);
+        return { ok: false, reason: 'Unable to refresh desktop authentication.' };
+      })
+      .finally(() => {
+        desktopAuthRefreshPromise = null;
+      });
 
     return desktopAuthRefreshPromise;
   };

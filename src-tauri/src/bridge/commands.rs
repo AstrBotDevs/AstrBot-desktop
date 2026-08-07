@@ -236,12 +236,21 @@ pub(crate) async fn desktop_bridge_get_auth_token(
             username: None,
             reason: Some("Desktop passwordless authentication is unavailable.".to_string()),
         },
-        Err(_) => DesktopAuthBridgeResult {
-            ok: false,
-            token: None,
-            username: None,
-            reason: Some("Desktop authentication task failed.".to_string()),
-        },
+        Err(join_error) => {
+            let failure_kind = match &join_error {
+                tauri::Error::JoinError(error) if error.is_panic() => "panicked",
+                _ => "failed to complete",
+            };
+            append_desktop_log(&format!(
+                "desktop authentication task {failure_kind}: {join_error}"
+            ));
+            DesktopAuthBridgeResult {
+                ok: false,
+                token: None,
+                username: None,
+                reason: Some("Desktop authentication task failed.".to_string()),
+            }
+        }
     }
 }
 

@@ -44,7 +44,11 @@ function runBootstrap(source, authResults) {
       async invoke(command, payload = {}) {
         invocations.push({ command, payload });
         if (command === 'desktop_bridge_get_auth_token') {
-          return authResults.shift() ?? {
+          const authResult = authResults.shift();
+          if (authResult instanceof Error) {
+            throw authResult;
+          }
+          return authResult ?? {
             ok: false,
             reason: 'No desktop auth response.',
           };
@@ -145,6 +149,36 @@ test('bridge bootstrap preserves password login fallback for older backends', as
 
   await flushAsyncWork();
   await flushAsyncWork();
+  assert.equal(runtime.localStorage.getItem('token'), null);
+  assert.equal(runtime.window.location.hash, '#/auth/login');
+});
+
+test('bridge bootstrap handles rejected desktop authentication bridge calls', async () => {
+  const source = await readFile(bootstrapPath, 'utf8');
+  const runtime = runBootstrap(source, [new Error('desktop auth bridge unavailable')]);
+
+  const result = await runtime.window.astrbotDesktop.refreshAuthSession();
+
+  assert.equal(result?.ok, false);
+  assert.equal(result?.reason, 'Error: desktop auth bridge unavailable');
+  assert.equal(runtime.localStorage.getItem('token'), null);
+  assert.equal(runtime.window.location.hash, '#/auth/login');
+});
+
+test('bridge bootstrap normalizes unexpected desktop authentication refresh errors', async () => {
+  const source = await readFile(bootstrapPath, 'utf8');
+  const invalidAuthResult = { ok: true, username: 'astrbot' };
+  Object.defineProperty(invalidAuthResult, 'token', {
+    get() {
+      throw new Error('unexpected token access failure');
+    },
+  });
+  const runtime = runBootstrap(source, [invalidAuthResult]);
+
+  const result = await runtime.window.astrbotDesktop.refreshAuthSession();
+
+  assert.equal(result?.ok, false);
+  assert.equal(result?.reason, 'Unable to refresh desktop authentication.');
   assert.equal(runtime.localStorage.getItem('token'), null);
   assert.equal(runtime.window.location.hash, '#/auth/login');
 });

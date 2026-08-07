@@ -105,7 +105,7 @@ impl BackendState {
             .unwrap_or_default();
         let desktop_session_header = options
             .desktop_session_secret
-            .and_then(sanitize_http_header_value)
+            .and_then(sanitize_desktop_session_secret)
             .map(|secret| format!("{DESKTOP_SESSION_HEADER}: {secret}\r\n"))
             .unwrap_or_default();
         let request = format!(
@@ -276,8 +276,12 @@ fn sanitize_authorization_token(token: &str) -> Option<&str> {
     Some(token)
 }
 
-fn sanitize_http_header_value(value: &str) -> Option<&str> {
-    if value.is_empty() || value.contains('\r') || value.contains('\n') {
+fn sanitize_desktop_session_secret(value: &str) -> Option<&str> {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
         return None;
     }
     Some(value)
@@ -353,10 +357,24 @@ mod tests {
     }
 
     #[test]
-    fn sanitize_http_header_value_rejects_empty_and_crlf_values() {
-        assert_eq!(sanitize_http_header_value(""), None);
-        assert_eq!(sanitize_http_header_value("secret\r\nInjected: true"), None);
-        assert_eq!(sanitize_http_header_value("secret"), Some("secret"));
+    fn sanitize_desktop_session_secret_requires_256_bit_lowercase_hex() {
+        let secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+        assert_eq!(sanitize_desktop_session_secret(secret), Some(secret));
+        assert_eq!(sanitize_desktop_session_secret(""), None);
+        assert_eq!(sanitize_desktop_session_secret("abc123"), None);
+        assert_eq!(
+            sanitize_desktop_session_secret(
+                "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
+            ),
+            None
+        );
+        assert_eq!(
+            sanitize_desktop_session_secret(
+                "0123456789abcdef0123456789abcdef\r\nInjected: true!!!!!!!!!!!!!!!"
+            ),
+            None
+        );
     }
 
     #[test]
