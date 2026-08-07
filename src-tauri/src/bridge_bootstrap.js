@@ -19,6 +19,7 @@
   const BRIDGE_COMMANDS = Object.freeze({
     IS_DESKTOP_RUNTIME: 'desktop_bridge_is_desktop_runtime',
     GET_BACKEND_STATE: 'desktop_bridge_get_backend_state',
+    GET_AUTH_TOKEN: 'desktop_bridge_get_auth_token',
     SET_AUTH_TOKEN: 'desktop_bridge_set_auth_token',
     SET_SHELL_LOCALE: 'desktop_bridge_set_shell_locale',
     GET_APP_UPDATE_CHANNEL: 'desktop_bridge_get_app_update_channel',
@@ -149,7 +150,9 @@
   };
 
   const TOKEN_STORAGE_KEY = 'token';
+  const USER_STORAGE_KEY = 'user';
   const SHELL_LOCALE_STORAGE_KEY = 'astrbot-locale';
+  const DESKTOP_AUTH_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
   // Values are injected from the shared desktop bridge transport contract.
   const CHAT_TRANSPORT = Object.freeze({
     STORAGE_KEY: '{CHAT_TRANSPORT_MODE_STORAGE_KEY}',
@@ -179,6 +182,47 @@
     invokeBridge(BRIDGE_COMMANDS.SET_SHELL_LOCALE, {
       locale: value,
     });
+
+  let desktopAuthRefreshPromise = null;
+  const refreshDesktopAuthSession = () => {
+    if (desktopAuthRefreshPromise) {
+      return desktopAuthRefreshPromise;
+    }
+
+    desktopAuthRefreshPromise = (async () => {
+      const result = await invokeBridge(BRIDGE_COMMANDS.GET_AUTH_TOKEN);
+      const token = normalizeStoredValue(result?.token);
+      const username = normalizeStoredValue(result?.username);
+      if (!result?.ok || !token || !username) {
+        devWarn(
+          'astrbotDesktop: desktop passwordless authentication unavailable',
+          result?.reason,
+        );
+        return result;
+      }
+
+      try {
+        window.localStorage?.setItem(USER_STORAGE_KEY, username);
+        window.localStorage?.setItem(TOKEN_STORAGE_KEY, token);
+        window.localStorage?.removeItem('change_pwd_hint');
+        window.localStorage?.removeItem('md5_pwd_hint');
+        window.localStorage?.removeItem('password_upgrade_required');
+      } catch (error) {
+        devWarn('astrbotDesktop: failed to persist desktop authentication', error);
+        return { ok: false, reason: 'Unable to persist desktop authentication.' };
+      }
+
+      await syncAuthToken(token);
+      if (/^#\/auth\/(?:login|setup)(?:[/?]|$)/.test(window.location.hash || '')) {
+        window.location.hash = '/welcome';
+      }
+      return result;
+    })().finally(() => {
+      desktopAuthRefreshPromise = null;
+    });
+
+    return desktopAuthRefreshPromise;
+  };
 
   const IS_DEV =
     (typeof process !== 'undefined' &&
@@ -695,6 +739,7 @@
           rawRemoveItem(key);
           if (key === TOKEN_STORAGE_KEY) {
             void syncAuthToken(null);
+            void refreshDesktopAuthSession();
           } else if (key === SHELL_LOCALE_STORAGE_KEY) {
             void syncShellLocale(null);
           }
@@ -705,6 +750,7 @@
           rawClear();
           void syncAuthToken(null);
           void syncShellLocale(null);
+          void refreshDesktopAuthSession();
         };
       }
     } catch {}
@@ -742,6 +788,7 @@
     isDesktopRuntime: () =>
       isRuntimeBridgeEnabled(BRIDGE_COMMANDS.IS_DESKTOP_RUNTIME, true),
     getBackendState: () => invokeBridge(BRIDGE_COMMANDS.GET_BACKEND_STATE),
+    refreshAuthSession: refreshDesktopAuthSession,
     restartBackend: async (authToken = null) => {
       const normalizedToken =
         typeof authToken === 'string' && authToken ? authToken : getStoredAuthToken();
@@ -782,4 +829,6 @@
   ensureDefaultChatTransportMode();
   void syncAuthToken();
   void syncShellLocale();
+  void refreshDesktopAuthSession();
+  window.setInterval(refreshDesktopAuthSession, DESKTOP_AUTH_REFRESH_INTERVAL_MS);
 })();

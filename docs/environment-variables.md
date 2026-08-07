@@ -54,6 +54,8 @@
 | 变量 | 用途 | 默认值/行为 |
 | --- | --- | --- |
 | `ASTRBOT_DESKTOP_CLIENT` | 标记桌面客户端环境 | 打包态启动后端时写入 `1` |
+| `ASTRBOT_DESKTOP_MANAGED` | 标记后端由桌面进程托管 | 桌面端启动后端时写入 `1`（包括开发态与打包态）；桌面免密会话必须同时具备此标记 |
+| `ASTRBOT_DESKTOP_SESSION_SECRET` | 桌面原生层与托管后端之间的内部会话密钥 | 每次桌面进程启动时随机生成 256 位值，仅通过子进程环境和本机回环请求传递，不落盘且不应由用户设置 |
 | `ASTRBOT_BACKEND_STARTUP_HEARTBEAT_PATH` | 桌面端写给后端启动器的 heartbeat 文件路径 | 打包态默认写到 `ASTRBOT_ROOT/data/backend-startup-heartbeat.json` |
 
 ### 局域网访问 WebUI

@@ -6,7 +6,18 @@ use std::{
 
 use url::Url;
 
-use crate::{backend::http_response, BackendState, GRACEFUL_RESTART_START_TIME_TIMEOUT_MS};
+use crate::{
+    backend::http_response,
+    desktop_auth::{DesktopAuthSession, DESKTOP_SESSION_ENDPOINT, DESKTOP_SESSION_HEADER},
+    BackendState, DESKTOP_AUTH_REQUEST_TIMEOUT_MS, GRACEFUL_RESTART_START_TIME_TIMEOUT_MS,
+};
+
+#[derive(Default)]
+struct BackendRequestOptions<'a> {
+    auth_token: Option<&'a str>,
+    desktop_session_secret: Option<&'a str>,
+    require_loopback: bool,
+}
 
 impl BackendState {
     pub(crate) fn ping_backend(&self, timeout_ms: u64) -> bool {
@@ -38,6 +49,26 @@ impl BackendState {
         body: Option<&str>,
         auth_token: Option<&str>,
     ) -> Option<Vec<u8>> {
+        self.request_backend_response_bytes_internal(
+            method,
+            api_path,
+            timeout_ms,
+            body,
+            BackendRequestOptions {
+                auth_token,
+                ..BackendRequestOptions::default()
+            },
+        )
+    }
+
+    fn request_backend_response_bytes_internal(
+        &self,
+        method: &str,
+        api_path: &str,
+        timeout_ms: u64,
+        body: Option<&str>,
+        options: BackendRequestOptions<'_>,
+    ) -> Option<Vec<u8>> {
         let base = Url::parse(&self.backend_url).ok()?;
         let request_url = base.join(api_path).ok()?;
         if request_url.scheme() != "http" {
@@ -48,9 +79,12 @@ impl BackendState {
         let port = request_url.port_or_known_default().unwrap_or(80);
         let timeout = Duration::from_millis(timeout_ms.max(50));
         let addrs = (host, port).to_socket_addrs().ok()?;
-        let mut stream = addrs
-            .into_iter()
-            .find_map(|address| TcpStream::connect_timeout(&address, timeout).ok())?;
+        let mut stream = addrs.into_iter().find_map(|address| {
+            if options.require_loopback && !is_loopback_socket_address(&address) {
+                return None;
+            }
+            TcpStream::connect_timeout(&address, timeout).ok()
+        })?;
         let _ = stream.set_read_timeout(Some(timeout));
         let _ = stream.set_write_timeout(Some(timeout));
 
@@ -64,9 +98,15 @@ impl BackendState {
         }
 
         let payload = body.unwrap_or("");
-        let authorization_header = auth_token
+        let authorization_header = options
+            .auth_token
             .and_then(sanitize_authorization_token)
             .map(|token| format!("Authorization: Bearer {token}\r\n"))
+            .unwrap_or_default();
+        let desktop_session_header = options
+            .desktop_session_secret
+            .and_then(sanitize_http_header_value)
+            .map(|secret| format!("{DESKTOP_SESSION_HEADER}: {secret}\r\n"))
             .unwrap_or_default();
         let request = format!(
             "{method} {request_target} HTTP/1.1\r\n\
@@ -75,6 +115,7 @@ Accept: application/json\r\n\
 Accept-Encoding: identity\r\n\
 Connection: close\r\n\
 {authorization_header}\
+{desktop_session_header}\
 Content-Type: application/json\r\n\
 Content-Length: {}\r\n\
 \r\n\
@@ -152,6 +193,53 @@ Content-Length: {}\r\n\
         )?;
         http_response::parse_backend_start_time(&payload)
     }
+
+    pub(crate) fn request_desktop_auth_session(&self) -> Option<DesktopAuthSession> {
+        let response = self.request_backend_response_bytes_internal(
+            "POST",
+            DESKTOP_SESSION_ENDPOINT,
+            DESKTOP_AUTH_REQUEST_TIMEOUT_MS,
+            Some("{}"),
+            BackendRequestOptions {
+                desktop_session_secret: Some(self.desktop_session_secret.as_str()),
+                require_loopback: true,
+                ..BackendRequestOptions::default()
+            },
+        )?;
+        let payload = http_response::parse_http_json_response(&response)?;
+        parse_desktop_auth_session(&payload)
+    }
+}
+
+fn is_loopback_socket_address(address: &std::net::SocketAddr) -> bool {
+    match address.ip() {
+        std::net::IpAddr::V4(ipv4) => ipv4.is_loopback(),
+        std::net::IpAddr::V6(ipv6) => {
+            ipv6.is_loopback() || ipv6.to_ipv4_mapped().is_some_and(|ipv4| ipv4.is_loopback())
+        }
+    }
+}
+
+fn parse_desktop_auth_session(payload: &serde_json::Value) -> Option<DesktopAuthSession> {
+    if payload.get("status").and_then(|value| value.as_str()) != Some("ok") {
+        return None;
+    }
+
+    let data = payload.get("data")?;
+    let token = data
+        .get("token")
+        .and_then(|value| value.as_str())
+        .and_then(sanitize_authorization_token)?
+        .to_string();
+    let username = data.get("username")?.as_str()?.trim();
+    if username.is_empty() {
+        return None;
+    }
+
+    Some(DesktopAuthSession {
+        token,
+        username: username.to_string(),
+    })
 }
 
 fn is_complete_http_response(raw: &[u8]) -> bool {
@@ -186,6 +274,13 @@ fn sanitize_authorization_token(token: &str) -> Option<&str> {
         return None;
     }
     Some(token)
+}
+
+fn sanitize_http_header_value(value: &str) -> Option<&str> {
+    if value.is_empty() || value.contains('\r') || value.contains('\n') {
+        return None;
+    }
+    Some(value)
 }
 
 fn read_http_response_bytes<R: Read>(reader: &mut R) -> Option<Vec<u8>> {
@@ -228,6 +323,26 @@ mod tests {
     }
 
     #[test]
+    fn desktop_secret_requests_only_accept_loopback_socket_addresses() {
+        assert!(is_loopback_socket_address(
+            &"127.0.0.1:6185".parse().expect("IPv4 address should parse")
+        ));
+        assert!(is_loopback_socket_address(
+            &"[::1]:6185".parse().expect("IPv6 address should parse")
+        ));
+        assert!(is_loopback_socket_address(
+            &"[::ffff:127.0.0.1]:6185"
+                .parse()
+                .expect("mapped IPv6 address should parse")
+        ));
+        assert!(!is_loopback_socket_address(
+            &"192.168.1.10:6185"
+                .parse()
+                .expect("remote address should parse")
+        ));
+    }
+
+    #[test]
     fn sanitize_authorization_token_rejects_crlf() {
         assert_eq!(sanitize_authorization_token("abc\r\ndef"), None);
     }
@@ -235,6 +350,39 @@ mod tests {
     #[test]
     fn sanitize_authorization_token_trims_and_accepts_normal_token() {
         assert_eq!(sanitize_authorization_token("  token  "), Some("token"));
+    }
+
+    #[test]
+    fn sanitize_http_header_value_rejects_empty_and_crlf_values() {
+        assert_eq!(sanitize_http_header_value(""), None);
+        assert_eq!(sanitize_http_header_value("secret\r\nInjected: true"), None);
+        assert_eq!(sanitize_http_header_value("secret"), Some("secret"));
+    }
+
+    #[test]
+    fn parse_desktop_auth_session_requires_successful_complete_payload() {
+        let payload = serde_json::json!({
+            "status": "ok",
+            "data": {
+                "token": "desktop-jwt",
+                "username": "astrbot"
+            }
+        });
+
+        let session = parse_desktop_auth_session(&payload).expect("session should parse");
+        assert_eq!(session.token, "desktop-jwt");
+        assert_eq!(session.username, "astrbot");
+
+        assert!(parse_desktop_auth_session(&serde_json::json!({
+            "status": "error",
+            "data": {"token": "desktop-jwt", "username": "astrbot"}
+        }))
+        .is_none());
+        assert!(parse_desktop_auth_session(&serde_json::json!({
+            "status": "ok",
+            "data": {"token": "desktop-jwt"}
+        }))
+        .is_none());
     }
 
     #[test]

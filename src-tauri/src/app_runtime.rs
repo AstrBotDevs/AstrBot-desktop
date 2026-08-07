@@ -254,6 +254,7 @@ pub(crate) fn run() {
         .invoke_handler(tauri::generate_handler![
             crate::bridge::commands::desktop_bridge_is_desktop_runtime,
             crate::bridge::commands::desktop_bridge_get_backend_state,
+            crate::bridge::commands::desktop_bridge_get_auth_token,
             crate::bridge::commands::desktop_bridge_set_auth_token,
             crate::bridge::commands::desktop_bridge_set_shell_locale,
             crate::bridge::commands::desktop_bridge_get_app_update_channel,

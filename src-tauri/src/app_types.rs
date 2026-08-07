@@ -10,7 +10,7 @@ use std::{
 };
 use tauri::menu::{CheckMenuItem, MenuItem};
 
-use crate::{backend, exit_state, DEFAULT_BACKEND_URL};
+use crate::{backend, desktop_auth::DesktopSessionSecret, exit_state, DEFAULT_BACKEND_URL};
 
 #[derive(Clone)]
 pub(crate) struct TrayMenuState {
@@ -45,6 +45,7 @@ pub(crate) struct BackendState {
     pub(crate) child: Mutex<Option<Child>>,
     pub(crate) backend_url: String,
     pub(crate) restart_auth_token: Mutex<Option<String>>,
+    pub(crate) desktop_session_secret: DesktopSessionSecret,
     pub(crate) startup_loading_mode: Mutex<Option<&'static str>>,
     pub(crate) log_rotator_stop: Mutex<Option<Arc<AtomicBool>>>,
     pub(crate) exit_state: Mutex<exit_state::ExitStateMachine>,
@@ -64,6 +65,15 @@ pub(crate) struct BackendBridgeState {
 #[derive(Debug, serde::Serialize)]
 pub(crate) struct BackendBridgeResult {
     pub(crate) ok: bool,
+    pub(crate) reason: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DesktopAuthBridgeResult {
+    pub(crate) ok: bool,
+    pub(crate) token: Option<String>,
+    pub(crate) username: Option<String>,
     pub(crate) reason: Option<String>,
 }
 
@@ -100,6 +110,8 @@ impl Default for BackendState {
                 DEFAULT_BACKEND_URL,
             ),
             restart_auth_token: Mutex::new(None),
+            desktop_session_secret: DesktopSessionSecret::generate()
+                .expect("failed to generate secure desktop session secret"),
             startup_loading_mode: Mutex::new(None),
             log_rotator_stop: Mutex::new(None),
             exit_state: Mutex::new(exit_state::ExitStateMachine::default()),

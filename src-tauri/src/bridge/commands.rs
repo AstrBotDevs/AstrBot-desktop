@@ -15,7 +15,8 @@ use crate::bridge::updater_types::{
 };
 use crate::{
     append_desktop_log, restart_backend_flow, runtime_paths, shell_locale, tray, update_channel,
-    BackendBridgeResult, BackendBridgeState, BackendState, DEFAULT_SHELL_LOCALE,
+    BackendBridgeResult, BackendBridgeState, BackendState, DesktopAuthBridgeResult,
+    DEFAULT_SHELL_LOCALE,
 };
 
 fn resolve_update_channel(app_handle: &AppHandle) -> update_channel::UpdateChannel {
@@ -210,6 +211,38 @@ pub(crate) fn desktop_bridge_is_desktop_runtime() -> bool {
 pub(crate) fn desktop_bridge_get_backend_state(app_handle: AppHandle) -> BackendBridgeState {
     let state = app_handle.state::<BackendState>();
     state.bridge_state(&app_handle)
+}
+
+#[tauri::command]
+pub(crate) async fn desktop_bridge_get_auth_token(
+    app_handle: AppHandle,
+) -> DesktopAuthBridgeResult {
+    let task_result = tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle.state::<BackendState>();
+        state.request_desktop_auth_session()
+    })
+    .await;
+
+    match task_result {
+        Ok(Some(session)) => DesktopAuthBridgeResult {
+            ok: true,
+            token: Some(session.token),
+            username: Some(session.username),
+            reason: None,
+        },
+        Ok(None) => DesktopAuthBridgeResult {
+            ok: false,
+            token: None,
+            username: None,
+            reason: Some("Desktop passwordless authentication is unavailable.".to_string()),
+        },
+        Err(_) => DesktopAuthBridgeResult {
+            ok: false,
+            token: None,
+            username: None,
+            reason: Some("Desktop authentication task failed.".to_string()),
+        },
+    }
 }
 
 #[tauri::command]
