@@ -16,6 +16,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use tauri::AppHandle;
 
+use crate::desktop_auth::{DesktopSessionSecret, DESKTOP_SESSION_SECRET_ENV};
 use crate::{
     append_desktop_log, backend_path_override, build_debug_command, launch_plan, logging,
     runtime_paths, BackendState, BACKEND_LOG_MAX_BYTES, DEFAULT_SHELL_LOCALE, LOG_BACKUP_COUNT,
@@ -137,10 +138,17 @@ where
     command.env("PYTHONNOUSERSITE", "1");
 }
 
-fn mark_as_desktop_managed(command: &mut Command) {
-    command.env(ASTRBOT_DESKTOP_CLIENT_ENV, ENABLED_ENV_VALUE);
+fn mark_as_desktop_managed(
+    command: &mut Command,
+    desktop_session_secret: &DesktopSessionSecret,
+    packaged_mode: bool,
+) {
     command.env(ASTRBOT_DESKTOP_MANAGED_ENV, ENABLED_ENV_VALUE);
-    command.env(ASTRBOT_INSTALLATION_SOURCE_ENV, DESKTOP_INSTALLATION_SOURCE);
+    command.env(DESKTOP_SESSION_SECRET_ENV, desktop_session_secret.as_str());
+    if packaged_mode {
+        command.env(ASTRBOT_DESKTOP_CLIENT_ENV, ENABLED_ENV_VALUE);
+        command.env(ASTRBOT_INSTALLATION_SOURCE_ENV, DESKTOP_INSTALLATION_SOURCE);
+    }
 }
 
 fn configure_desktop_dashboard_environment(
@@ -443,9 +451,14 @@ impl BackendState {
             }
         }
 
+        mark_as_desktop_managed(
+            &mut command,
+            &self.desktop_session_secret,
+            plan.packaged_mode,
+        );
+
         if plan.packaged_mode {
             sanitize_packaged_python_environment(&mut command, append_desktop_log);
-            mark_as_desktop_managed(&mut command);
         }
 
         if let Some(root_dir) = &plan.root_dir {
@@ -551,6 +564,7 @@ mod tests {
         DEFAULT_DASHBOARD_HOST, DEFAULT_DASHBOARD_PORT, DESKTOP_INSTALLATION_SOURCE,
         ENABLED_ENV_VALUE,
     };
+    use crate::desktop_auth::{DesktopSessionSecret, DESKTOP_SESSION_SECRET_ENV};
 
     static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -637,10 +651,12 @@ mod tests {
     }
 
     #[test]
-    fn mark_as_desktop_managed_sets_desktop_management_markers() {
+    fn mark_as_desktop_managed_sets_packaged_desktop_environment() {
         let mut command = Command::new("sh");
+        let desktop_session_secret =
+            DesktopSessionSecret::generate().expect("secret generation should succeed");
 
-        mark_as_desktop_managed(&mut command);
+        mark_as_desktop_managed(&mut command, &desktop_session_secret, true);
 
         assert_eq!(
             get_command_env_value(&command, ASTRBOT_DESKTOP_CLIENT_ENV),
@@ -651,8 +667,38 @@ mod tests {
             Some(Some(ENABLED_ENV_VALUE.to_string()))
         );
         assert_eq!(
+            get_command_env_value(&command, DESKTOP_SESSION_SECRET_ENV),
+            Some(Some(desktop_session_secret.as_str().to_string()))
+        );
+        assert_eq!(
             get_command_env_value(&command, ASTRBOT_INSTALLATION_SOURCE_ENV),
             Some(Some(DESKTOP_INSTALLATION_SOURCE.to_string()))
+        );
+    }
+
+    #[test]
+    fn mark_as_desktop_managed_keeps_development_runtime_unpacked() {
+        let mut command = Command::new("sh");
+        let desktop_session_secret =
+            DesktopSessionSecret::generate().expect("secret generation should succeed");
+
+        mark_as_desktop_managed(&mut command, &desktop_session_secret, false);
+
+        assert_eq!(
+            get_command_env_value(&command, ASTRBOT_DESKTOP_CLIENT_ENV),
+            None
+        );
+        assert_eq!(
+            get_command_env_value(&command, ASTRBOT_DESKTOP_MANAGED_ENV),
+            Some(Some(ENABLED_ENV_VALUE.to_string()))
+        );
+        assert_eq!(
+            get_command_env_value(&command, DESKTOP_SESSION_SECRET_ENV),
+            Some(Some(desktop_session_secret.as_str().to_string()))
+        );
+        assert_eq!(
+            get_command_env_value(&command, ASTRBOT_INSTALLATION_SOURCE_ENV),
+            None
         );
     }
 

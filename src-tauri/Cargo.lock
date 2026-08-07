@@ -61,6 +61,7 @@ name = "astrbot-desktop-tauri"
 version = "4.27.2"
 dependencies = [
  "chrono",
+ "getrandom 0.3.4",
  "home",
  "semver",
  "serde",

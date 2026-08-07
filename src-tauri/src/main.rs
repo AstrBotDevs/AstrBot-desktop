@@ -8,6 +8,7 @@ mod app_types;
 
 mod backend;
 mod bridge;
+mod desktop_auth;
 mod desktop_settings;
 mod desktop_state;
 
@@ -38,8 +39,8 @@ pub(crate) use app_helpers::{
     navigate_main_window_to_backend,
 };
 pub(crate) use app_types::{
-    AtomicFlagGuard, BackendBridgeResult, BackendBridgeState, BackendState, LaunchPlan,
-    RuntimeManifest, TrayMenuState,
+    AtomicFlagGuard, BackendBridgeResult, BackendBridgeState, BackendState,
+    DesktopAuthBridgeResult, LaunchPlan, RuntimeManifest, TrayMenuState,
 };
 pub(crate) use desktop_settings::DesktopSettingsCache;
 
