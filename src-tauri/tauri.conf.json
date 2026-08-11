@@ -21,7 +21,8 @@
         "resizable": true,
         "visible": false,
         "fullscreen": false,
-        "backgroundThrottling": "disabled"
+        "backgroundThrottling": "disabled",
+        "dragDropEnabled": false
       }
     ],
     "security": {
