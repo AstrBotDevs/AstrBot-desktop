@@ -372,3 +372,67 @@ test('release artifact normalization canonicalizes linux AppImage assets for lat
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+test('release artifact pipeline accepts stable AppImage names emitted by Tauri', async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'astrbot-release-artifacts-'));
+
+  try {
+    const artifactsDir = path.join(tempDir, 'release-artifacts');
+    await mkdir(artifactsDir, { recursive: true });
+
+    await writeFile(
+      path.join(artifactsDir, 'astrbot-desktop_4.27.3_amd64.AppImage'),
+      'appimage',
+      'utf8',
+    );
+    await writeFile(
+      path.join(artifactsDir, 'astrbot-desktop_4.27.3_amd64.AppImage.sig'),
+      'linux-signature',
+      'utf8',
+    );
+
+    runPython(
+      normalizeModule,
+      ['--root', artifactsDir, '--build-mode', 'tag-poll', '--source-git-ref', 'v4.27.3'],
+      projectRoot,
+    );
+
+    const normalizedLinux = path.join(
+      artifactsDir,
+      'AstrBot_4.27.3_linux_amd64.AppImage',
+    );
+    const normalizedLinuxSig = `${normalizedLinux}.sig`;
+    await access(normalizedLinux, fsConstants.F_OK);
+    await access(normalizedLinuxSig, fsConstants.F_OK);
+
+    const outputPath = path.join(artifactsDir, 'latest-stable.json');
+    runPython(
+      generateModule,
+      [
+        '--artifacts-root',
+        artifactsDir,
+        '--repo',
+        'AstrBotDevs/AstrBot-desktop',
+        '--tag',
+        'v4.27.3',
+        '--version',
+        '4.27.3',
+        '--channel',
+        'stable',
+        '--asset-base-url',
+        'https://releases.astrbot.app/desktop/releases/4.27.3/run-1',
+        '--output',
+        outputPath,
+      ],
+      projectRoot,
+    );
+
+    const payload = JSON.parse(await readFile(outputPath, 'utf8'));
+    assert.deepEqual(payload.platforms['linux-x86_64-appimage'], {
+      signature: 'linux-signature',
+      url: 'https://releases.astrbot.app/desktop/releases/4.27.3/run-1/AstrBot_4.27.3_linux_amd64.AppImage',
+    });
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});

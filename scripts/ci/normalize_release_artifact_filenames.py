@@ -22,10 +22,13 @@ NIGHTLY_DATE_PATTERN = re.compile(r"(?:-|_)nightly[._-][0-9]{8}[._-][0-9a-fA-F]{
 NIGHTLY_HASH_PATTERN = re.compile(r"(?:-|_)nightly[-_][0-9a-fA-F]{7,40}")
 HEX_SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{8,64}$")
 
-# Intentionally match both legacy names (`AstrBot_<version>_<arch>`) and
-# canonical names (`AstrBot_<version>_linux_<arch>`).
+# Intentionally match Tauri bundle names (`astrbot-desktop_<version>_<arch>`),
+# legacy names (`AstrBot_<version>_<arch>`), and canonical names
+# (`AstrBot_<version>_linux_<arch>`).
+LINUX_ARTIFACT_SOURCE_NAME_PATTERN = r"(?:AstrBot|astrbot-desktop)"
 LINUX_ARTIFACT_STEM_PATTERN = re.compile(
-    rf"^AstrBot_(?P<version>{VERSION_PATTERN})_(?:linux_)?(?P<arch>{ARCH_PATTERN})$"
+    rf"^{LINUX_ARTIFACT_SOURCE_NAME_PATTERN}_(?P<version>{VERSION_PATTERN})_"
+    rf"(?:linux_)?(?P<arch>{ARCH_PATTERN})$"
 )
 LINUX_CANONICAL_RULE: tuple[re.Pattern[str], str] = (
     LINUX_ARTIFACT_STEM_PATTERN,
@@ -36,7 +39,8 @@ CANONICALIZE_RULES: dict[str, tuple[tuple[re.Pattern[str], str], ...]] = {
     ".rpm": (
         (
             re.compile(
-                rf"^AstrBot-(?P<version>{VERSION_PATTERN})-\d+\.(?P<arch>{ARCH_PATTERN})$"
+                rf"^{LINUX_ARTIFACT_SOURCE_NAME_PATTERN}-"
+                rf"(?P<version>{VERSION_PATTERN})-\d+\.(?P<arch>{ARCH_PATTERN})$"
             ),
             "AstrBot_{version}_linux_{arch}",
         ),
@@ -147,7 +151,9 @@ def should_normalize_file(path: pathlib.Path) -> bool:
     if ext is None:
         return False
     stem = strip_extension(path.name, ext)
-    return stem.startswith("AstrBot_") or stem.startswith("AstrBot-")
+    return stem.startswith(
+        ("AstrBot_", "AstrBot-", "astrbot-desktop_", "astrbot-desktop-")
+    )
 
 
 def strip_nightly_suffix(stem: str) -> str:

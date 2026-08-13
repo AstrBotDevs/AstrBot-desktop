@@ -180,6 +180,43 @@ class NormalizeReleaseArtifactFilenamesTests(unittest.TestCase):
             for path in root.iterdir():
                 self.assertNotIn("None", path.name)
 
+    def test_main_normalizes_tauri_linux_appimage_and_signature_names(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source_names = (
+                "astrbot-desktop_4.27.3_amd64.AppImage",
+                "astrbot-desktop_4.27.3_amd64.AppImage.sig",
+            )
+            for source_name in source_names:
+                (root / source_name).write_text(source_name)
+
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            argv = [
+                str(SCRIPT_PATH),
+                "--root",
+                str(root),
+                "--build-mode",
+                "tag-poll",
+                "--source-git-ref",
+                "v4.27.3",
+            ]
+            with mock.patch("sys.argv", argv):
+                with redirect_stdout(stdout), redirect_stderr(stderr):
+                    exit_code = MODULE.main()
+
+            self.assertEqual(exit_code, 0)
+            for source_name in source_names:
+                self.assertFalse((root / source_name).exists())
+            self.assertTrue(
+                (root / "AstrBot_4.27.3_linux_amd64.AppImage").exists()
+            )
+            self.assertTrue(
+                (root / "AstrBot_4.27.3_linux_amd64.AppImage.sig").exists()
+            )
+            self.assertIn("renamed=2", stdout.getvalue())
+            self.assertEqual(stderr.getvalue(), "")
+
 
 if __name__ == "__main__":
     unittest.main()
