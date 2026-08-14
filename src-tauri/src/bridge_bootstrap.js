@@ -152,6 +152,8 @@
   const TOKEN_STORAGE_KEY = 'token';
   const USER_STORAGE_KEY = 'user';
   const SHELL_LOCALE_STORAGE_KEY = 'astrbot-locale';
+  const DESKTOP_AUTH_BOOTSTRAP_RELOAD_KEY =
+    'astrbot:desktop-auth-bootstrap-reloaded:v1';
   const DESKTOP_AUTH_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
   // Values are injected from the shared desktop bridge transport contract.
   const CHAT_TRANSPORT = Object.freeze({
@@ -183,6 +185,20 @@
       locale: value,
     });
 
+  const shouldReloadAfterDesktopAuthBootstrap = () => {
+    try {
+      const storage = window.sessionStorage;
+      if (!storage) return false;
+      if (storage.getItem(DESKTOP_AUTH_BOOTSTRAP_RELOAD_KEY) === 'true') {
+        return false;
+      }
+      storage.setItem(DESKTOP_AUTH_BOOTSTRAP_RELOAD_KEY, 'true');
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   let desktopAuthRefreshPromise = null;
   const refreshDesktopAuthSession = () => {
     if (desktopAuthRefreshPromise) {
@@ -213,7 +229,18 @@
       }
 
       await syncAuthToken(token);
-      if (/^#\/auth\/(?:login|setup)(?:[/?]|$)/.test(window.location.hash || '')) {
+      // The dashboard waits for its initial router navigation before mounting Vue.
+      // Changing the auth hash while that navigation is still in flight can leave
+      // #app empty in WKWebView. Reload once after persisting the desktop session
+      // so the dashboard starts with a stable token instead.
+      if (shouldReloadAfterDesktopAuthBootstrap()) {
+        window.location.reload();
+        return result;
+      }
+      if (
+        document.getElementById('app')?.hasChildNodes() &&
+        /^#\/auth\/(?:login|setup)(?:[/?]|$)/.test(window.location.hash || '')
+      ) {
         window.location.hash = '/welcome';
       }
       return result;

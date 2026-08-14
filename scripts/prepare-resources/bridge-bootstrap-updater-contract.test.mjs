@@ -11,11 +11,8 @@ const chatTransportContractPath = new URL(
 
 const flushAsyncWork = () => new Promise((resolve) => setImmediate(resolve));
 
-function runBootstrap(source, authResults) {
-  const values = new Map();
-  const invocations = [];
-  const intervals = [];
-  const localStorage = {
+function createStorage(values) {
+  return {
     getItem(key) {
       return values.has(key) ? values.get(key) : null;
     },
@@ -29,12 +26,28 @@ function runBootstrap(source, authResults) {
       values.clear();
     },
   };
+}
+
+function runBootstrap(source, authResults, sharedState = {}) {
+  const localValues = sharedState.localValues || new Map();
+  const sessionValues = sharedState.sessionValues || new Map();
+  const navigation = sharedState.navigation || { reloads: 0 };
+  sharedState.localValues = localValues;
+  sharedState.sessionValues = sessionValues;
+  sharedState.navigation = navigation;
+  const invocations = [];
+  const intervals = [];
+  const localStorage = createStorage(localValues);
+  const sessionStorage = createStorage(sessionValues);
   const location = {
     href: 'http://127.0.0.1:6185/#/auth/login',
     origin: 'http://127.0.0.1:6185',
     hash: '#/auth/login',
     assign() {},
     replace() {},
+    reload() {
+      navigation.reloads += 1;
+    },
     toString() {
       return this.href;
     },
@@ -60,6 +73,7 @@ function runBootstrap(source, authResults) {
       },
     },
     localStorage,
+    sessionStorage,
     location,
     open: () => null,
     setInterval(handler, delay) {
@@ -69,7 +83,17 @@ function runBootstrap(source, authResults) {
   };
   class MockElement {}
   class MockAnchor extends MockElement {}
-  const document = { addEventListener() {} };
+  const document = {
+    addEventListener() {},
+    getElementById(id) {
+      if (id !== 'app') return null;
+      return {
+        hasChildNodes() {
+          return sharedState.appMounted === true;
+        },
+      };
+    },
+  };
   const quietConsole = { warn() {}, error() {}, log() {} };
 
   runInNewContext(
@@ -88,7 +112,14 @@ function runBootstrap(source, authResults) {
     },
   );
 
-  return { window, localStorage, invocations, intervals };
+  return {
+    window,
+    localStorage,
+    sessionStorage,
+    invocations,
+    intervals,
+    navigation,
+  };
 }
 
 test('bridge bootstrap defines astrbotAppUpdater methods', async () => {
@@ -115,27 +146,47 @@ test('bridge bootstrap owns desktop passwordless authentication lifecycle', asyn
   );
 });
 
-test('bridge bootstrap automatically authenticates and reacquires a removed token', async () => {
+test('bridge bootstrap reloads once after initial auth and reacquires a removed token', async () => {
   const source = await readFile(bootstrapPath, 'utf8');
-  const runtime = runBootstrap(source, [
-    { ok: true, token: 'first-jwt', username: 'astrbot' },
-    { ok: true, token: 'second-jwt', username: 'astrbot' },
-  ]);
+  const sharedState = {};
+  const firstRuntime = runBootstrap(
+    source,
+    [{ ok: true, token: 'first-jwt', username: 'astrbot' }],
+    sharedState,
+  );
 
   await flushAsyncWork();
   await flushAsyncWork();
-  assert.equal(runtime.localStorage.getItem('token'), 'first-jwt');
-  assert.equal(runtime.localStorage.getItem('user'), 'astrbot');
-  assert.equal(runtime.window.location.hash, '/welcome');
-  assert.equal(runtime.intervals.length, 1);
-  assert.equal(runtime.intervals[0].delay, 6 * 60 * 60 * 1000);
+  assert.equal(firstRuntime.localStorage.getItem('token'), 'first-jwt');
+  assert.equal(firstRuntime.localStorage.getItem('user'), 'astrbot');
+  assert.equal(firstRuntime.navigation.reloads, 1);
+  assert.equal(firstRuntime.window.location.hash, '#/auth/login');
+  assert.equal(firstRuntime.intervals.length, 1);
+  assert.equal(firstRuntime.intervals[0].delay, 6 * 60 * 60 * 1000);
 
-  runtime.localStorage.removeItem('token');
+  const reloadedRuntime = runBootstrap(
+    source,
+    [
+      { ok: true, token: 'second-jwt', username: 'astrbot' },
+      { ok: true, token: 'third-jwt', username: 'astrbot' },
+    ],
+    sharedState,
+  );
   await flushAsyncWork();
   await flushAsyncWork();
-  assert.equal(runtime.localStorage.getItem('token'), 'second-jwt');
+  assert.equal(reloadedRuntime.localStorage.getItem('token'), 'second-jwt');
+  assert.equal(reloadedRuntime.navigation.reloads, 1);
+  assert.equal(reloadedRuntime.window.location.hash, '#/auth/login');
+
+  sharedState.appMounted = true;
+  reloadedRuntime.localStorage.removeItem('token');
+  await flushAsyncWork();
+  await flushAsyncWork();
+  assert.equal(reloadedRuntime.localStorage.getItem('token'), 'third-jwt');
+  assert.equal(reloadedRuntime.navigation.reloads, 1);
+  assert.equal(reloadedRuntime.window.location.hash, '/welcome');
   assert.ok(
-    runtime.invocations.filter(
+    reloadedRuntime.invocations.filter(
       ({ command }) => command === 'desktop_bridge_get_auth_token',
     ).length >= 2,
   );
