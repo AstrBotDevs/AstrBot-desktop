@@ -20,6 +20,7 @@ import {
 } from './runtime-linux-compat-utils.mjs';
 import { isWindowsArm64BundledRuntime } from './runtime-arch-utils.mjs';
 import { generateRuntimeCoreLock } from './runtime-core-lock.mjs';
+import { createRuntimeManifest } from './runtime-manifest.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..', '..');
@@ -40,6 +41,9 @@ const runtimeSource =
   process.env.ASTRBOT_DESKTOP_BACKEND_RUNTIME ||
   process.env.ASTRBOT_DESKTOP_CPYTHON_HOME;
 const requirePipProbe = process.env.ASTRBOT_DESKTOP_REQUIRE_PIP === '1';
+const desktopVersionOverride = process.env.ASTRBOT_DESKTOP_VERSION || '';
+const sourceRef = process.env.ASTRBOT_SOURCE_GIT_REF || '';
+const sourceCommit = process.env.ASTRBOT_SOURCE_GIT_COMMIT || '';
 
 const requiredSourceEntries = ['astrbot', 'main.py', 'requirements.txt'];
 const optionalSourceEntries = ['changelogs'];
@@ -449,13 +453,32 @@ const writeLauncherScript = () => {
   fs.writeFileSync(launcherPath, content, 'utf8');
 };
 
-const writeRuntimeManifest = (runtimePython) => {
-  const manifest = {
-    mode: 'cpython-runtime',
+const readCoreVersion = (resolvedSourceDir) => {
+  const explicitVersion = String(process.env.ASTRBOT_CORE_VERSION || '').trim();
+  if (explicitVersion) {
+    return explicitVersion;
+  }
+
+  const pyprojectPath = path.join(resolvedSourceDir, 'pyproject.toml');
+  const content = fs.readFileSync(pyprojectPath, 'utf8');
+  const match = /^version\s*=\s*["']([^"']+)["']/m.exec(content);
+  if (!match) {
+    throw new Error(`Cannot resolve AstrBot Core version from ${pyprojectPath}.`);
+  }
+  return match[1];
+};
+
+const writeRuntimeManifest = (runtimePython, resolvedSourceDir) => {
+  const coreVersion = readCoreVersion(resolvedSourceDir);
+  const manifest = createRuntimeManifest({
     python: runtimePython.relative,
     entrypoint: path.basename(launcherPath),
     app: path.relative(outputDir, appDir),
-  };
+    desktopVersion: desktopVersionOverride || coreVersion,
+    coreVersion,
+    sourceRef,
+    sourceCommit,
+  });
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
 };
 
@@ -705,7 +728,7 @@ const main = () => {
   pruneLinuxTkinterRuntime(runtimeDir);
   patchLinuxRuntimeRpaths(runtimeDir);
   writeLauncherScript();
-  writeRuntimeManifest(runtimePython);
+  writeRuntimeManifest(runtimePython, resolvedSourceDir);
 
   console.log(`Prepared CPython backend runtime in ${outputDir}`);
   console.log(`Runtime source: ${runtimeSourceReal}`);

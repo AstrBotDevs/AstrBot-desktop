@@ -1,10 +1,15 @@
-import { prepareBackend, prepareWebui } from './mode-tasks.mjs';
+import {
+  prepareBackend,
+  prepareWebui,
+  validatePreparedResources,
+} from './mode-tasks.mjs';
 
 const VALID_MODES = new Set(['version', 'webui', 'backend', 'all']);
 
 const defaultTaskRunner = {
   prepareWebui,
   prepareBackend,
+  validatePreparedResources,
 };
 
 export const runModeTasks = async (
@@ -15,6 +20,9 @@ export const runModeTasks = async (
   const {
     sourceDir,
     projectRoot,
+    desktopVersion,
+    coreVersion,
+    sourceRepoCommit,
     sourceRepoRef,
     isSourceRepoRefVersionTag,
     isDesktopBridgeExpectationStrict,
@@ -34,6 +42,7 @@ export const runModeTasks = async (
     await taskRunner.prepareWebui({
       sourceDir,
       projectRoot,
+      coreVersion,
       sourceRepoRef,
       isSourceRepoRefVersionTag,
       isDesktopBridgeExpectationStrict,
@@ -44,8 +53,22 @@ export const runModeTasks = async (
     await taskRunner.prepareBackend({
       sourceDir,
       projectRoot,
+      desktopVersion,
+      coreVersion,
+      sourceRepoRef,
+      sourceRepoCommit,
       pythonBuildStandaloneRelease,
       pythonBuildStandaloneVersion,
+    });
+  }
+
+  if (mode === 'all') {
+    await taskRunner.validatePreparedResources({
+      projectRoot,
+      desktopVersion,
+      coreVersion,
+      sourceRepoRef,
+      sourceRepoCommit,
     });
   }
 };

@@ -65,6 +65,23 @@ export const resolveSourceDir = (projectRoot, sourceDirOverrideRaw, cwd = proces
   return path.join(projectRoot, 'vendor', 'AstrBot');
 };
 
+export const resolveSourceRepoCommit = (sourceDir, spawn = spawnSync) => {
+  if (!existsSync(path.join(sourceDir, '.git'))) {
+    return '';
+  }
+
+  const result = spawn('git', ['-C', sourceDir, 'rev-parse', 'HEAD'], {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  if (result.error || result.status !== 0) {
+    return '';
+  }
+
+  const commit = String(result.stdout || '').trim();
+  return /^[0-9a-f]{40,64}$/i.test(commit) ? commit : '';
+};
+
 export const ensureSourceRepo = ({
   sourceDir,
   sourceRepoUrl,

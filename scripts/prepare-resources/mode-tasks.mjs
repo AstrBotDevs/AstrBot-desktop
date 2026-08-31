@@ -8,6 +8,12 @@ import {
   verifyDesktopBridgeArtifacts,
 } from './desktop-bridge-checks.mjs';
 import { ensureBundledRuntime } from './backend-runtime.mjs';
+import {
+  attestPreparedResourceBundle,
+  validateBackendRuntimeIdentity,
+  validateWebuiResources,
+  writeWebuiVersionMarker,
+} from './resource-identity.mjs';
 
 const runChecked = (cmd, args, cwd, envExtra = {}, spawnExtra = {}) => {
   const result = spawnSync(cmd, args, {
@@ -60,6 +66,7 @@ const resolveDesktopReleaseBaseUrl = () => {
 export const prepareWebui = async ({
   sourceDir,
   projectRoot,
+  coreVersion,
   sourceRepoRef,
   isSourceRepoRefVersionTag,
   isDesktopBridgeExpectationStrict,
@@ -86,11 +93,20 @@ export const prepareWebui = async ({
 
   const targetWebuiDir = path.join(projectRoot, 'resources', 'webui');
   await syncResourceDir(sourceWebuiDir, targetWebuiDir);
+  await writeWebuiVersionMarker({ webuiDir: targetWebuiDir, coreVersion });
+  await validateWebuiResources({
+    webuiDir: targetWebuiDir,
+    expectedCoreVersion: coreVersion,
+  });
 };
 
 export const prepareBackend = async ({
   sourceDir,
   projectRoot,
+  desktopVersion,
+  coreVersion,
+  sourceRepoRef,
+  sourceRepoCommit,
   pythonBuildStandaloneRelease,
   pythonBuildStandaloneVersion,
 }) => {
@@ -106,6 +122,10 @@ export const prepareBackend = async ({
     {
       ASTRBOT_SOURCE_DIR: sourceDir,
       ASTRBOT_DESKTOP_CPYTHON_HOME: runtimeRoot,
+      ASTRBOT_DESKTOP_VERSION: desktopVersion,
+      ASTRBOT_CORE_VERSION: coreVersion,
+      ASTRBOT_SOURCE_GIT_REF: sourceRepoRef,
+      ASTRBOT_SOURCE_GIT_COMMIT: sourceRepoCommit,
     },
   );
 
@@ -113,7 +133,29 @@ export const prepareBackend = async ({
   if (!existsSync(path.join(sourceBackendDir, 'runtime-manifest.json'))) {
     throw new Error(`Backend runtime output missing: ${sourceBackendDir}`);
   }
+  await validateBackendRuntimeIdentity({
+    backendDir: sourceBackendDir,
+    expectedDesktopVersion: desktopVersion,
+    expectedCoreVersion: coreVersion,
+    expectedSourceRef: sourceRepoRef,
+    expectedSourceCommit: sourceRepoCommit,
+  });
 };
+
+export const validatePreparedResources = async ({
+  projectRoot,
+  desktopVersion,
+  coreVersion,
+  sourceRepoRef,
+  sourceRepoCommit,
+}) =>
+  attestPreparedResourceBundle({
+    projectRoot,
+    desktopVersion,
+    coreVersion,
+    sourceRepoRef,
+    sourceRepoCommit,
+  });
 
 export const ensureStartupShellAssets = (projectRoot) => {
   const startupUiDir = path.join(projectRoot, 'ui');

@@ -1,10 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 import {
   getSourceRefInfo,
   normalizeSourceRepoConfig,
   resolveSourceDir,
+  resolveSourceRepoCommit,
 } from './source-repo.mjs';
 
 test('normalizeSourceRepoConfig normalizes GitHub tree URL and infers ref', () => {
@@ -45,8 +49,35 @@ test('getSourceRefInfo respects explicit commit hint env flag', () => {
 
 test('resolveSourceDir honors override and default project layout', () => {
   const resolvedOverride = resolveSourceDir('/project/root', './vendor/custom', '/work');
-  assert.equal(resolvedOverride, '/work/vendor/custom');
+  assert.equal(resolvedOverride, path.resolve('/work', 'vendor/custom'));
 
   const resolvedDefault = resolveSourceDir('/project/root', '', '/work');
-  assert.equal(resolvedDefault, '/project/root/vendor/AstrBot');
+  assert.equal(resolvedDefault, path.join('/project/root', 'vendor', 'AstrBot'));
+});
+
+test('resolveSourceRepoCommit returns the checked out commit', async () => {
+  const sourceDir = await mkdtemp(path.join(os.tmpdir(), 'astrbot-source-ref-'));
+  try {
+    await mkdir(path.join(sourceDir, '.git'));
+    const commit = 'a'.repeat(40);
+    const calls = [];
+    const spawn = (...args) => {
+      calls.push(args);
+      return { status: 0, stdout: `${commit}\n` };
+    };
+
+    assert.equal(resolveSourceRepoCommit(sourceDir, spawn), commit);
+    assert.deepEqual(calls[0][1], ['-C', sourceDir, 'rev-parse', 'HEAD']);
+  } finally {
+    await rm(sourceDir, { recursive: true, force: true });
+  }
+});
+
+test('resolveSourceRepoCommit tolerates sources without Git metadata', async () => {
+  const sourceDir = await mkdtemp(path.join(os.tmpdir(), 'astrbot-source-ref-'));
+  try {
+    assert.equal(resolveSourceRepoCommit(sourceDir), '');
+  } finally {
+    await rm(sourceDir, { recursive: true, force: true });
+  }
 });

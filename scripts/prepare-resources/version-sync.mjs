@@ -87,13 +87,16 @@ export const readAstrbotRuntimeVersion = async ({ sourceDir }) => {
 };
 
 export const validateAstrbotRuntimeVersion = async ({ sourceDir, expectedVersion }) => {
+  if (!expectedVersion) {
+    throw new Error('Expected AstrBot Core version is required for runtime validation.');
+  }
   const runtimeVersion = await readAstrbotRuntimeVersion({ sourceDir });
   if (runtimeVersion === '0.0.0') {
     throw new Error(
       `AstrBot runtime VERSION resolved to 0.0.0 in ${sourceDir}. Use an AstrBot source ref that contains the static runtime VERSION fix.`,
     );
   }
-  if (expectedVersion && runtimeVersion !== expectedVersion) {
+  if (runtimeVersion !== expectedVersion) {
     throw new Error(
       `AstrBot version mismatch in ${sourceDir}: pyproject.toml has ${expectedVersion}, but runtime VERSION is ${runtimeVersion}.`,
     );

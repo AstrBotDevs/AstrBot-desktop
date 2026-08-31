@@ -9,7 +9,7 @@
     "test:prepare-resources": "node --test \"scripts/**/*.test.mjs\"",
     "prepare:webui": "node scripts/prepare-resources.mjs webui",
     "prepare:backend": "node scripts/prepare-resources.mjs backend",
-    "prepare:resources": "pnpm run prepare:webui && pnpm run prepare:backend",
+    "prepare:resources": "node scripts/prepare-resources.mjs all",
     "dev": "tauri dev",
     "build": "tauri build"
   },

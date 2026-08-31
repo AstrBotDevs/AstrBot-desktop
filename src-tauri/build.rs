@@ -1,12 +1,15 @@
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::{
-    fs,
+    env, fs,
     path::{Component, Path},
 };
 
 const TAURI_CONFIG_PATH: &str = "tauri.conf.json";
 const BACKEND_RESOURCE_SOURCE: &str = "../resources/backend";
 const WEBUI_RESOURCE_SOURCE: &str = "../resources/webui";
+const RUNTIME_MANIFEST_RELATIVE_PATH: &str = "../resources/backend/runtime-manifest.json";
+const DEVELOPMENT_UNBOUND_MANIFEST: &str = "development-unbound";
 
 fn load_bundle_resource_alias(tauri_config: &Value, source_relative_path: &str) -> String {
     // Keep validation rules aligned with
@@ -60,6 +63,31 @@ fn load_bundle_resource_alias(tauri_config: &Value, source_relative_path: &str) 
     alias.to_string()
 }
 
+fn runtime_manifest_sha256() -> String {
+    let manifest_dir = env::var_os("CARGO_MANIFEST_DIR")
+        .expect("Cargo did not provide CARGO_MANIFEST_DIR to build.rs");
+    let manifest_path = Path::new(&manifest_dir).join(RUNTIME_MANIFEST_RELATIVE_PATH);
+    println!("cargo:rerun-if-changed={}", manifest_path.display());
+    match fs::read(&manifest_path) {
+        Ok(bytes) if !bytes.is_empty() => format!("{:x}", Sha256::digest(bytes)),
+        Ok(_) => panic!(
+            "packaged runtime manifest is empty: {}",
+            manifest_path.display()
+        ),
+        Err(error) if env::var("PROFILE").as_deref() != Ok("release") => {
+            println!(
+                "cargo:warning=packaged runtime manifest is unavailable in a development build: {} ({error})",
+                manifest_path.display()
+            );
+            DEVELOPMENT_UNBOUND_MANIFEST.to_string()
+        }
+        Err(error) => panic!(
+            "failed to read packaged runtime manifest {} before release compilation: {error}",
+            manifest_path.display()
+        ),
+    }
+}
+
 fn main() {
     let marker_path = Path::new("windows").join("portable-runtime-marker.txt");
     let tauri_config_path = Path::new(TAURI_CONFIG_PATH);
@@ -85,6 +113,10 @@ fn main() {
     let webui_resource_alias = load_bundle_resource_alias(&tauri_config, WEBUI_RESOURCE_SOURCE);
     println!("cargo:rustc-env=ASTRBOT_BACKEND_RESOURCE_ALIAS={backend_resource_alias}");
     println!("cargo:rustc-env=ASTRBOT_WEBUI_RESOURCE_ALIAS={webui_resource_alias}");
+    println!(
+        "cargo:rustc-env=ASTRBOT_RUNTIME_MANIFEST_SHA256={}",
+        runtime_manifest_sha256()
+    );
 
     tauri_build::build()
 }

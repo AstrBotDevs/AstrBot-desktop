@@ -1,11 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
 import { runModeTasks } from './mode-dispatch.mjs';
 
 const createContext = (calls) => ({
   sourceDir: '/tmp/source',
   projectRoot: '/tmp/project',
+  desktopVersion: '4.19.2',
+  coreVersion: '4.19.2',
+  sourceRepoCommit: 'a'.repeat(40),
   sourceRepoRef: 'v4.19.2',
   isSourceRepoRefVersionTag: true,
   isDesktopBridgeExpectationStrict: false,
@@ -16,6 +20,7 @@ const createContext = (calls) => ({
 const createTaskRunner = (calls) => ({
   prepareWebui: async () => calls.push('webui'),
   prepareBackend: async () => calls.push('backend'),
+  validatePreparedResources: async () => calls.push('validate'),
 });
 
 test('runModeTasks skips handlers in version mode', async () => {
@@ -47,7 +52,7 @@ test('runModeTasks runs webui then backend handlers in all mode', async () => {
 
   await runModeTasks('all', createContext(calls), createTaskRunner(calls));
 
-  assert.deepEqual(calls, ['webui', 'backend']);
+  assert.deepEqual(calls, ['webui', 'backend', 'validate']);
 });
 
 test('runModeTasks throws for unsupported mode', async () => {
@@ -55,5 +60,24 @@ test('runModeTasks throws for unsupported mode', async () => {
     () =>
       runModeTasks('desktop', createContext([]), createTaskRunner([])),
     /Unsupported mode: desktop\. Expected version\/webui\/backend\/all\./,
+  );
+});
+
+test('prepare:resources uses the single all-mode validation path', async () => {
+  const packageJson = JSON.parse(await readFile('package.json', 'utf8'));
+
+  assert.equal(packageJson.scripts['prepare:resources'], 'node scripts/prepare-resources.mjs all');
+});
+
+test('prepare:resources always validates the runtime version against Core', async () => {
+  const source = await readFile('scripts/prepare-resources.mjs', 'utf8');
+
+  assert.match(
+    source,
+    /validateAstrbotRuntimeVersion\(\{\s*sourceDir,\s*expectedVersion: coreVersion,\s*\}\)/,
+  );
+  assert.doesNotMatch(
+    source,
+    /expectedVersion:\s*desktopVersionOverride\s*&&\s*!isSourceRepoRefVersionTag/,
   );
 });

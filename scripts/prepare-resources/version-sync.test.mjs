@@ -142,24 +142,15 @@ test('validateAstrbotRuntimeVersion rejects runtime version drift', async () => 
   }
 });
 
-test('validateAstrbotRuntimeVersion allows drift when no expected version is supplied', async () => {
+test('validateAstrbotRuntimeVersion requires the expected Core version', async () => {
   const tempDir = await createTempAstrBotSource({
     pyprojectVersion: '4.26.0-beta.10',
     runtimeVersion: '4.26.0-beta.9',
   });
   try {
-    await validateAstrbotRuntimeVersion({ sourceDir: tempDir });
-  } finally {
-    await rm(tempDir, { recursive: true, force: true });
-  }
-});
-
-test('validateAstrbotRuntimeVersion still rejects 0.0.0 when no expected version is supplied', async () => {
-  const tempDir = await createTempAstrBotSource({ runtimeVersion: '0.0.0' });
-  try {
     await assert.rejects(
       validateAstrbotRuntimeVersion({ sourceDir: tempDir }),
-      /runtime VERSION resolved to 0\.0\.0/,
+      /Expected AstrBot Core version is required/,
     );
   } finally {
     await rm(tempDir, { recursive: true, force: true });
