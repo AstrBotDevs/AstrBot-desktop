@@ -9,6 +9,7 @@ use sha2::{Digest, Sha256};
 use tauri::AppHandle;
 
 use crate::{
+    app_types::RuntimeWebuiEntryDigest,
     backend, packaged_webui,
     runtime_paths::{self, PackagedResourceLocation},
     LaunchPlan, RuntimeManifest, RuntimeWebuiAttestation,
@@ -38,6 +39,7 @@ struct ResolvedPackagedResources {
     launch_script_path: PathBuf,
     webui_dir: PathBuf,
     webui_index_sha256: String,
+    webui_entry_digests: Vec<RuntimeWebuiEntryDigest>,
     rejected: Vec<PackagedResourceFailure>,
 }
 
@@ -158,7 +160,7 @@ fn validate_webui_attestation(
     webui_dir: &Path,
     core_version: &str,
     attestation: &RuntimeWebuiAttestation,
-) -> Result<String, String> {
+) -> Result<(String, Vec<RuntimeWebuiEntryDigest>), String> {
     let attested_version =
         normalize_resource_version(&attestation.version, "WebUI bundle attestation version")?;
     if attested_version != core_version {
@@ -186,8 +188,10 @@ fn validate_webui_attestation(
 
     let mut seen_entries = HashSet::new();
     let mut has_javascript_entry = false;
+    let mut validated_entries = Vec::with_capacity(attestation.entry_assets.len());
     for entry in &attestation.entry_assets {
-        let relative = PathBuf::from(entry.path.trim());
+        let normalized_entry_path = entry.path.trim().replace('\\', "/");
+        let relative = PathBuf::from(&normalized_entry_path);
         if !seen_entries.insert(relative.clone()) {
             return Err(format!(
                 "runtime-manifest.json contains duplicate WebUI entry asset: {}",
@@ -223,11 +227,15 @@ fn validate_webui_attestation(
                 entry.path, expected_sha256, actual_sha256
             ));
         }
+        validated_entries.push(RuntimeWebuiEntryDigest {
+            path: normalized_entry_path,
+            sha256: expected_sha256,
+        });
     }
     if !has_javascript_entry {
         return Err("WebUI bundle attestation has no JavaScript entry asset".to_string());
     }
-    Ok(actual_index_sha256)
+    Ok((actual_index_sha256, validated_entries))
 }
 
 fn validate_packaged_resource_candidate(
@@ -303,7 +311,7 @@ fn validate_packaged_resource_candidate(
     let attestation = manifest.webui.as_ref().ok_or_else(|| {
         "runtime-manifest.json is missing the WebUI bundle attestation".to_string()
     })?;
-    let webui_index_sha256 =
+    let (webui_index_sha256, webui_entry_digests) =
         validate_webui_attestation(&candidate.webui_dir, &core_version, attestation)?;
     let webui_version_path = candidate.webui_dir.join("assets").join("version");
     let webui_version_raw = fs::read_to_string(&webui_version_path).map_err(|error| {
@@ -327,6 +335,7 @@ fn validate_packaged_resource_candidate(
         launch_script_path,
         webui_dir: candidate.webui_dir,
         webui_index_sha256,
+        webui_entry_digests,
         rejected: Vec::new(),
     })
 }
@@ -409,6 +418,7 @@ pub fn resolve_custom_launch(custom_cmd: String) -> Result<LaunchPlan, String> {
         webui_cache_version: None,
         packaged_core_version: None,
         packaged_webui_index_sha256: None,
+        packaged_webui_entry_digests: None,
         startup_heartbeat_path,
         packaged_mode: false,
     })
@@ -501,6 +511,7 @@ where
         );
     }
     let webui_index_sha256 = selected.webui_index_sha256;
+    let webui_entry_digests = selected.webui_entry_digests;
     let webui_cache_version = packaged_webui_cache_version(
         &expected_desktop_version,
         &selected.core_version,
@@ -523,6 +534,7 @@ where
         webui_cache_version: Some(webui_cache_version),
         packaged_core_version: Some(selected.core_version),
         packaged_webui_index_sha256: Some(webui_index_sha256),
+        packaged_webui_entry_digests: Some(webui_entry_digests),
         startup_heartbeat_path,
         packaged_mode: true,
     };
@@ -564,6 +576,7 @@ pub fn resolve_dev_launch() -> Result<LaunchPlan, String> {
         webui_cache_version: None,
         packaged_core_version: None,
         packaged_webui_index_sha256: None,
+        packaged_webui_entry_digests: None,
         startup_heartbeat_path,
         packaged_mode: false,
     })

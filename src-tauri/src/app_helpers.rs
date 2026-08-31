@@ -89,6 +89,7 @@ mod tests {
             webui_cache_version: None,
             packaged_core_version: None,
             packaged_webui_index_sha256: None,
+            packaged_webui_entry_digests: None,
             startup_heartbeat_path: None,
             packaged_mode: false,
         };

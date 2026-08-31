@@ -41,7 +41,7 @@ pub(crate) struct RuntimeWebuiAttestation {
     pub(crate) entry_assets: Vec<RuntimeWebuiEntryDigest>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub(crate) struct RuntimeWebuiEntryDigest {
     pub(crate) path: String,
     pub(crate) sha256: String,
@@ -57,6 +57,7 @@ pub(crate) struct LaunchPlan {
     pub(crate) webui_cache_version: Option<String>,
     pub(crate) packaged_core_version: Option<String>,
     pub(crate) packaged_webui_index_sha256: Option<String>,
+    pub(crate) packaged_webui_entry_digests: Option<Vec<RuntimeWebuiEntryDigest>>,
     pub(crate) startup_heartbeat_path: Option<PathBuf>,
     pub(crate) packaged_mode: bool,
 }

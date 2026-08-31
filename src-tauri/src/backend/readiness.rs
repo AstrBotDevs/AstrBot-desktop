@@ -96,6 +96,19 @@ fn validate_running_webui_index(
     ))
 }
 
+fn validate_running_webui_entry(
+    entry_path: &str,
+    expected_sha256: &str,
+    running_sha256: &str,
+) -> Result<(), String> {
+    if running_sha256 == expected_sha256 {
+        return Ok(());
+    }
+    Err(format!(
+        "A different, stale, or incomplete AstrBot WebUI is serving the Desktop port: entry {entry_path} expected SHA-256 {expected_sha256}, got {running_sha256}. Close the stale backend process, then restart AstrBot Desktop."
+    ))
+}
+
 impl BackendState {
     pub(crate) fn ensure_backend_ready(&self, app: &AppHandle) -> Result<Option<String>, String> {
         let auto_start_enabled =
@@ -241,6 +254,16 @@ impl BackendState {
                         .to_string(),
                 )
             })?;
+        let expected_entry_digests = plan
+            .packaged_webui_entry_digests
+            .as_deref()
+            .filter(|entries| !entries.is_empty())
+            .ok_or_else(|| {
+                RunningResourceIdentityError::Mismatch(
+                    "Packaged launch plan is missing the expected WebUI entry digests. Run the Desktop update again or reinstall AstrBot."
+                        .to_string(),
+                )
+            })?;
         let payload = self
             .request_backend_json(
                 "GET",
@@ -275,7 +298,39 @@ impl BackendState {
             })?;
         let running_index_sha256 = format!("{:x}", Sha256::digest(&index_body));
         validate_running_webui_index(expected_index_sha256, &running_index_sha256)
-            .map_err(RunningResourceIdentityError::Mismatch)
+            .map_err(RunningResourceIdentityError::Mismatch)?;
+
+        for entry in expected_entry_digests {
+            let request_path = format!("/{}", entry.path.trim_start_matches('/'));
+            let response = self
+                .request_backend_response_bytes("GET", &request_path, timeout_ms, None, None)
+                .ok_or_else(|| {
+                    RunningResourceIdentityError::Unavailable(format!(
+                        "Cannot read the running AstrBot WebUI entry asset at {request_path}."
+                    ))
+                })?;
+            let status_code = backend::http_response::parse_http_status_code(&response)
+                .ok_or_else(|| {
+                    RunningResourceIdentityError::Unavailable(format!(
+                        "Cannot parse the running AstrBot WebUI entry response at {request_path}."
+                    ))
+                })?;
+            if status_code == 404 {
+                return Err(RunningResourceIdentityError::Mismatch(format!(
+                    "The running AstrBot WebUI is incomplete: attested entry asset {request_path} is missing. Close the stale backend process, then restart AstrBot Desktop."
+                )));
+            }
+            let entry_body = backend::http_response::parse_http_success_body(&response)
+                .ok_or_else(|| {
+                    RunningResourceIdentityError::Unavailable(format!(
+                        "Cannot read a complete identity-encoded AstrBot WebUI entry response at {request_path} (HTTP {status_code})."
+                    ))
+                })?;
+            let running_sha256 = format!("{:x}", Sha256::digest(&entry_body));
+            validate_running_webui_entry(&request_path, &entry.sha256, &running_sha256)
+                .map_err(RunningResourceIdentityError::Mismatch)?;
+        }
+        Ok(())
     }
 
     fn probe_backend_readiness(
@@ -500,7 +555,13 @@ mod tests {
         format!("{:x}", Sha256::digest(payload))
     }
 
-    fn packaged_plan(core_version: &str, index_sha256: &str) -> crate::LaunchPlan {
+    const WEBUI_ENTRY_PATH: &str = "/assets/index-test.js";
+
+    fn packaged_plan(
+        core_version: &str,
+        index_sha256: &str,
+        entry_sha256: &str,
+    ) -> crate::LaunchPlan {
         crate::LaunchPlan {
             cmd: "python".to_string(),
             args: Vec::new(),
@@ -510,25 +571,36 @@ mod tests {
             webui_cache_version: None,
             packaged_core_version: Some(core_version.to_string()),
             packaged_webui_index_sha256: Some(index_sha256.to_string()),
+            packaged_webui_entry_digests: Some(vec![crate::app_types::RuntimeWebuiEntryDigest {
+                path: WEBUI_ENTRY_PATH.trim_start_matches('/').to_string(),
+                sha256: entry_sha256.to_string(),
+            }]),
             startup_heartbeat_path: None,
             packaged_mode: true,
         }
     }
 
-    fn spawn_identity_server(index_body: Vec<u8>) -> (String, thread::JoinHandle<()>) {
+    fn spawn_identity_server(
+        index_body: Vec<u8>,
+        entry_response: Option<(u16, Vec<u8>)>,
+    ) -> (String, thread::JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind identity server");
         let address = listener.local_addr().expect("read identity server address");
         let versions_body = br#"{"status":"ok","data":{"astrbot_version":"4.27.5","astrbot_code_version":"4.27.5","webui_version":"4.27.5"}}"#.to_vec();
-        let responses = [
+        let mut responses = vec![
             (
                 BACKEND_RESOURCE_VERSIONS_PATH,
                 "application/json",
+                200,
                 versions_body,
             ),
-            (BACKEND_WEBUI_INDEX_PATH, "text/html", index_body),
+            (BACKEND_WEBUI_INDEX_PATH, "text/html", 200, index_body),
         ];
+        if let Some((status_code, body)) = entry_response {
+            responses.push((WEBUI_ENTRY_PATH, "text/javascript", status_code, body));
+        }
         let handle = thread::spawn(move || {
-            for (expected_path, content_type, body) in responses {
+            for (expected_path, content_type, status_code, body) in responses {
                 let (mut stream, _) = listener.accept().expect("accept identity request");
                 let mut request_bytes = [0_u8; 4096];
                 let read = stream
@@ -541,8 +613,13 @@ mod tests {
                 );
                 assert!(request.contains("Accept-Encoding: identity\r\n"));
                 assert!(request.contains("Cache-Control: no-cache\r\n"));
+                let reason = if status_code == 200 {
+                    "OK"
+                } else {
+                    "Not Found"
+                };
                 let headers = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    "HTTP/1.1 {status_code} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                     body.len()
                 );
                 stream
@@ -630,8 +707,10 @@ mod tests {
     #[test]
     fn live_identity_check_accepts_the_exact_served_index_document() {
         let index_body = b"<!doctype html><title>current</title>".to_vec();
-        let expected_digest = sha256_hex(&index_body);
-        let (backend_url, server) = spawn_identity_server(index_body);
+        let entry_body = b"console.log('current');".to_vec();
+        let expected_index_digest = sha256_hex(&index_body);
+        let expected_entry_digest = sha256_hex(&entry_body);
+        let (backend_url, server) = spawn_identity_server(index_body, Some((200, entry_body)));
         let state = BackendState {
             backend_url,
             ..BackendState::default()
@@ -639,7 +718,7 @@ mod tests {
 
         assert_eq!(
             state.verify_running_resource_identity(
-                &packaged_plan("4.27.5", &expected_digest),
+                &packaged_plan("4.27.5", &expected_index_digest, &expected_entry_digest,),
                 1_000,
             ),
             Ok(())
@@ -651,16 +730,66 @@ mod tests {
     fn live_identity_check_rejects_same_version_stale_index_content() {
         let stale_index = b"<!doctype html><title>stale</title>".to_vec();
         let expected_digest = sha256_hex(b"<!doctype html><title>current</title>");
-        let (backend_url, server) = spawn_identity_server(stale_index);
+        let expected_entry_digest = sha256_hex(b"console.log('current');");
+        let (backend_url, server) = spawn_identity_server(stale_index, None);
         let state = BackendState {
             backend_url,
             ..BackendState::default()
         };
 
         let error = state
-            .verify_running_resource_identity(&packaged_plan("4.27.5", &expected_digest), 1_000)
+            .verify_running_resource_identity(
+                &packaged_plan("4.27.5", &expected_digest, &expected_entry_digest),
+                1_000,
+            )
             .expect_err("same-version stale index must be rejected");
         assert!(error.contains("stale AstrBot WebUI"));
+        server.join().expect("identity server should finish");
+    }
+
+    #[test]
+    fn live_identity_check_rejects_same_version_stale_entry_content() {
+        let index_body = b"<!doctype html><script src='/assets/index-test.js'></script>".to_vec();
+        let expected_index_digest = sha256_hex(&index_body);
+        let expected_entry_digest = sha256_hex(b"console.log('current');");
+        let (backend_url, server) =
+            spawn_identity_server(index_body, Some((200, b"console.log('stale');".to_vec())));
+        let state = BackendState {
+            backend_url,
+            ..BackendState::default()
+        };
+
+        let error = state
+            .verify_running_resource_identity(
+                &packaged_plan("4.27.5", &expected_index_digest, &expected_entry_digest),
+                1_000,
+            )
+            .expect_err("same-version stale entry must be rejected");
+        assert!(error.contains(WEBUI_ENTRY_PATH));
+        assert!(error.contains("expected SHA-256"));
+        server.join().expect("identity server should finish");
+    }
+
+    #[test]
+    fn live_identity_check_rejects_missing_attested_entry() {
+        let index_body = b"<!doctype html><script src='/assets/index-test.js'></script>".to_vec();
+        let expected_index_digest = sha256_hex(&index_body);
+        let expected_entry_digest = sha256_hex(b"console.log('current');");
+        let (backend_url, server) =
+            spawn_identity_server(index_body, Some((404, b"missing".to_vec())));
+        let state = BackendState {
+            backend_url,
+            ..BackendState::default()
+        };
+
+        let error = state
+            .verify_running_resource_identity(
+                &packaged_plan("4.27.5", &expected_index_digest, &expected_entry_digest),
+                1_000,
+            )
+            .expect_err("missing attested entry must be rejected");
+        assert!(error.contains("is incomplete"));
+        assert!(error.contains(WEBUI_ENTRY_PATH));
         server.join().expect("identity server should finish");
     }
 
