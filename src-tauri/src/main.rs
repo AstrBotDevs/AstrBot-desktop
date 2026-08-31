@@ -45,5 +45,8 @@ pub(crate) use app_types::{
 pub(crate) use desktop_settings::DesktopSettingsCache;
 
 fn main() {
+    #[cfg(target_os = "linux")]
+    app_runtime::configure_linux_webkit_workaround();
+
     app_runtime::run();
 }

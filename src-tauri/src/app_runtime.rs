@@ -270,10 +270,12 @@ fn handle_run_event(app_handle: &tauri::AppHandle, event: RunEvent) {
     }
 }
 
-pub(crate) fn run() {
-    #[cfg(target_os = "linux")]
+#[cfg(target_os = "linux")]
+pub(crate) fn configure_linux_webkit_workaround() {
     linux_webkit_workaround::configure(append_startup_log);
+}
 
+pub(crate) fn run() {
     append_startup_log("desktop process starting");
     append_startup_log(&format!(
         "desktop log path: {}",
