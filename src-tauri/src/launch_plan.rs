@@ -17,6 +17,7 @@ use crate::{
 
 const BACKEND_RESOURCE_ALIAS: &str = env!("ASTRBOT_BACKEND_RESOURCE_ALIAS");
 const WEBUI_RESOURCE_ALIAS: &str = env!("ASTRBOT_WEBUI_RESOURCE_ALIAS");
+const PACKAGED_RUNTIME_MANIFEST_SHA256: &str = env!("ASTRBOT_RUNTIME_MANIFEST_SHA256");
 
 #[derive(Debug)]
 struct PackagedResourceCandidate {
@@ -38,6 +39,7 @@ struct ResolvedPackagedResources {
     python_path: PathBuf,
     launch_script_path: PathBuf,
     webui_dir: PathBuf,
+    runtime_manifest_sha256: String,
     webui_index_sha256: String,
     webui_entry_digests: Vec<RuntimeWebuiEntryDigest>,
     rejected: Vec<PackagedResourceFailure>,
@@ -79,13 +81,8 @@ fn required_manifest_version(value: Option<&str>, field: &str) -> Result<String,
     normalize_resource_version(value, &format!("runtime-manifest.json {field}"))
 }
 
-fn packaged_webui_cache_version(
-    desktop_version: &str,
-    core_version: &str,
-    index_sha256: &str,
-) -> String {
-    let digest_prefix = &index_sha256[..16];
-    format!("desktop-{desktop_version}-core-{core_version}-webui-{digest_prefix}")
+fn packaged_webui_cache_version(runtime_manifest_sha256: &str) -> String {
+    format!("v1-{runtime_manifest_sha256}")
 }
 
 fn normalize_sha256(value: &str, field: &str) -> Result<String, String> {
@@ -154,6 +151,10 @@ fn sha256_file(path: &Path) -> Result<String, String> {
         hasher.update(&buffer[..count]);
     }
     Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn sha256_bytes(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
 }
 
 fn validate_webui_attestation(
@@ -241,16 +242,27 @@ fn validate_webui_attestation(
 fn validate_packaged_resource_candidate(
     candidate: PackagedResourceCandidate,
     expected_desktop_version: &str,
+    expected_runtime_manifest_sha256: &str,
 ) -> Result<ResolvedPackagedResources, String> {
     let manifest_path = candidate.backend_dir.join("runtime-manifest.json");
-    let manifest_text = fs::read_to_string(&manifest_path).map_err(|error| {
+    let manifest_bytes = fs::read(&manifest_path).map_err(|error| {
         format!(
             "cannot read backend manifest {}: {}",
             manifest_path.display(),
             error
         )
     })?;
-    let manifest: RuntimeManifest = serde_json::from_str(&manifest_text).map_err(|error| {
+    let expected_runtime_manifest_sha256 = normalize_sha256(
+        expected_runtime_manifest_sha256,
+        "executable packaged runtime manifest identity",
+    )?;
+    let runtime_manifest_sha256 = sha256_bytes(&manifest_bytes);
+    if runtime_manifest_sha256 != expected_runtime_manifest_sha256 {
+        return Err(format!(
+            "Packaged runtime manifest identity mismatch: executable expects {expected_runtime_manifest_sha256}, candidate has {runtime_manifest_sha256}"
+        ));
+    }
+    let manifest: RuntimeManifest = serde_json::from_slice(&manifest_bytes).map_err(|error| {
         format!(
             "cannot parse backend manifest {}: {}",
             manifest_path.display(),
@@ -334,6 +346,7 @@ fn validate_packaged_resource_candidate(
         python_path,
         launch_script_path,
         webui_dir: candidate.webui_dir,
+        runtime_manifest_sha256,
         webui_index_sha256,
         webui_entry_digests,
         rejected: Vec::new(),
@@ -342,6 +355,7 @@ fn validate_packaged_resource_candidate(
 
 fn select_packaged_resources(
     expected_desktop_version: &str,
+    expected_runtime_manifest_sha256: &str,
     candidates: Vec<Result<PackagedResourceCandidate, PackagedResourceFailure>>,
 ) -> Result<ResolvedPackagedResources, Vec<PackagedResourceFailure>> {
     let mut failures = Vec::new();
@@ -354,7 +368,11 @@ fn select_packaged_resources(
             }
         };
         let label = candidate.label;
-        match validate_packaged_resource_candidate(candidate, expected_desktop_version) {
+        match validate_packaged_resource_candidate(
+            candidate,
+            expected_desktop_version,
+            expected_runtime_manifest_sha256,
+        ) {
             Ok(mut resolved) => {
                 resolved.rejected = failures;
                 return Ok(resolved);
@@ -448,7 +466,11 @@ where
                 .is_file()
         })
     });
-    let selected = match select_packaged_resources(&expected_desktop_version, candidates) {
+    let selected = match select_packaged_resources(
+        &expected_desktop_version,
+        PACKAGED_RUNTIME_MANIFEST_SHA256,
+        candidates,
+    ) {
         Ok(selected) => selected,
         Err(failures) if cfg!(debug_assertions) && !has_packaged_manifest => {
             for failure in failures {
@@ -512,11 +534,7 @@ where
     }
     let webui_index_sha256 = selected.webui_index_sha256;
     let webui_entry_digests = selected.webui_entry_digests;
-    let webui_cache_version = packaged_webui_cache_version(
-        &expected_desktop_version,
-        &selected.core_version,
-        &webui_index_sha256,
-    );
+    let webui_cache_version = packaged_webui_cache_version(&selected.runtime_manifest_sha256);
 
     let args = vec![
         selected.launch_script_path.to_string_lossy().to_string(),
@@ -665,6 +683,35 @@ mod tests {
         .expect("write modified manifest fixture");
     }
 
+    fn replace_attested_entry(candidate: &PackagedResourceCandidate, contents: &[u8]) {
+        let entry_path = candidate.webui_dir.join("assets").join("index-test.js");
+        fs::write(&entry_path, contents).expect("replace WebUI entry fixture");
+        let manifest_path = candidate.backend_dir.join("runtime-manifest.json");
+        let mut manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(&manifest_path).expect("read manifest fixture"))
+                .expect("parse manifest fixture");
+        manifest["webui"]["entryAssets"][0]["sha256"] =
+            serde_json::Value::String(sha256_file(&entry_path).expect("hash replacement entry"));
+        fs::write(
+            manifest_path,
+            serde_json::to_vec(&manifest).expect("serialize modified manifest fixture"),
+        )
+        .expect("write modified manifest fixture");
+    }
+
+    fn candidate_manifest_sha256(candidate: &PackagedResourceCandidate) -> String {
+        sha256_file(&candidate.backend_dir.join("runtime-manifest.json"))
+            .expect("hash runtime manifest fixture")
+    }
+
+    fn validate_fixture_candidate(
+        candidate: PackagedResourceCandidate,
+        desktop_version: &str,
+    ) -> Result<ResolvedPackagedResources, String> {
+        let expected_manifest_sha256 = candidate_manifest_sha256(&candidate);
+        validate_packaged_resource_candidate(candidate, desktop_version, &expected_manifest_sha256)
+    }
+
     struct EnvVarGuard {
         key: &'static str,
         previous: Option<String>,
@@ -707,9 +754,14 @@ mod tests {
             CORE_VERSION,
             "v4.27.4",
         );
+        let expected_manifest_sha256 = candidate_manifest_sha256(&direct);
 
-        let selected = select_packaged_resources(DESKTOP_VERSION, vec![Ok(direct), Ok(updater)])
-            .expect("select direct bundle");
+        let selected = select_packaged_resources(
+            DESKTOP_VERSION,
+            &expected_manifest_sha256,
+            vec![Ok(direct), Ok(updater)],
+        )
+        .expect("select direct bundle");
 
         assert_eq!(selected.label, "direct");
         assert_eq!(selected.webui_dir, expected_webui_dir);
@@ -717,10 +769,17 @@ mod tests {
     }
 
     #[test]
-    fn stale_direct_bundle_falls_back_to_valid_updater_bundle() {
+    fn same_version_stale_direct_bundle_falls_back_to_executable_bound_updater_bundle() {
         let temp_dir = tempfile::tempdir().expect("create temp dir");
-        let direct =
-            create_bundle_candidate(&temp_dir, "direct", "direct", "4.27.3", "4.27.3", "v4.27.3");
+        let direct = create_bundle_candidate(
+            &temp_dir,
+            "direct",
+            "direct",
+            DESKTOP_VERSION,
+            CORE_VERSION,
+            "v4.27.4",
+        );
+        set_manifest_field(&direct, "sourceCommit", &"a".repeat(40));
         let updater = create_bundle_candidate(
             &temp_dir,
             "updater",
@@ -729,15 +788,79 @@ mod tests {
             CORE_VERSION,
             "v4.27.4",
         );
+        let expected_manifest_sha256 = candidate_manifest_sha256(&updater);
 
-        let selected = select_packaged_resources(DESKTOP_VERSION, vec![Ok(direct), Ok(updater)])
-            .expect("fall back to updater bundle");
+        let selected = select_packaged_resources(
+            DESKTOP_VERSION,
+            &expected_manifest_sha256,
+            vec![Ok(direct), Ok(updater)],
+        )
+        .expect("fall back to updater bundle");
 
         assert_eq!(selected.label, "_up_/resources");
         assert_eq!(selected.rejected.len(), 1);
         assert!(selected.rejected[0]
             .reason
-            .contains("Desktop version mismatch"));
+            .contains("runtime manifest identity mismatch"));
+    }
+
+    #[test]
+    fn executable_manifest_identity_rejects_a_coherent_same_version_bundle() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let candidate = create_bundle_candidate(
+            &temp_dir,
+            "coherent-old",
+            "direct",
+            DESKTOP_VERSION,
+            CORE_VERSION,
+            "v4.27.4",
+        );
+        let different_executable_identity = "f".repeat(64);
+
+        let error = validate_packaged_resource_candidate(
+            candidate,
+            DESKTOP_VERSION,
+            &different_executable_identity,
+        )
+        .expect_err("same-version bundle not bound to this executable must fail");
+
+        assert!(error.contains("runtime manifest identity mismatch"));
+        assert!(error.contains(&different_executable_identity));
+    }
+
+    #[test]
+    fn entry_only_change_produces_a_new_full_cache_identity() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let original = create_bundle_candidate(
+            &temp_dir,
+            "original",
+            "direct",
+            DESKTOP_VERSION,
+            CORE_VERSION,
+            "v4.27.4",
+        );
+        let changed = create_bundle_candidate(
+            &temp_dir,
+            "changed",
+            "_up_/resources",
+            DESKTOP_VERSION,
+            CORE_VERSION,
+            "v4.27.4",
+        );
+        replace_attested_entry(&changed, b"export const changed = true;\n");
+
+        let original_identity = candidate_manifest_sha256(&original);
+        let changed_identity = candidate_manifest_sha256(&changed);
+
+        assert_ne!(original_identity, changed_identity);
+        assert_ne!(
+            packaged_webui_cache_version(&original_identity),
+            packaged_webui_cache_version(&changed_identity)
+        );
+        assert_eq!(
+            packaged_webui_cache_version(&changed_identity),
+            format!("v1-{changed_identity}")
+        );
     }
 
     #[test]
@@ -762,9 +885,14 @@ mod tests {
         );
         fs::remove_file(updater.backend_dir.join("runtime-manifest.json"))
             .expect("remove updater backend manifest");
+        let expected_manifest_sha256 = candidate_manifest_sha256(&direct);
 
-        let failures = select_packaged_resources(DESKTOP_VERSION, vec![Ok(direct), Ok(updater)])
-            .expect_err("partial roots must not be combined");
+        let failures = select_packaged_resources(
+            DESKTOP_VERSION,
+            &expected_manifest_sha256,
+            vec![Ok(direct), Ok(updater)],
+        )
+        .expect_err("partial roots must not be combined");
         let error = packaged_resources_unavailable_error(DESKTOP_VERSION, &failures);
 
         assert_eq!(failures.len(), 2);
@@ -825,7 +953,7 @@ mod tests {
             };
             fs::remove_file(missing_path).expect("remove required fixture file");
 
-            let error = validate_packaged_resource_candidate(candidate, DESKTOP_VERSION)
+            let error = validate_fixture_candidate(candidate, DESKTOP_VERSION)
                 .expect_err("incomplete candidate must fail");
             assert!(error.contains(expected_error), "unexpected error: {error}");
         }
@@ -843,7 +971,7 @@ mod tests {
             "v4.27.3",
         );
 
-        let error = validate_packaged_resource_candidate(candidate, DESKTOP_VERSION)
+        let error = validate_fixture_candidate(candidate, DESKTOP_VERSION)
             .expect_err("version mismatch must fail");
 
         assert!(error.contains("Core/WebUI attestation version mismatch"));
@@ -862,7 +990,7 @@ mod tests {
             "v4.27.3",
         );
 
-        let error = validate_packaged_resource_candidate(candidate, DESKTOP_VERSION)
+        let error = validate_fixture_candidate(candidate, DESKTOP_VERSION)
             .expect_err("stable Desktop must match Core exactly");
 
         assert!(error.contains("Stable Desktop/Core version mismatch"));
@@ -891,7 +1019,7 @@ mod tests {
         )
         .expect("write outside fixture");
         set_manifest_field(&parent_candidate, "python", "../outside-python");
-        let parent_error = validate_packaged_resource_candidate(parent_candidate, DESKTOP_VERSION)
+        let parent_error = validate_fixture_candidate(parent_candidate, DESKTOP_VERSION)
             .expect_err("parent traversal must fail");
         assert!(parent_error.contains("python must be a canonical relative path"));
 
@@ -911,9 +1039,8 @@ mod tests {
             "entrypoint",
             &absolute_entrypoint.to_string_lossy(),
         );
-        let absolute_error =
-            validate_packaged_resource_candidate(absolute_candidate, DESKTOP_VERSION)
-                .expect_err("absolute path must fail");
+        let absolute_error = validate_fixture_candidate(absolute_candidate, DESKTOP_VERSION)
+            .expect_err("absolute path must fail");
         assert!(absolute_error.contains("entrypoint must be a canonical relative path"));
     }
 
@@ -937,7 +1064,7 @@ mod tests {
         symlink(&outside_entrypoint, &symlink_path).expect("create escape symlink");
         set_manifest_field(&candidate, "entrypoint", "linked-launch.py");
 
-        let error = validate_packaged_resource_candidate(candidate, DESKTOP_VERSION)
+        let error = validate_fixture_candidate(candidate, DESKTOP_VERSION)
             .expect_err("symlink escape must fail");
 
         assert!(error.contains("entrypoint escapes packaged resource directory"));
@@ -960,7 +1087,7 @@ mod tests {
         )
         .expect("tamper WebUI entry fixture");
 
-        let error = validate_packaged_resource_candidate(candidate, DESKTOP_VERSION)
+        let error = validate_fixture_candidate(candidate, DESKTOP_VERSION)
             .expect_err("tampered WebUI entry must fail");
 
         assert!(error.contains("WebUI entry asset digest mismatch"));
@@ -982,20 +1109,13 @@ mod tests {
                 "v4.27.4",
             );
 
-            let selected = validate_packaged_resource_candidate(candidate, desktop_version)
+            let selected = validate_fixture_candidate(candidate, desktop_version)
                 .expect("derived Desktop may package a different Core version");
 
             assert_eq!(selected.label, "direct");
             assert_eq!(
-                packaged_webui_cache_version(
-                    desktop_version,
-                    &selected.core_version,
-                    &selected.webui_index_sha256,
-                ),
-                format!(
-                    "desktop-{desktop_version}-core-4.27.4-webui-{}",
-                    &selected.webui_index_sha256[..16]
-                )
+                packaged_webui_cache_version(&selected.runtime_manifest_sha256),
+                format!("v1-{}", selected.runtime_manifest_sha256)
             );
         }
     }
