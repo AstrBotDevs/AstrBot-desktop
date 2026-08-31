@@ -5,8 +5,18 @@ use tauri::{
 
 #[cfg(target_os = "linux")]
 mod linux_webkit_workaround {
+    const APPIMAGE_ENV: &str = "APPIMAGE";
+    const GDK_BACKEND_ENV: &str = "GDK_BACKEND";
     const WEBKIT_DISABLE_DMABUF_RENDERER_ENV: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
     const WAYLAND_DISPLAY_ENV: &str = "WAYLAND_DISPLAY";
+
+    fn should_set_gdk_backend_env(
+        existing_value: Option<&std::ffi::OsStr>,
+        wayland_display: Option<&std::ffi::OsStr>,
+        appimage: Option<&std::ffi::OsStr>,
+    ) -> bool {
+        existing_value.is_none() && wayland_display.is_some() && appimage.is_some()
+    }
 
     fn should_set_webkit_dmabuf_renderer_env(
         existing_value: Option<&std::ffi::OsStr>,
@@ -16,6 +26,17 @@ mod linux_webkit_workaround {
     }
 
     pub(super) fn configure(log: impl Fn(&str)) {
+        if should_set_gdk_backend_env(
+            std::env::var_os(GDK_BACKEND_ENV).as_deref(),
+            std::env::var_os(WAYLAND_DISPLAY_ENV).as_deref(),
+            std::env::var_os(APPIMAGE_ENV).as_deref(),
+        ) {
+            std::env::set_var(GDK_BACKEND_ENV, "x11");
+            log(&format!(
+                "applied Linux AppImage WebKit workaround: set {GDK_BACKEND_ENV}=x11"
+            ));
+        }
+
         if should_set_webkit_dmabuf_renderer_env(
             std::env::var_os(WEBKIT_DISABLE_DMABUF_RENDERER_ENV).as_deref(),
             std::env::var_os(WAYLAND_DISPLAY_ENV).as_deref(),
@@ -29,7 +50,31 @@ mod linux_webkit_workaround {
 
     #[cfg(test)]
     mod tests {
-        use super::should_set_webkit_dmabuf_renderer_env;
+        use super::{should_set_gdk_backend_env, should_set_webkit_dmabuf_renderer_env};
+
+        #[test]
+        fn appimage_wayland_workaround_uses_x11_unless_overridden() {
+            assert!(should_set_gdk_backend_env(
+                None,
+                Some(std::ffi::OsStr::new("wayland-0")),
+                Some(std::ffi::OsStr::new("/tmp/.mount_AstrBot/AppRun"))
+            ));
+            assert!(!should_set_gdk_backend_env(
+                Some(std::ffi::OsStr::new("wayland")),
+                Some(std::ffi::OsStr::new("wayland-0")),
+                Some(std::ffi::OsStr::new("/tmp/.mount_AstrBot/AppRun"))
+            ));
+            assert!(!should_set_gdk_backend_env(
+                None,
+                None,
+                Some(std::ffi::OsStr::new("/tmp/.mount_AstrBot/AppRun"))
+            ));
+            assert!(!should_set_gdk_backend_env(
+                None,
+                Some(std::ffi::OsStr::new("wayland-0")),
+                None
+            ));
+        }
 
         #[test]
         fn webkit_dmabuf_workaround_is_set_only_for_wayland_without_override() {
