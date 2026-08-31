@@ -113,6 +113,8 @@ impl BackendState {
 Host: {host}\r\n\
 Accept: application/json\r\n\
 Accept-Encoding: identity\r\n\
+Cache-Control: no-cache\r\n\
+Pragma: no-cache\r\n\
 Connection: close\r\n\
 {authorization_header}\
 {desktop_session_header}\

@@ -136,11 +136,13 @@ where
 
 fn build_restart_backend_after_failed_install(
     app_handle: AppHandle,
-    restart_plan: crate::LaunchPlan,
 ) -> impl FnOnce() -> Result<(), String> {
     move || {
         let state = app_handle.state::<BackendState>();
-        append_desktop_log("update install failed before exit, restarting managed backend");
+        append_desktop_log(
+            "update install failed before exit, revalidating resources before restarting managed backend",
+        );
+        let restart_plan = state.resolve_launch_plan(&app_handle)?;
         state.start_backend_process(&app_handle, &restart_plan)?;
         state.wait_for_backend(&restart_plan)
     }
@@ -376,7 +378,7 @@ pub(crate) fn desktop_bridge_set_app_update_channel(
     let packaged_root_dir = runtime_paths::default_packaged_root_dir();
     match update_channel::write_cached_update_channel(Some(channel), packaged_root_dir.as_deref()) {
         Ok(()) => {
-            append_desktop_log(&format!("update channel set to {:?}", channel));
+            append_desktop_log(&format!("update channel set to {channel:?}"));
             let _ = app_handle;
             map_update_channel_ok(channel)
         }
@@ -459,18 +461,17 @@ pub(crate) async fn desktop_bridge_install_app_update(
     let state = app_handle.state::<BackendState>();
     let stop_managed_backend = cfg!(target_os = "windows") && has_managed_backend_child(&state);
     let restart_backend_after_failed_install = if stop_managed_backend {
-        let restart_plan = match state.resolve_launch_plan(&app_handle) {
-            Ok(plan) => plan,
+        match state.resolve_launch_plan(&app_handle) {
+            Ok(_) => {}
             Err(error) => {
                 append_desktop_log(&format!(
                     "failed to resolve managed backend relaunch plan for update install recovery: {error}"
                 ));
                 return map_update_install_error(error);
             }
-        };
+        }
         Some(build_restart_backend_after_failed_install(
             app_handle.clone(),
-            restart_plan,
         ))
     } else {
         None

@@ -40,7 +40,7 @@ pub(crate) use app_helpers::{
 };
 pub(crate) use app_types::{
     AtomicFlagGuard, BackendBridgeResult, BackendBridgeState, BackendState,
-    DesktopAuthBridgeResult, LaunchPlan, RuntimeManifest, TrayMenuState,
+    DesktopAuthBridgeResult, LaunchPlan, RuntimeManifest, RuntimeWebuiAttestation, TrayMenuState,
 };
 pub(crate) use desktop_settings::DesktopSettingsCache;
 

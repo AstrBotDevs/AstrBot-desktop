@@ -24,9 +24,27 @@ pub(crate) struct TrayMenuState {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct RuntimeManifest {
     pub(crate) python: Option<String>,
     pub(crate) entrypoint: Option<String>,
+    pub(crate) desktop_version: Option<String>,
+    pub(crate) core_version: Option<String>,
+    pub(crate) webui: Option<RuntimeWebuiAttestation>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RuntimeWebuiAttestation {
+    pub(crate) version: String,
+    pub(crate) index_sha256: String,
+    pub(crate) entry_assets: Vec<RuntimeWebuiEntryDigest>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct RuntimeWebuiEntryDigest {
+    pub(crate) path: String,
+    pub(crate) sha256: String,
 }
 
 #[derive(Debug)]
@@ -36,6 +54,9 @@ pub(crate) struct LaunchPlan {
     pub(crate) cwd: PathBuf,
     pub(crate) root_dir: Option<PathBuf>,
     pub(crate) webui_dir: Option<PathBuf>,
+    pub(crate) webui_cache_version: Option<String>,
+    pub(crate) packaged_core_version: Option<String>,
+    pub(crate) packaged_webui_index_sha256: Option<String>,
     pub(crate) startup_heartbeat_path: Option<PathBuf>,
     pub(crate) packaged_mode: bool,
 }

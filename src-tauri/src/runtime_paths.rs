@@ -4,6 +4,22 @@ use std::{
 };
 use tauri::{path::BaseDirectory, AppHandle, Manager};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PackagedResourceLocation {
+    Direct,
+    // Tauri's NSIS updater stages the incoming bundle below this install-root subtree.
+    UpdaterStaging,
+}
+
+impl PackagedResourceLocation {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Direct => "direct",
+            Self::UpdaterStaging => "_up_/resources",
+        }
+    }
+}
+
 pub fn detect_astrbot_source_root() -> Option<PathBuf> {
     let explicit_source_dir = env::var("ASTRBOT_SOURCE_DIR")
         .ok()
@@ -15,31 +31,34 @@ pub fn default_packaged_root_dir() -> Option<PathBuf> {
     home::home_dir().map(|home| home.join(".astrbot"))
 }
 
-pub fn resolve_resource_path<F>(app: &AppHandle, relative_path: &str, log: F) -> Option<PathBuf>
-where
-    F: Fn(&str),
-{
-    if let Ok(path) = app.path().resolve(relative_path, BaseDirectory::Resource) {
-        if path.exists() {
-            return Some(path);
+fn packaged_resource_relative_path(
+    location: PackagedResourceLocation,
+    relative_path: &str,
+) -> PathBuf {
+    match location {
+        PackagedResourceLocation::Direct => PathBuf::from(relative_path),
+        PackagedResourceLocation::UpdaterStaging => {
+            Path::new("_up_").join("resources").join(relative_path)
         }
     }
+}
 
-    let updater_resource = Path::new("_up_").join("resources").join(relative_path);
-    if let Ok(path) = app
-        .path()
-        .resolve(&updater_resource, BaseDirectory::Resource)
-    {
-        if path.exists() {
-            return Some(path);
-        }
-    }
-
-    log(&format!(
-        "resource not found: {} (checked direct and _up_/resources)",
-        relative_path
-    ));
-    None
+pub fn resolve_packaged_resource_path(
+    app: &AppHandle,
+    location: PackagedResourceLocation,
+    relative_path: &str,
+) -> Result<PathBuf, String> {
+    let packaged_path = packaged_resource_relative_path(location, relative_path);
+    app.path()
+        .resolve(&packaged_path, BaseDirectory::Resource)
+        .map_err(|error| {
+            format!(
+                "failed to resolve {} resource {}: {}",
+                location.label(),
+                relative_path,
+                error
+            )
+        })
 }
 
 pub fn workspace_root_dir() -> PathBuf {
@@ -138,5 +157,17 @@ mod tests {
 
         fs::remove_dir_all(&workspace).expect("cleanup workspace dir");
         fs::remove_dir_all(&explicit).expect("cleanup explicit dir");
+    }
+
+    #[test]
+    fn packaged_resource_paths_keep_direct_and_updater_roots_separate() {
+        assert_eq!(
+            packaged_resource_relative_path(PackagedResourceLocation::Direct, "backend"),
+            PathBuf::from("backend")
+        );
+        assert_eq!(
+            packaged_resource_relative_path(PackagedResourceLocation::UpdaterStaging, "webui"),
+            PathBuf::from("_up_").join("resources").join("webui")
+        );
     }
 }

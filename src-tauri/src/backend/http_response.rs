@@ -1,23 +1,54 @@
 use std::borrow::Cow;
 
 pub fn parse_http_json_response(raw: &[u8]) -> Option<serde_json::Value> {
+    let payload = parse_http_success_body(raw)?;
+    serde_json::from_slice(&payload).ok()
+}
+
+pub fn parse_http_success_body(raw: &[u8]) -> Option<Vec<u8>> {
     let (header_text, body_bytes) = parse_http_response_parts(raw)?;
     let status_code = parse_http_status_code_from_headers(&header_text)?;
     if !(200..300).contains(&status_code) {
         return None;
     }
 
-    let is_chunked = header_text.lines().any(|line| {
-        let line = line.trim().to_ascii_lowercase();
-        line.starts_with("transfer-encoding:") && line.contains("chunked")
-    });
-    let payload = if is_chunked {
-        decode_chunked_body(body_bytes)?
-    } else {
-        body_bytes.to_vec()
-    };
+    let mut is_chunked = false;
+    let mut content_length = None;
+    for line in header_text.lines().skip(1) {
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        let name = name.trim();
+        let value = value.trim();
+        if name.eq_ignore_ascii_case("transfer-encoding")
+            && value
+                .split(',')
+                .any(|encoding| encoding.trim().eq_ignore_ascii_case("chunked"))
+        {
+            is_chunked = true;
+        }
+        if name.eq_ignore_ascii_case("content-encoding")
+            && !value.is_empty()
+            && !value.eq_ignore_ascii_case("identity")
+        {
+            // The caller requests identity encoding so a content digest can be
+            // compared with the exact packaged file bytes. Fail closed if an
+            // intermediary ignores that request.
+            return None;
+        }
+        if name.eq_ignore_ascii_case("content-length") {
+            content_length = Some(value.parse::<usize>().ok()?);
+        }
+    }
 
-    serde_json::from_slice(&payload).ok()
+    if is_chunked {
+        return decode_chunked_body(body_bytes);
+    }
+    match content_length {
+        Some(length) if body_bytes.len() >= length => Some(body_bytes[..length].to_vec()),
+        Some(_) => None,
+        None => Some(body_bytes.to_vec()),
+    }
 }
 
 pub fn parse_http_status_code(raw: &[u8]) -> Option<u16> {
@@ -101,6 +132,21 @@ mod tests {
             b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nb\r\n{\"ok\":true}\r\n0\r\n\r\n";
         let parsed = parse_http_json_response(raw).expect("expected chunked json payload");
         assert_eq!(parsed["ok"], json!(true));
+    }
+
+    #[test]
+    fn parse_http_success_body_returns_exact_identity_encoded_payload() {
+        let raw = b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Encoding: identity\r\n\r\nindexignored";
+        assert_eq!(parse_http_success_body(raw), Some(b"index".to_vec()));
+    }
+
+    #[test]
+    fn parse_http_success_body_rejects_encoded_or_incomplete_payloads() {
+        let encoded = b"HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\n\r\ncompressed";
+        assert_eq!(parse_http_success_body(encoded), None);
+
+        let incomplete = b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nabc";
+        assert_eq!(parse_http_success_body(incomplete), None);
     }
 
     #[test]

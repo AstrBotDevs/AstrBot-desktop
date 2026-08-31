@@ -13,9 +13,16 @@ use crate::{
 static DESKTOP_LOG_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static BACKEND_PATH_OVERRIDE: OnceLock<Option<OsString>> = OnceLock::new();
 
-pub(crate) fn navigate_main_window_to_backend(app_handle: &AppHandle) -> Result<(), String> {
+pub(crate) fn navigate_main_window_to_backend(
+    app_handle: &AppHandle,
+    cache_version: Option<&str>,
+) -> Result<(), String> {
     let state = app_handle.state::<BackendState>();
-    window::main_window::navigate_main_window_to_backend(app_handle, &state.backend_url)
+    window::main_window::navigate_main_window_to_backend(
+        app_handle,
+        &state.backend_url,
+        cache_version,
+    )
 }
 
 pub(crate) fn inject_desktop_bridge(webview: &tauri::Webview<tauri::Wry>) {
@@ -79,6 +86,9 @@ mod tests {
             cwd: PathBuf::from("."),
             root_dir: None,
             webui_dir: None,
+            webui_cache_version: None,
+            packaged_core_version: None,
+            packaged_webui_index_sha256: None,
             startup_heartbeat_path: None,
             packaged_mode: false,
         };

@@ -72,6 +72,21 @@ test('startup shell loads shared copy config, reuses applyStartupMode, and expos
     /if\s*\(status\.textContent\s*===\s*next\.status\)\s*return;/,
     'expected startup shell to skip duplicate status announcements',
   );
+  assert.match(
+    source,
+    /window\.__astrbotShowStartupError\s*=\s*\(message\)\s*=>/,
+    'expected startup failures to be rendered in the visible startup shell',
+  );
+  assert.match(
+    source,
+    /typeof\s+window\.__astrbotPendingStartupError\s*===\s*["']string["']/,
+    'expected failures dispatched before page load to be rendered after initialization',
+  );
+  assert.match(
+    source,
+    /panel\.classList\.add\(["']error["']\)/,
+    'expected startup failures to switch the shell into its error state',
+  );
 
   assert.match(
     configSource,

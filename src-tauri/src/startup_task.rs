@@ -18,13 +18,14 @@ where
         .and_then(|result| result);
 
         match startup_result {
-            Ok(()) => {
+            Ok(cache_version) => {
                 if let Err(error) = ui_dispatch::run_on_main_thread_dispatch(
                     &startup_app_handle,
                     "navigate backend",
-                    move |main_app| match navigate_main_window_to_backend(main_app) {
-                        Ok(()) => {}
-                        Err(navigate_error) => {
+                    move |main_app| {
+                        if let Err(navigate_error) =
+                            navigate_main_window_to_backend(main_app, cache_version.as_deref())
+                        {
                             ui_dispatch::show_startup_error(main_app, &navigate_error, log);
                         }
                     },

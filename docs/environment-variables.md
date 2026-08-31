@@ -18,7 +18,7 @@
 | `ASTRBOT_BRIDGE_BACKEND_PING_TIMEOUT_MS` | 桥接层 ping 超时 | 默认回退到 `ASTRBOT_BACKEND_PING_TIMEOUT_MS` |
 | `ASTRBOT_BACKEND_CMD` | 后端启动命令覆盖 | 未设置则按 launch plan 推导 |
 | `ASTRBOT_BACKEND_CWD` | 后端工作目录覆盖 | 未设置则按 launch plan 推导 |
-| `ASTRBOT_WEBUI_DIR` | WebUI 目录覆盖 | 未设置则按资源目录推导 |
+| `ASTRBOT_WEBUI_DIR` | 自定义/开发启动时的 WebUI 目录覆盖 | 打包版忽略该变量，以保证 Core 与 WebUI 来自同一已校验资源包 |
 | `ASTRBOT_ROOT` | AstrBot 根目录 | 未设置则按打包/临时目录回退 |
 | `ASTRBOT_DASHBOARD_HOST` | 后端读取的 dashboard host 变量 | 若 `DASHBOARD_HOST` 与本变量都未设置，打包态桌面默认写入 `DASHBOARD_HOST=127.0.0.1` |
 | `ASTRBOT_DASHBOARD_PORT` | 后端读取的 dashboard port 变量 | 若 `DASHBOARD_PORT` 与本变量都未设置，打包态桌面默认写入 `DASHBOARD_PORT=6185` |

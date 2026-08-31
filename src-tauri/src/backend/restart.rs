@@ -279,6 +279,10 @@ impl BackendState {
             Ok(())
                 if strategy != backend::restart_strategy::RestartStrategy::ManagedSkipGraceful =>
             {
+                self.verify_running_resource_identity(
+                    &plan,
+                    backend::runtime::backend_ping_timeout_ms(append_desktop_log).max(1_000),
+                )?;
                 return Ok(());
             }
             Ok(()) => {}
@@ -340,6 +344,9 @@ mod tests {
             cwd: std::path::PathBuf::from("."),
             root_dir: None,
             webui_dir: None,
+            webui_cache_version: None,
+            packaged_core_version: None,
+            packaged_webui_index_sha256: None,
             startup_heartbeat_path: None,
             packaged_mode: true,
         };

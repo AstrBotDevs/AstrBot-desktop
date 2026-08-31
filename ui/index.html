@@ -70,6 +70,8 @@
         color: var(--muted);
         line-height: 1.6;
         font-size: 14px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
       }
 
       .bar-wrap {
@@ -105,6 +107,27 @@
         background: var(--accent);
         box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5);
         animation: pulse 1.6s infinite ease-out;
+      }
+
+      .panel.error {
+        border-color: #f3b6b2;
+      }
+
+      .panel.error .bar-wrap {
+        display: none;
+      }
+
+      .panel.error .status {
+        color: #b42318;
+        align-items: flex-start;
+      }
+
+      .panel.error .dot {
+        flex: 0 0 auto;
+        margin-top: 6px;
+        background: #d92d20;
+        box-shadow: none;
+        animation: none;
       }
 
       @keyframes slide {
@@ -150,7 +173,8 @@
         const title = document.getElementById("startup-title");
         const desc = document.getElementById("startup-desc");
         const status = document.getElementById("startup-status");
-        if (!title || !desc || !status) return;
+        const panel = document.querySelector(".panel");
+        if (!title || !desc || !status || !panel) return;
         if (!window.astrbot || !window.astrbot.startupShell) return;
 
         const startupShell = window.astrbot.startupShell;
@@ -181,7 +205,24 @@
         window.__astrbotSetStartupMode = (mode) => {
           applyStartupMode(typeof mode === "string" ? mode : STARTUP_MODES.LOADING);
         };
+        window.__astrbotShowStartupError = (message) => {
+          const isEnglish = localeKey === "en";
+          panel.classList.add("error");
+          title.textContent = isEnglish ? "AstrBot failed to start" : "AstrBot 启动失败";
+          desc.textContent =
+            typeof message === "string" && message.trim()
+              ? message
+              : isEnglish
+                ? "An unknown startup error occurred."
+                : "启动时发生未知错误。";
+          status.textContent = isEnglish
+            ? "Resolve the issue above, then restart AstrBot Desktop."
+            : "请按上方提示处理后，重新启动 AstrBot 桌面端。";
+        };
         applyStartupMode(STARTUP_MODES.LOADING);
+        if (typeof window.__astrbotPendingStartupError === "string") {
+          window.__astrbotShowStartupError(window.__astrbotPendingStartupError);
+        }
       })();
     </script>
   </body>
