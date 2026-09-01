@@ -16,7 +16,9 @@ const versionsPath = '/api/v1/stats/versions';
 const webuiIndexPath = '/index.html';
 const maxVersionsResponseBytes = 64 * 1024;
 const maxIndexResponseBytes = 4 * 1024 * 1024;
-const maxEntryResponseBytes = 64 * 1024 * 1024;
+// Keep this in sync with MAX_BACKEND_HTTP_BODY_BYTES in src-tauri/src/backend/http.rs
+// so a resource accepted by release smoke checks cannot fail runtime identity verification.
+const maxEntryResponseBytes = 32 * 1024 * 1024;
 const sha256Pattern = /^[0-9a-f]{64}$/;
 
 const usageMessage = () => `
