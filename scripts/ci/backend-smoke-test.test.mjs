@@ -2,11 +2,52 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import { createServer } from 'node:http';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { test } from 'node:test';
 
-import { main, parseCliOptions, runCli, usageMessage } from './backend-smoke-test.mjs';
+import {
+  fetchIdentityBytesWithTimeout,
+  main,
+  parseCliOptions,
+  parseRuntimeIdentityManifest,
+  runCli,
+  usageMessage,
+  verifyRunningResourceIdentity,
+} from './backend-smoke-test.mjs';
+
+const sha256 = (content) => createHash('sha256').update(content).digest('hex');
+
+const createIdentityScenario = () => {
+  const indexBody = Buffer.from(
+    '<!doctype html><link rel="stylesheet" href="/assets/index.css"><script src="/assets/index.js"></script>',
+  );
+  const cssBody = Buffer.from('body { color: #123456; }\n');
+  const javascriptBody = Buffer.from('console.log("current");\n');
+  const manifest = {
+    python: 'python/python',
+    coreVersion: '4.27.5',
+    webui: {
+      version: '4.27.5',
+      indexSha256: sha256(indexBody),
+      entryAssets: [
+        { path: 'assets/index.css', sha256: sha256(cssBody) },
+        { path: 'assets/index.js', sha256: sha256(javascriptBody) },
+      ],
+    },
+  };
+  return {
+    manifest,
+    expectedIdentity: parseRuntimeIdentityManifest(manifest, 'runtime-manifest.json'),
+    indexBody,
+    entryBodies: new Map([
+      ['assets/index.css', cssBody],
+      ['assets/index.js', javascriptBody],
+    ]),
+  };
+};
 
 const createFixtureLayout = async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'astrbot-backend-smoke-test-'));
@@ -17,20 +58,64 @@ const createFixtureLayout = async () => {
   const launcherPath = path.join(backendDir, 'launch_backend.py');
   const mainPath = path.join(appDir, 'main.py');
   const pythonPath = path.join(pythonDir, 'python');
+  const scenario = createIdentityScenario();
 
   await mkdir(appDir, { recursive: true });
   await mkdir(pythonDir, { recursive: true });
-  await mkdir(webuiDir, { recursive: true });
+  await mkdir(path.join(webuiDir, 'assets'), { recursive: true });
   await writeFile(launcherPath, '# launcher', 'utf8');
   await writeFile(mainPath, '# main', 'utf8');
   await writeFile(pythonPath, '#!/bin/sh\n', 'utf8');
+  await writeFile(path.join(webuiDir, 'index.html'), scenario.indexBody);
+  for (const [entryPath, body] of scenario.entryBodies) {
+    await writeFile(path.join(webuiDir, entryPath), body);
+  }
   await writeFile(
     path.join(backendDir, 'runtime-manifest.json'),
-    JSON.stringify({ python: 'python/python' }),
+    JSON.stringify(scenario.manifest),
     'utf8',
   );
 
-  return { root, backendDir, webuiDir };
+  return { root, backendDir, webuiDir, ...scenario };
+};
+
+const createIdentityResponse = (body, status = 200) => ({
+  status,
+  ok: status >= 200 && status < 300,
+  body: Buffer.isBuffer(body) ? body : Buffer.from(body),
+});
+
+const createIdentityFetch = ({
+  coreVersion = '4.27.5',
+  runningVersions = {},
+  indexBody,
+  entryBodies,
+  entryStatuses = new Map(),
+}) => async (url) => {
+  const requestPath = new URL(url).pathname;
+  if (requestPath === '/api/v1/stats/versions') {
+    return createIdentityResponse(
+      JSON.stringify({
+        status: 'ok',
+        data: {
+          astrbot_version: runningVersions.core ?? coreVersion,
+          astrbot_code_version: runningVersions.code ?? coreVersion,
+          webui_version: runningVersions.webui ?? `v${coreVersion}`,
+        },
+      }),
+    );
+  }
+  if (requestPath === '/index.html') {
+    return createIdentityResponse(indexBody);
+  }
+  const entryPath = decodeURIComponent(requestPath.replace(/^\//, ''));
+  if (!entryBodies.has(entryPath)) {
+    return createIdentityResponse('missing', 404);
+  }
+  return createIdentityResponse(
+    entryBodies.get(entryPath),
+    entryStatuses.get(entryPath) ?? 200,
+  );
 };
 
 const createFakeChild = () => {
@@ -483,6 +568,175 @@ test('main fails when manifest.python points to a non-existent executable', asyn
   }
 });
 
+test('runtime manifest rejects mismatched Core and WebUI attestation versions', () => {
+  const scenario = createIdentityScenario();
+  assert.throws(
+    () =>
+      parseRuntimeIdentityManifest(
+        {
+          ...scenario.manifest,
+          webui: { ...scenario.manifest.webui, version: '4.27.0' },
+        },
+        'runtime-manifest.json',
+      ),
+    /Core\/WebUI version mismatch: Core is 4\.27\.5, WebUI is 4\.27\.0/,
+  );
+});
+
+test('running resource identity accepts matching versions, index, and every entry asset', async () => {
+  const scenario = createIdentityScenario();
+  const requestedPaths = [];
+  const fetchIdentity = createIdentityFetch(scenario);
+
+  await verifyRunningResourceIdentity({
+    backendUrl: 'http://127.0.0.1:6190/',
+    expectedIdentity: scenario.expectedIdentity,
+    timeoutMs: 2_000,
+    runtime: {
+      fetchIdentityBytesWithTimeout: async (...args) => {
+        requestedPaths.push(new URL(args[0]).pathname);
+        return fetchIdentity(...args);
+      },
+    },
+  });
+
+  assert.deepEqual(requestedPaths, [
+    '/api/v1/stats/versions',
+    '/index.html',
+    '/assets/index.css',
+    '/assets/index.js',
+  ]);
+});
+
+test('identity requests disable caches and compression and enforce response size limits', async () => {
+  const server = createServer((request, response) => {
+    assert.equal(request.headers['accept-encoding'], 'identity');
+    assert.equal(request.headers['cache-control'], 'no-cache');
+    assert.equal(request.headers.pragma, 'no-cache');
+    const body = request.url === '/oversized' ? 'four' : 'ok';
+    response.writeHead(200, { 'Content-Length': Buffer.byteLength(body) });
+    response.end(body);
+  });
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === 'object');
+
+  try {
+    const response = await fetchIdentityBytesWithTimeout(
+      `http://127.0.0.1:${address.port}/ok`,
+      2_000,
+      2,
+    );
+    assert.equal(response.status, 200);
+    assert.equal(response.body.toString('utf8'), 'ok');
+    await assert.rejects(
+      () =>
+        fetchIdentityBytesWithTimeout(
+          `http://127.0.0.1:${address.port}/oversized`,
+          2_000,
+          3,
+        ),
+      /Response exceeds 3 bytes/,
+    );
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('running resource identity rejects a mismatched Core, code, or WebUI version', async () => {
+  const scenario = createIdentityScenario();
+  await assert.rejects(
+    () =>
+      verifyRunningResourceIdentity({
+        backendUrl: 'http://127.0.0.1:6190/',
+        expectedIdentity: scenario.expectedIdentity,
+        timeoutMs: 2_000,
+        runtime: {
+          fetchIdentityBytesWithTimeout: createIdentityFetch({
+            ...scenario,
+            runningVersions: { code: '4.27.0' },
+          }),
+        },
+      }),
+    (error) =>
+      error instanceof Error &&
+      error.message.includes('Running Core/WebUI version mismatch') &&
+      error.message.includes('Core 4.27.5, code 4.27.0, WebUI 4.27.5'),
+  );
+});
+
+test('running resource identity rejects mismatched WebUI index content', async () => {
+  const scenario = createIdentityScenario();
+  await assert.rejects(
+    () =>
+      verifyRunningResourceIdentity({
+        backendUrl: 'http://127.0.0.1:6190/',
+        expectedIdentity: scenario.expectedIdentity,
+        timeoutMs: 2_000,
+        runtime: {
+          fetchIdentityBytesWithTimeout: createIdentityFetch({
+            ...scenario,
+            indexBody: Buffer.from('<!doctype html><title>stale</title>'),
+          }),
+        },
+      }),
+    (error) =>
+      error instanceof Error &&
+      error.message.includes('Running WebUI index SHA-256 mismatch') &&
+      error.message.includes(scenario.expectedIdentity.indexSha256),
+  );
+});
+
+test('running resource identity rejects mismatched WebUI entry content', async () => {
+  const scenario = createIdentityScenario();
+  const staleEntries = new Map(scenario.entryBodies);
+  staleEntries.set('assets/index.js', Buffer.from('console.log("stale");\n'));
+  await assert.rejects(
+    () =>
+      verifyRunningResourceIdentity({
+        backendUrl: 'http://127.0.0.1:6190/',
+        expectedIdentity: scenario.expectedIdentity,
+        timeoutMs: 2_000,
+        runtime: {
+          fetchIdentityBytesWithTimeout: createIdentityFetch({
+            ...scenario,
+            entryBodies: staleEntries,
+          }),
+        },
+      }),
+    (error) =>
+      error instanceof Error &&
+      error.message.includes('Running WebUI entry SHA-256 mismatch for assets/index.js') &&
+      error.message.includes(scenario.expectedIdentity.entryAssets[1].sha256),
+  );
+});
+
+test('running resource identity rejects a missing attested WebUI entry', async () => {
+  const scenario = createIdentityScenario();
+  const incompleteEntries = new Map(scenario.entryBodies);
+  incompleteEntries.delete('assets/index.js');
+  await assert.rejects(
+    () =>
+      verifyRunningResourceIdentity({
+        backendUrl: 'http://127.0.0.1:6190/',
+        expectedIdentity: scenario.expectedIdentity,
+        timeoutMs: 2_000,
+        runtime: {
+          fetchIdentityBytesWithTimeout: createIdentityFetch({
+            ...scenario,
+            entryBodies: incompleteEntries,
+          }),
+        },
+      }),
+    (error) =>
+      error instanceof Error &&
+      error.message.includes('Running WebUI entry is missing: assets/index.js'),
+  );
+});
+
 test('main succeeds on readiness and always runs terminate/cleanup', async () => {
   const fixture = await createFixtureLayout();
   try {
@@ -503,6 +757,10 @@ test('main succeeds on readiness and always runs terminate/cleanup', async () =>
         spawn: () => child,
         reserveLoopbackPort: async () => 6190,
         fetchWithTimeout: async () => ({ ok: true, status: 200 }),
+        fetchIdentityBytesWithTimeout: createIdentityFetch({
+          indexBody: fixture.indexBody,
+          entryBodies: fixture.entryBodies,
+        }),
         terminateChild: async (actualChild) => {
           assert.equal(actualChild, child);
           terminated += 1;
