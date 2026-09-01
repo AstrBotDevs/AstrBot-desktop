@@ -8,7 +8,9 @@ import {
   attestPreparedResourceBundle,
   extractWebuiEntryAssets,
   formatWebuiVersion,
+  MINIMUM_PACKAGED_CORE_VERSION,
   requiresDesktopCoreMatch,
+  validatePackagedCoreVersion,
   validatePreparedResourceBundle,
   validateWebuiResources,
   writeWebuiVersionMarker,
@@ -72,6 +74,32 @@ test('requiresDesktopCoreMatch mirrors the runtime stable-version rule', () => {
   assert.equal(requiresDesktopCoreMatch('4.27.5-01'), true);
 });
 
+test('validatePackagedCoreVersion accepts the minimum and newer SemVer variants', () => {
+  assert.equal(MINIMUM_PACKAGED_CORE_VERSION, '4.26.0');
+  assert.equal(validatePackagedCoreVersion('v4.26.0'), '4.26.0');
+  assert.equal(validatePackagedCoreVersion('V4.26.0+desktop.1'), '4.26.0+desktop.1');
+  assert.equal(validatePackagedCoreVersion('4.26.1-rc.1'), '4.26.1-rc.1');
+  assert.equal(validatePackagedCoreVersion('5.0.0-alpha.1'), '5.0.0-alpha.1');
+});
+
+test('validatePackagedCoreVersion rejects versions below the identity capability floor', () => {
+  for (const version of ['4.25.99', 'v4.26.0-rc.1']) {
+    assert.throws(
+      () => validatePackagedCoreVersion(version),
+      /packaged resource identity requires Core 4\.26\.0 or newer/,
+    );
+  }
+});
+
+test('validatePackagedCoreVersion rejects malformed semantic versions', () => {
+  for (const version of ['4.26', '4.26.0-01', '04.26.0', 'not-semver']) {
+    assert.throws(
+      () => validatePackagedCoreVersion(version),
+      /is not valid semantic version/,
+    );
+  }
+});
+
 test('extractWebuiEntryAssets finds local JavaScript and CSS entries', () => {
   const entries = extractWebuiEntryAssets(
     '<script src="/assets/app.js?x=1"></script>' +
@@ -95,6 +123,27 @@ test('validatePreparedResourceBundle accepts a matching stable bundle', async ()
 
     assert.equal(identity.webui.webuiVersion, '4.27.4');
     assert.equal(identity.backend.coreVersion, '4.27.4');
+  } finally {
+    await rm(fixture.projectRoot, { recursive: true, force: true });
+  }
+});
+
+test('validatePreparedResourceBundle rejects a Core below the packaged identity minimum', async () => {
+  const fixture = await createBundleFixture({
+    desktopVersion: '4.25.9',
+    coreVersion: '4.25.9',
+  });
+  try {
+    await assert.rejects(
+      validatePreparedResourceBundle({
+        projectRoot: fixture.projectRoot,
+        desktopVersion: '4.25.9',
+        coreVersion: 'v4.25.9',
+        sourceRepoRef: 'v4.25.9',
+        sourceRepoCommit: 'a'.repeat(40),
+      }),
+      /packaged resource identity requires Core 4\.26\.0 or newer/,
+    );
   } finally {
     await rm(fixture.projectRoot, { recursive: true, force: true });
   }

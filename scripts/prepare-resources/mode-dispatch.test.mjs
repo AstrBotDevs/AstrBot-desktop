@@ -7,10 +7,10 @@ import { runModeTasks } from './mode-dispatch.mjs';
 const createContext = (calls) => ({
   sourceDir: '/tmp/source',
   projectRoot: '/tmp/project',
-  desktopVersion: '4.19.2',
-  coreVersion: '4.19.2',
+  desktopVersion: '4.27.5',
+  coreVersion: '4.27.5',
   sourceRepoCommit: 'a'.repeat(40),
-  sourceRepoRef: 'v4.19.2',
+  sourceRepoRef: 'v4.27.5',
   isSourceRepoRefVersionTag: true,
   isDesktopBridgeExpectationStrict: false,
   pythonBuildStandaloneRelease: '20260211',
@@ -25,9 +25,21 @@ const createTaskRunner = (calls) => ({
 
 test('runModeTasks skips handlers in version mode', async () => {
   const calls = [];
+  const context = { ...createContext(calls), coreVersion: '4.17.5' };
 
-  await runModeTasks('version', createContext(calls), createTaskRunner(calls));
+  await runModeTasks('version', context, createTaskRunner(calls));
 
+  assert.deepEqual(calls, []);
+});
+
+test('runModeTasks rejects an unsupported Core before preparing packaged resources', async () => {
+  const calls = [];
+  const context = { ...createContext(calls), coreVersion: 'v4.25.9' };
+
+  await assert.rejects(
+    runModeTasks('all', context, createTaskRunner(calls)),
+    /packaged resource identity requires Core 4\.26\.0 or newer/,
+  );
   assert.deepEqual(calls, []);
 });
 

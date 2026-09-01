@@ -3,6 +3,7 @@ import {
   prepareWebui,
   validatePreparedResources,
 } from './mode-tasks.mjs';
+import { validatePackagedCoreVersion } from './resource-identity.mjs';
 
 const VALID_MODES = new Set(['version', 'webui', 'backend', 'all']);
 
@@ -37,6 +38,8 @@ export const runModeTasks = async (
   if (mode === 'version') {
     return;
   }
+
+  validatePackagedCoreVersion(coreVersion);
 
   if (mode === 'webui' || mode === 'all') {
     await taskRunner.prepareWebui({

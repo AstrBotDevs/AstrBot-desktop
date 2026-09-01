@@ -8,8 +8,9 @@ import { requiredRuntimeRelativePath } from '../backend/runtime-manifest.mjs';
 const VERSION_PREFIX_PATTERN = /^v/i;
 const LOCAL_ENTRY_PATTERN = /\.(?:css|js)$/i;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
-const SEMVER_CORE_PATTERN = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
-const SEMVER_IDENTIFIER_PATTERN = /^[0-9A-Za-z-]+$/;
+const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
+
+export const MINIMUM_PACKAGED_CORE_VERSION = '4.26.0';
 
 const sha256 = (content) => createHash('sha256').update(content).digest('hex');
 
@@ -24,38 +25,89 @@ export const normalizeResourceVersion = (version) => {
 export const formatWebuiVersion = (coreVersion) =>
   `v${normalizeResourceVersion(coreVersion)}`;
 
-export const requiresDesktopCoreMatch = (desktopVersion) => {
-  const normalized = normalizeResourceVersion(desktopVersion);
-  const buildParts = normalized.split('+');
+const parseSemver = (version) => {
+  const normalized = normalizeResourceVersion(version);
+  const match = SEMVER_PATTERN.exec(normalized);
+  if (!match) {
+    throw new Error(`Core version ${version} is not valid semantic version.`);
+  }
+  const prerelease = match[4] ? match[4].split('.') : [];
   if (
-    buildParts.length > 2 ||
-    (buildParts.length === 2 &&
-      (!buildParts[1] ||
-        !buildParts[1].split('.').every((part) => SEMVER_IDENTIFIER_PATTERN.test(part))))
+    prerelease.some(
+      (identifier) =>
+        /^\d+$/.test(identifier) &&
+        identifier.length > 1 &&
+        identifier.startsWith('0'),
+    )
   ) {
+    throw new Error(`Core version ${version} is not valid semantic version.`);
+  }
+  return {
+    normalized,
+    core: [BigInt(match[1]), BigInt(match[2]), BigInt(match[3])],
+    prerelease,
+  };
+};
+
+const compareSemver = (left, right) => {
+  for (let index = 0; index < left.core.length; index += 1) {
+    if (left.core[index] !== right.core[index]) {
+      return left.core[index] < right.core[index] ? -1 : 1;
+    }
+  }
+  if (left.prerelease.length === 0 && right.prerelease.length === 0) {
+    return 0;
+  }
+  if (left.prerelease.length === 0) {
+    return 1;
+  }
+  if (right.prerelease.length === 0) {
+    return -1;
+  }
+  const count = Math.max(left.prerelease.length, right.prerelease.length);
+  for (let index = 0; index < count; index += 1) {
+    const leftIdentifier = left.prerelease[index];
+    const rightIdentifier = right.prerelease[index];
+    if (leftIdentifier === undefined) {
+      return -1;
+    }
+    if (rightIdentifier === undefined) {
+      return 1;
+    }
+    if (leftIdentifier === rightIdentifier) {
+      continue;
+    }
+    const leftIsNumeric = /^\d+$/.test(leftIdentifier);
+    const rightIsNumeric = /^\d+$/.test(rightIdentifier);
+    if (leftIsNumeric && rightIsNumeric) {
+      return BigInt(leftIdentifier) < BigInt(rightIdentifier) ? -1 : 1;
+    }
+    if (leftIsNumeric !== rightIsNumeric) {
+      return leftIsNumeric ? -1 : 1;
+    }
+    return leftIdentifier < rightIdentifier ? -1 : 1;
+  }
+  return 0;
+};
+
+export const validatePackagedCoreVersion = (coreVersion) => {
+  const parsed = parseSemver(coreVersion);
+  const minimum = parseSemver(MINIMUM_PACKAGED_CORE_VERSION);
+  if (compareSemver(parsed, minimum) < 0) {
+    throw new Error(
+      `Packaged Core ${parsed.normalized} is unsupported: packaged resource identity requires Core ${MINIMUM_PACKAGED_CORE_VERSION} or newer because Desktop verifies /api/v1/stats/versions at startup.`,
+    );
+  }
+  return parsed.normalized;
+};
+
+export const requiresDesktopCoreMatch = (desktopVersion) => {
+  try {
+    return parseSemver(desktopVersion).prerelease.length === 0;
+  } catch {
+    // Match semver::Version on the Rust side: invalid versions fail closed as stable.
     return true;
   }
-  const versionWithoutBuild = buildParts[0];
-  const prereleaseSeparator = versionWithoutBuild.indexOf('-');
-  const core = prereleaseSeparator < 0
-    ? versionWithoutBuild
-    : versionWithoutBuild.slice(0, prereleaseSeparator);
-  if (!SEMVER_CORE_PATTERN.test(core)) {
-    return true;
-  }
-  if (prereleaseSeparator < 0) {
-    return true;
-  }
-  const prerelease = versionWithoutBuild.slice(prereleaseSeparator + 1);
-  const identifiers = prerelease.split('.');
-  const validPrerelease = identifiers.every(
-    (identifier) =>
-      SEMVER_IDENTIFIER_PATTERN.test(identifier) &&
-      (!/^\d+$/.test(identifier) || identifier === '0' || !identifier.startsWith('0')),
-  );
-  // Match semver::Version on the Rust side: invalid versions fail closed as
-  // stable, and build metadata alone does not make a release a prerelease.
-  return !validPrerelease;
 };
 
 const normalizeLocalAssetReference = (reference) => {
@@ -318,7 +370,7 @@ export const validatePreparedResourceBundle = async ({
   requireWebuiAttestation = false,
 }) => {
   const normalizedDesktopVersion = normalizeResourceVersion(desktopVersion);
-  const normalizedCoreVersion = normalizeResourceVersion(coreVersion);
+  const normalizedCoreVersion = validatePackagedCoreVersion(coreVersion);
   const packageJson = JSON.parse(await readFile(path.join(projectRoot, 'package.json'), 'utf8'));
   const packageVersion = normalizeResourceVersion(packageJson.version);
 
