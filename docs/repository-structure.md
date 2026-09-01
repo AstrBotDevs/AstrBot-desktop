@@ -80,7 +80,7 @@
   - `backend/runtime.rs`
     - backend 运行时参数（timeout/readiness/ping）解析与缓存。
   - `backend/readiness.rs`
-    - backend 就绪探测、等待轮询与超时日志收敛。
+    - backend 就绪探测、等待轮询、打包态 live Core/WebUI identity 校验与超时日志收敛。
   - `backend/restart.rs`
     - backend restart token 管理、graceful/fallback 策略与 bridge 状态组装。
   - `backend/restart_strategy.rs`
@@ -115,7 +115,7 @@
 - `restart_backend_flow.rs`
   - backend 重启任务与并发判定流程封装。
 - `launch_plan.rs`
-  - custom/packaged/dev 启动计划构建与路径解析。
+  - custom/packaged/dev 启动计划构建；打包态完整资源候选选择、manifest 绑定和 WebUI 摘要校验。
 - `startup_task.rs`
   - 启动阶段后端就绪等待与主线程导航分发。
 - `app_runtime.rs`
@@ -143,8 +143,17 @@
   - `webui/backend/all` 任务实现。
 - `desktop-bridge-checks.mjs`
   - bridge 相关校验。
+- `resource-identity.mjs`
+  - packaged Core 最低版本门禁、WebUI marker/index/入口校验，以及最终 Core/WebUI bundle attestation。
 - `*.test.mjs`
   - Node 行为测试。
+
+`scripts/backend/` 中与资源身份直接相关的模块：
+
+- `runtime-manifest.mjs`
+  - 生成 backend runtime manifest，规范 runtime 相对路径、Desktop/Core 版本和 source ref/commit 字段。
+
+正式 `prepare:resources` 会按 WebUI -> backend -> 最终 attestation 的顺序运行；`src-tauri/build.rs` 再把最终 manifest 摘要编入可执行文件。`version` 单独模式以及 Rust 的 debug/dev/custom external backend 路径不使用 packaged identity 门禁。
 
 ## 4. 文档组织（`docs/`）
 

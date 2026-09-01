@@ -130,26 +130,36 @@ backend 子系统对上提供统一的“后端可否管理、如何启动、何
 ### 3.3 资源与根目录解析
 
 - `runtime_paths.rs` 负责 packaged root、workspace root 和资源路径探测。
-- Tauri 资源路径支持直接资源路径和 `_up_/resources` 回退路径。
-- `launch_plan.rs` 根据当前模式决定 backend cwd、root_dir 和 webui_dir。
+- Tauri 资源路径支持直接资源路径和 `_up_/resources` 候选；`launch_plan.rs` 会把每个候选视为完整的 backend/WebUI 根，不跨根混用资源。
+- 正式构建会把最终 `runtime-manifest.json` 的 SHA-256 编入可执行文件；打包态只接受 manifest 摘要与当前可执行文件一致的候选。
+- `launch_plan.rs` 校验 Desktop/Core/WebUI 版本、manifest 路径、WebUI marker、index 和入口摘要，再决定 backend cwd、root_dir 和 webui_dir。
+- packaged Core 最低要求为 `4.26.0`，因为打包态 readiness 必须通过 `/api/v1/stats/versions` 核对实际运行的 Core/code/WebUI。该限制不应用于 debug/dev 启动计划或显式外部 backend。
 
 ## 4. 主要流程
 
-### 4.1 启动流程
+### 4.1 打包资源生成与身份绑定
+
+1. `scripts/prepare-resources.mjs all` 从同一个 AstrBot checkout 依次准备 WebUI 和 backend，避免两次任务之间 source ref 漂移。
+2. `resource-identity.mjs` 要求 Core `>=4.26.0`，写入 WebUI `assets/version`，并校验 index 及其本地 JavaScript/CSS 入口。
+3. `runtime-manifest.mjs` 生成 backend manifest；最终 attestation 加入 Desktop/Core/source 信息以及 WebUI marker/index/入口摘要。
+4. `src-tauri/build.rs` 对最终 manifest 原始字节计算 SHA-256 并编入可执行文件；release 构建缺少 manifest 时直接失败。
+
+### 4.2 启动流程
 
 1. `app_runtime.rs` 初始化 Tauri 插件、窗口事件、页面加载事件和托盘。
-2. `startup_task.rs` 异步解析启动计划，执行 backend readiness 检查与必要拉起。
-3. backend ready 后导航主窗口；失败时进入 startup error 路径。
-4. 页面加载过程中按来源策略注入 desktop bridge，并在需要时注入 startup loading mode。
+2. `startup_task.rs` 异步解析启动计划；打包态从 direct / `_up_/resources` 中选取与可执行文件绑定的完整资源根，开发态仍使用独立的 dev/custom 计划。
+3. backend readiness 在接受已运行或刚拉起的打包 backend 前，校验 `/api/v1/stats/versions`，并核对实际送出的 index 和 manifest 声明的入口摘要。
+4. backend ready 后用 manifest 摘要生成的 `astrbot_bundle` 查询参数导航主窗口；失败时进入可见的 startup error 路径。
+5. 页面加载过程中按来源策略注入 desktop bridge，并在需要时注入 startup loading mode。
 
-### 4.2 bridge 注入与桌面交互流程
+### 4.3 bridge 注入与桌面交互流程
 
 1. `bridge/origin_policy.rs` 判断当前页面是否允许注入 desktop bridge。
 2. `bridge/desktop.rs` 把 bootstrap 脚本注入 WebView。
 3. WebUI 通过 `bridge/commands.rs` 调用 desktop IPC。
 4. tray / window 子系统根据当前 locale 和窗口状态刷新文案与可见性。
 
-### 4.3 更新检查/安装流程
+### 4.4 更新检查/安装流程
 
 1. `bridge/commands.rs` 先用 `bridge/updater_mode.rs` 判定当前 updater 模式。
 2. `ManualDownload` / `Unsupported` 直接短路，复用 `bridge/updater_messages.rs` 和 `bridge/updater_types.rs` 返回统一结果。
@@ -157,14 +167,14 @@ backend 子系统对上提供统一的“后端可否管理、如何启动、何
 4. updater manifest endpoint 优先取 `ASTRBOT_DESKTOP_UPDATER_STABLE_ENDPOINT` / `ASTRBOT_DESKTOP_UPDATER_NIGHTLY_ENDPOINT`，否则回退到 `tauri.conf.json`。
 5. 版本比较仍由 `update_channel.rs` 统一控制 stable / nightly 跨通道规则。
 
-### 4.4 重启流程
+### 4.5 重启流程
 
 1. 触发源来自 tray 菜单或 bridge IPC。
 2. `restart_backend_flow.rs` 统一处理并发门禁。
 3. `backend/restart.rs` 和 `backend/restart_strategy.rs` 决定 graceful 或 fallback 路径。
 4. 完成后刷新 bridge / tray 侧可观察状态。
 
-### 4.5 退出流程
+### 4.6 退出流程
 
 1. `lifecycle/events.rs` 在 `ExitRequested` 阶段先阻止直接退出。
 2. `exit_state.rs` 尝试进入清理态。
@@ -179,11 +189,15 @@ backend 子系统对上提供统一的“后端可否管理、如何启动、何
   - 源码仓库 URL/ref、clone/fetch/checkout。
 - `scripts/prepare-resources/version-sync.mjs`
   - 桌面版本同步。
+- `scripts/prepare-resources/resource-identity.mjs`
+  - packaged Core 最低能力门禁、WebUI marker/index/入口校验，以及最终 Core/WebUI attestation。
 - `scripts/prepare-resources/backend-runtime.mjs`
   - CPython runtime 准备。
 - `scripts/prepare-resources/mode-tasks.mjs`
   - WebUI / backend 资源准备任务。
 - `scripts/prepare-resources/desktop-bridge-checks.mjs`
   - bridge 工件校验。
+- `scripts/backend/runtime-manifest.mjs`
+  - backend runtime manifest 字段、相对路径和 source identity 生成规则。
 
 当前本地和 CI 主要通过 `make lint`、`make test`、`check-rust.yml`、`check-scripts.yml` 维持这些边界。

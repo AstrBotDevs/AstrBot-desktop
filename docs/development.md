@@ -95,10 +95,12 @@ make prune
 
 ```bash
 make update
-make update ASTRBOT_SOURCE_GIT_REF=v4.17.5
-make build ASTRBOT_DESKTOP_VERSION=v4.17.5
+make update ASTRBOT_SOURCE_GIT_REF=v4.26.0
+make build ASTRBOT_SOURCE_GIT_REF=v4.26.0 ASTRBOT_DESKTOP_VERSION=v4.26.0
 make build ASTRBOT_BUILD_SOURCE_DIR=/path/to/AstrBot
 ```
+
+正式打包要求 AstrBot Core `>=4.26.0`。这是 `/api/v1/stats/versions` 首次可用于 Desktop 启动期 Core/code/WebUI 身份核对的版本；更早的 Core 会在 packaged resource 准备开始时明确失败。`make dev` 的开发启动计划和显式配置的外部 backend 不使用这条 packaged identity 门禁。
 
 如果需要清理构建相关环境变量：
 
@@ -118,9 +120,14 @@ beforeBuildCommand = pnpm run prepare:resources
 构建时会自动完成以下步骤：
 
 1. 拉取或更新 AstrBot 源码。
-2. 构建并同步 `resources/webui`。
-3. 准备 `resources/backend`（包括运行时与启动脚本）。
-4. 执行 Tauri 打包。
+2. 校验 packaged Core 至少为 `4.26.0`。
+3. 从同一个 source checkout 构建并同步 `resources/webui`，写入 `assets/version`，校验 index 与本地 JavaScript/CSS 入口。
+4. 准备 `resources/backend`（包括运行时与启动脚本），生成包含 Desktop/Core/source identity 的 `runtime-manifest.json`。
+5. 把 WebUI version/index/入口摘要写入最终 manifest，并再次校验整套资源。
+6. `src-tauri/build.rs` 把最终 manifest 的 SHA-256 编入可执行文件；release 构建缺少 manifest 时失败。
+7. 执行 Tauri 打包。
+
+运行时不会把 direct 与 `_up_/resources` 下的 backend/WebUI 混用。打包启动计划只接受 manifest 摘要与当前可执行文件一致的完整资源根，并在导航前核对运行中 backend 的公开版本、served index 和入口资产。主窗口 URL 使用该 manifest 摘要作为 `astrbot_bundle` 缓存身份。
 
 补充说明：主窗口当前显式设置了 `backgroundThrottling = "disabled"`，用于缓解 macOS 上窗口隐藏或转入后台后 `WKWebView` 被系统节流/挂起导致的前端假死问题。根据当前 Tauri 2 配置能力，该选项在 macOS 14+ 上生效；更早版本的 macOS 会回退到系统默认后台策略。
 
