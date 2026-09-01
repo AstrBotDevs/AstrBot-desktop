@@ -1,7 +1,7 @@
 use std::{
     io::{ErrorKind, Read, Write},
     net::{TcpStream, ToSocketAddrs},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use url::Url;
@@ -11,6 +11,19 @@ use crate::{
     desktop_auth::{DesktopAuthSession, DESKTOP_SESSION_ENDPOINT, DESKTOP_SESSION_HEADER},
     BackendState, DESKTOP_AUTH_REQUEST_TIMEOUT_MS, GRACEFUL_RESTART_START_TIME_TIMEOUT_MS,
 };
+
+const MAX_BACKEND_HTTP_HEADER_BYTES: usize = 64 * 1024;
+const MAX_BACKEND_HTTP_BODY_BYTES: usize = 32 * 1024 * 1024;
+
+trait ResponseReader: Read {
+    fn set_response_read_timeout(&self, timeout: Duration) -> std::io::Result<()>;
+}
+
+impl ResponseReader for TcpStream {
+    fn set_response_read_timeout(&self, timeout: Duration) -> std::io::Result<()> {
+        self.set_read_timeout(Some(timeout))
+    }
+}
 
 #[derive(Default)]
 struct BackendRequestOptions<'a> {
@@ -78,15 +91,23 @@ impl BackendState {
         let host = request_url.host_str()?;
         let port = request_url.port_or_known_default().unwrap_or(80);
         let timeout = Duration::from_millis(timeout_ms.max(50));
+        let deadline = Instant::now().checked_add(timeout)?;
         let addrs = (host, port).to_socket_addrs().ok()?;
         let mut stream = addrs.into_iter().find_map(|address| {
             if options.require_loopback && !is_loopback_socket_address(&address) {
                 return None;
             }
-            TcpStream::connect_timeout(&address, timeout).ok()
+            let remaining = deadline.checked_duration_since(Instant::now())?;
+            if remaining.is_zero() {
+                return None;
+            }
+            TcpStream::connect_timeout(&address, remaining).ok()
         })?;
-        let _ = stream.set_read_timeout(Some(timeout));
-        let _ = stream.set_write_timeout(Some(timeout));
+        let write_timeout = deadline.checked_duration_since(Instant::now())?;
+        if write_timeout.is_zero() {
+            return None;
+        }
+        let _ = stream.set_write_timeout(Some(write_timeout));
 
         let mut request_target = request_url.path().to_string();
         if let Some(query) = request_url.query() {
@@ -129,7 +150,7 @@ Content-Length: {}\r\n\
             return None;
         }
 
-        read_http_response_bytes(&mut stream)
+        read_http_response_bytes(&mut stream, deadline)
     }
 
     pub(crate) fn request_backend_with<T, F>(
@@ -289,23 +310,54 @@ fn sanitize_desktop_session_secret(value: &str) -> Option<&str> {
     Some(value)
 }
 
-fn read_http_response_bytes<R: Read>(reader: &mut R) -> Option<Vec<u8>> {
+fn response_exceeds_limits(raw: &[u8]) -> bool {
+    let Some(header_end) = raw.windows(4).position(|window| window == b"\r\n\r\n") else {
+        return raw.len() > MAX_BACKEND_HTTP_HEADER_BYTES;
+    };
+    let header_length = header_end + 4;
+    if header_length > MAX_BACKEND_HTTP_HEADER_BYTES {
+        return true;
+    }
+
+    let body_length = raw.len().saturating_sub(header_length);
+    if body_length > MAX_BACKEND_HTTP_BODY_BYTES {
+        return true;
+    }
+
+    let header_text = String::from_utf8_lossy(&raw[..header_length]);
+    header_text
+        .lines()
+        .filter_map(|line| line.split_once(':'))
+        .find(|(name, _)| name.trim().eq_ignore_ascii_case("content-length"))
+        .and_then(|(_, value)| value.trim().parse::<usize>().ok())
+        .is_some_and(|declared| declared > MAX_BACKEND_HTTP_BODY_BYTES)
+}
+
+fn read_http_response_bytes<R: ResponseReader>(
+    reader: &mut R,
+    deadline: Instant,
+) -> Option<Vec<u8>> {
     let mut response = Vec::new();
     let mut chunk = [0u8; 4096];
     loop {
+        let remaining = deadline.checked_duration_since(Instant::now())?;
+        if remaining.is_zero() {
+            return None;
+        }
+        reader.set_response_read_timeout(remaining).ok()?;
         match reader.read(&mut chunk) {
             Ok(0) => break,
             Ok(read) => {
                 response.extend_from_slice(&chunk[..read]);
+                if Instant::now() >= deadline || response_exceeds_limits(&response) {
+                    return None;
+                }
                 if is_complete_http_response(&response) {
                     break;
                 }
             }
             Err(error) if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
-                if response.is_empty() {
-                    return None;
-                }
-                break;
+                return None;
             }
             Err(_) => return None,
         }
@@ -406,10 +458,16 @@ mod tests {
     }
 
     #[test]
-    fn read_http_response_bytes_keeps_partial_data_on_timeout() {
+    fn read_http_response_bytes_rejects_partial_data_on_timeout() {
         struct TimeoutReader {
             chunks: Vec<Result<&'static [u8], std::io::ErrorKind>>,
             index: usize,
+        }
+
+        impl ResponseReader for TimeoutReader {
+            fn set_response_read_timeout(&self, _timeout: Duration) -> std::io::Result<()> {
+                Ok(())
+            }
         }
 
         impl Read for TimeoutReader {
@@ -437,7 +495,64 @@ mod tests {
             ],
             index: 0,
         };
-        let bytes = read_http_response_bytes(&mut reader).expect("expected partial response");
-        assert_eq!(bytes, b"HTTP/1.1 200 OK\r\n");
+        assert!(
+            read_http_response_bytes(&mut reader, Instant::now() + Duration::from_secs(1))
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn response_limits_reject_oversized_headers_bodies_and_content_length() {
+        assert!(response_exceeds_limits(&vec![
+            b'a';
+            MAX_BACKEND_HTTP_HEADER_BYTES
+                + 1
+        ]));
+
+        let oversized_length = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n",
+            MAX_BACKEND_HTTP_BODY_BYTES + 1
+        );
+        assert!(response_exceeds_limits(oversized_length.as_bytes()));
+
+        let mut oversized_body = b"HTTP/1.1 200 OK\r\n\r\n".to_vec();
+        oversized_body.resize(oversized_body.len() + MAX_BACKEND_HTTP_BODY_BYTES + 1, b'x');
+        assert!(response_exceeds_limits(&oversized_body));
+    }
+
+    #[test]
+    fn read_http_response_bytes_enforces_an_absolute_deadline_across_trickle_reads() {
+        struct TrickleReader {
+            chunks: Vec<&'static [u8]>,
+            index: usize,
+        }
+
+        impl ResponseReader for TrickleReader {
+            fn set_response_read_timeout(&self, _timeout: Duration) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        impl Read for TrickleReader {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.index >= self.chunks.len() {
+                    return Ok(0);
+                }
+                std::thread::sleep(Duration::from_millis(35));
+                let bytes = self.chunks[self.index];
+                self.index += 1;
+                buf[..bytes.len()].copy_from_slice(bytes);
+                Ok(bytes.len())
+            }
+        }
+
+        let mut reader = TrickleReader {
+            chunks: vec![b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n", b"test"],
+            index: 0,
+        };
+        assert!(
+            read_http_response_bytes(&mut reader, Instant::now() + Duration::from_millis(50))
+                .is_none()
+        );
     }
 }
