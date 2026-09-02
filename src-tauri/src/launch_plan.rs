@@ -19,6 +19,10 @@ const BACKEND_RESOURCE_ALIAS: &str = env!("ASTRBOT_BACKEND_RESOURCE_ALIAS");
 const WEBUI_RESOURCE_ALIAS: &str = env!("ASTRBOT_WEBUI_RESOURCE_ALIAS");
 const PACKAGED_RUNTIME_MANIFEST_SHA256: &str = env!("ASTRBOT_RUNTIME_MANIFEST_SHA256");
 
+fn should_attempt_packaged_launch(debug_assertions_enabled: bool) -> bool {
+    !debug_assertions_enabled
+}
+
 #[derive(Debug)]
 struct PackagedResourceCandidate {
     label: &'static str,
@@ -450,6 +454,11 @@ pub fn resolve_packaged_launch<F>(
 where
     F: Fn(&str) + Copy,
 {
+    if !should_attempt_packaged_launch(cfg!(debug_assertions)) {
+        log("skipping packaged resource resolution in a debug/development build");
+        return Ok(None);
+    }
+
     let expected_desktop_version = app.package_info().version.to_string();
     let candidates = [
         PackagedResourceLocation::Direct,
@@ -458,29 +467,12 @@ where
     .into_iter()
     .map(|location| resolve_packaged_resource_candidate(app, location))
     .collect::<Vec<_>>();
-    let has_packaged_manifest = candidates.iter().any(|candidate| {
-        candidate.as_ref().is_ok_and(|candidate| {
-            candidate
-                .backend_dir
-                .join("runtime-manifest.json")
-                .is_file()
-        })
-    });
     let selected = match select_packaged_resources(
         &expected_desktop_version,
         PACKAGED_RUNTIME_MANIFEST_SHA256,
         candidates,
     ) {
         Ok(selected) => selected,
-        Err(failures) if cfg!(debug_assertions) && !has_packaged_manifest => {
-            for failure in failures {
-                log(&format!(
-                    "packaged resource candidate {} unavailable in development: {}",
-                    failure.label, failure.reason
-                ));
-            }
-            return Ok(None);
-        }
         Err(failures) => {
             return Err(packaged_resources_unavailable_error(
                 &expected_desktop_version,
@@ -732,6 +724,12 @@ mod tests {
                 None => env::remove_var(self.key),
             }
         }
+    }
+
+    #[test]
+    fn debug_builds_skip_packaged_launch_while_release_builds_keep_it() {
+        assert!(!should_attempt_packaged_launch(true));
+        assert!(should_attempt_packaged_launch(false));
     }
 
     #[test]
