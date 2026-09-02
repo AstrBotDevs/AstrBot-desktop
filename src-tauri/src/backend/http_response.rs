@@ -96,15 +96,16 @@ fn decode_chunked_body(mut input: &[u8]) -> Option<Vec<u8>> {
         if chunk_size == 0 {
             return Some(output);
         }
-        if input.len() < chunk_size + 2 {
+        let required_length = chunk_size.checked_add(2)?;
+        if input.len() < required_length {
             return None;
         }
 
         output.extend_from_slice(&input[..chunk_size]);
-        if &input[chunk_size..chunk_size + 2] != b"\r\n" {
+        if &input[chunk_size..required_length] != b"\r\n" {
             return None;
         }
-        input = &input[chunk_size + 2..];
+        input = &input[required_length..];
     }
 }
 
@@ -159,6 +160,18 @@ mod tests {
     fn parse_http_json_response_rejects_invalid_chunk_payload() {
         let raw = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nabcde";
         assert!(parse_http_json_response(raw).is_none());
+    }
+
+    #[test]
+    fn parse_http_success_body_rejects_overflowing_chunk_size_without_panicking() {
+        let raw = format!(
+            "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n{:x}\r\nx",
+            usize::MAX
+        );
+
+        let result = std::panic::catch_unwind(|| parse_http_success_body(raw.as_bytes()));
+
+        assert!(matches!(result, Ok(None)));
     }
 
     #[test]
