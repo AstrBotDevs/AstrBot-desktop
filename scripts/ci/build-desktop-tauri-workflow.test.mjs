@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
 import {
   extractWorkflowJobSteps,
@@ -180,6 +183,12 @@ test('release workflow publishes immutable R2 objects before promoting the chann
   assert.ok(immutableUploadIndex < publicObjectVerificationIndex);
   assert.ok(publicObjectVerificationIndex < githubReleaseIndex);
   assert.ok(githubReleaseIndex < channelPromotionIndex);
+  for (const index of [immutableUploadIndex, publicObjectVerificationIndex, channelPromotionIndex]) {
+    assert.equal(
+      steps[index].if,
+      "${{ needs.resolve_build_context.outputs.build_mode == 'tag-poll' }}",
+    );
+  }
   assert.match(steps[immutableUploadIndex].run, /--phase artifacts/);
   assert.match(steps[publicObjectVerificationIndex].run, /urlsplit\(url\)/);
   assert.match(steps[publicObjectVerificationIndex].run, /--retry-max-time 300/);
@@ -191,7 +200,7 @@ test('release workflow publishes immutable R2 objects before promoting the chann
   );
 });
 
-test('updater manifest generation points release artifacts at the R2 public origin', async () => {
+test('updater manifest generation uses GitHub for nightly and R2 for stable', async () => {
   const workflowObject = await readWorkflowObject(WORKFLOW_FILE);
   const steps = extractWorkflowJobSteps(workflowObject, RELEASE_JOB);
   const manifestStep = findStep(
@@ -201,9 +210,45 @@ test('updater manifest generation points release artifacts at the R2 public orig
   );
 
   assert.equal(manifestStep.id, 'updater_manifest');
-  assert.match(
-    manifestStep.run,
-    /--asset-base-url "\$\{R2_PUBLIC_BASE_URL%\/\}\/desktop\/releases\/\$\{RELEASE_VERSION\}\/\$\{R2_RELEASE_ID\}"/,
-  );
+  assert.equal(manifestStep.if, "${{ needs.resolve_build_context.outputs.build_mode != 'custom' }}");
   assert.equal(manifestStep.env?.R2_RELEASE_ID, '${{ github.run_id }}-${{ github.run_attempt }}');
+
+  for (const buildMode of ['nightly', 'tag-poll']) {
+    const root = await mkdtemp(path.join(tmpdir(), 'astrbot-manifest-'));
+    try {
+      const nightly = buildMode === 'nightly';
+      const channel = nightly ? 'nightly' : 'stable';
+      const version = nightly ? '4.19.2-nightly.20260306.7ac169c5' : '4.19.2';
+      const tag = nightly ? 'nightly' : 'v4.19.2';
+      const artifact = `AstrBot_4.19.2_windows_amd64_setup${nightly ? '_nightly_7ac169c5' : ''}.exe`;
+      const artifactsRoot = path.join(root, 'release-artifacts');
+      await mkdir(artifactsRoot);
+      await writeFile(path.join(artifactsRoot, artifact), 'installer');
+      await writeFile(path.join(artifactsRoot, `${artifact}.sig`), 'test-signature');
+      const result = spawnSync('bash', ['-c', manifestStep.run], {
+        cwd: root,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PYTHONPATH: process.cwd(),
+          BUILD_MODE: buildMode,
+          RELEASE_TAG: tag,
+          RELEASE_VERSION: version,
+          GITHUB_REPOSITORY: 'AstrBotDevs/AstrBot-desktop',
+          GITHUB_OUTPUT: path.join(root, 'outputs'),
+          R2_PUBLIC_BASE_URL: nightly ? '' : 'https://releases.astrbot.app',
+          R2_RELEASE_ID: '123-1',
+        },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      const manifest = JSON.parse(await readFile(path.join(artifactsRoot, `latest-${channel}.json`), 'utf8'));
+      const assetBase = nightly
+        ? `https://github.com/AstrBotDevs/AstrBot-desktop/releases/download/${tag}`
+        : `https://releases.astrbot.app/desktop/releases/${version}/123-1`;
+      assert.equal(manifest.channel, channel);
+      assert.equal(manifest.platforms['windows-x86_64'].url, `${assetBase}/${artifact}`);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
 });

@@ -129,8 +129,9 @@ beforeBuildCommand = pnpm run prepare:resources
 - 定时构建（`schedule`）检测到上游新 tag 时，会先自动同步版本文件并提交，再继续构建。
 - 手动触发（`workflow_dispatch`）默认只构建，不自动回写版本文件。
 - Desktop 使用独立 updater manifest，不复用 AstrBot Core 的 `api.soulter.top/releases` 更新索引。
-- stable/nightly 的更新入口分别为 `https://releases.astrbot.app/desktop/channels/stable/latest.json` 和 `https://releases.astrbot.app/desktop/channels/nightly/latest.json`。
-- GitHub Actions 会把完整安装包继续发布到 GitHub Releases，同时将 updater 产物上传到 Cloudflare R2：先上传并校验不可变的版本目录，再更新 GitHub Release，最后原子提升通道 manifest。
+- stable/nightly 的更新入口分别为 `https://releases.astrbot.app/desktop/channels/stable/latest.json` 和 `https://github.com/AstrBotDevs/AstrBot-desktop/releases/download/nightly/latest-nightly.json`。
+- GitHub Actions 会把完整安装包继续发布到 GitHub Releases，仅 stable（`tag-poll`）将 updater 产物上传到 Cloudflare R2：先上传并校验不可变的版本目录，再更新 GitHub Release，最后原子提升通道 manifest。
+- nightly 的更新清单与更新包仅发布到 GitHub Releases，不上传 R2。
 - R2 bucket、repository variables/secrets 和对象目录约定见 [`docs/environment-variables.md`](./environment-variables.md#4-发布ci-github-actions)。
 - 发布与 updater 相关行为依赖 `src-tauri/tauri.conf.json`、GitHub Actions workflow 以及 `scripts/ci/generate_tauri_latest_json.py`、`scripts/ci/publish_r2_release.py` 共同完成。
 

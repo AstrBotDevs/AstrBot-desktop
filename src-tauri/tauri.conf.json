@@ -71,7 +71,7 @@
       ],
       "channelEndpoints": {
         "stable": "https://releases.astrbot.app/desktop/channels/stable/latest.json",
-        "nightly": "https://releases.astrbot.app/desktop/channels/nightly/latest.json"
+        "nightly": "https://github.com/AstrBotDevs/AstrBot-desktop/releases/download/nightly/latest-nightly.json"
       },
       "windows": {
         "installMode": "passive"

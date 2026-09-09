@@ -86,13 +86,13 @@ Windows 对应路径通常为 `C:\Users\<用户名>\.astrbot\data\cmd_config.jso
 | `ASTRBOT_DESKTOP_UPDATER_PUBLIC_KEY` | updater 公钥透传到构建步骤 | 默认空；当前由 `.github/workflows/build-desktop-tauri.yml` 传递，Rust 运行时不直接解析 |
 | `ASTRBOT_DESKTOP_TARGET_ARCH` | 透传矩阵目标架构给资源准备脚本 | 默认空；Windows workflow 当前会传 `matrix.arch`，避免在 WOA 上误用仿真层 Node 的 `process.arch` |
 | `ASTRBOT_DESKTOP_WINDOWS_ARM_BACKEND_ARCH` | 透传 Windows ARM64 backend runtime 架构覆盖配置到构建步骤 | 默认空；具体取值与默认行为见第 2 节 |
-| `R2_ACCOUNT_ID` | Cloudflare 账户 ID，用于拼接 R2 S3 endpoint | GitHub Actions repository variable；发布 stable/nightly 时必填 |
+| `R2_ACCOUNT_ID` | Cloudflare 账户 ID，用于拼接 R2 S3 endpoint | GitHub Actions repository variable；发布 stable（`tag-poll`）时必填；nightly 不使用 R2 |
 | `R2_BUCKET` | Desktop 发布对象所在的 R2 bucket | GitHub Actions repository variable；默认 `astrbot-desktop-releases` |
 | `R2_PUBLIC_BASE_URL` | manifest 和 updater 产物的公网基地址 | GitHub Actions repository variable；默认 `https://releases.astrbot.app` |
 | `R2_ACCESS_KEY_ID` | R2 S3 API Access Key ID | GitHub Actions repository secret；仅授予发布 bucket 的 Object Read & Write |
 | `R2_SECRET_ACCESS_KEY` | R2 S3 API Secret Access Key | GitHub Actions repository secret；禁止写入仓库、日志或构建产物 |
 
-R2 发布目录约定：
+R2 仅用于 stable 发布；nightly 的更新清单与更新包使用 GitHub Releases。R2 发布目录约定：
 
 ```text
 desktop/releases/<version>/<github-run-id>-<run-attempt>/<artifact>

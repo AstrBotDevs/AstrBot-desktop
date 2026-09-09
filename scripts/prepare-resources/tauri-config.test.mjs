@@ -36,11 +36,11 @@ test('main Tauri window starts hidden to avoid silent-launch flash', async () =>
   );
 });
 
-test('desktop updater channels use the dedicated R2 manifest origin', async () => {
+test('desktop updater uses R2 for stable and GitHub Releases for nightly', async () => {
   const tauriConfig = JSON.parse(await readFile(tauriConfigPath, 'utf8'));
   const updater = tauriConfig?.plugins?.updater;
   const stableEndpoint = 'https://releases.astrbot.app/desktop/channels/stable/latest.json';
-  const nightlyEndpoint = 'https://releases.astrbot.app/desktop/channels/nightly/latest.json';
+  const nightlyEndpoint = 'https://github.com/AstrBotDevs/AstrBot-desktop/releases/download/nightly/latest-nightly.json';
 
   assert.deepEqual(updater?.endpoints, [stableEndpoint]);
   assert.deepEqual(updater?.channelEndpoints, {

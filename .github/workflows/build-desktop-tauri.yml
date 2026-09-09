@@ -707,27 +707,29 @@ jobs:
         run: |
           set -euo pipefail
 
+          manifest_args=(--artifacts-root release-artifacts)
           manifest_channel="stable"
           manifest_output="release-artifacts/latest-stable.json"
           if [ "${BUILD_MODE}" = "nightly" ]; then
             manifest_channel="nightly"
             manifest_output="release-artifacts/latest-nightly.json"
+          else
+            manifest_args+=(--asset-base-url "${R2_PUBLIC_BASE_URL%/}/desktop/releases/${RELEASE_VERSION}/${R2_RELEASE_ID}")
           fi
 
           python3 -m scripts.ci.generate_tauri_latest_json \
-            --artifacts-root release-artifacts \
             --repo "${GITHUB_REPOSITORY}" \
             --tag "${RELEASE_TAG}" \
             --version "${RELEASE_VERSION}" \
             --channel "${manifest_channel}" \
-            --asset-base-url "${R2_PUBLIC_BASE_URL%/}/desktop/releases/${RELEASE_VERSION}/${R2_RELEASE_ID}" \
+            "${manifest_args[@]}" \
             --output "${manifest_output}"
 
           printf 'channel=%s\n' "${manifest_channel}" >> "${GITHUB_OUTPUT}"
           printf 'path=%s\n' "${manifest_output}" >> "${GITHUB_OUTPUT}"
 
       - name: Upload immutable release objects to Cloudflare R2
-        if: ${{ needs.resolve_build_context.outputs.build_mode != 'custom' }}
+        if: ${{ needs.resolve_build_context.outputs.build_mode == 'tag-poll' }}
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -763,7 +765,7 @@ jobs:
             --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
       - name: Verify immutable R2 updater objects on public origin
-        if: ${{ needs.resolve_build_context.outputs.build_mode != 'custom' }}
+        if: ${{ needs.resolve_build_context.outputs.build_mode == 'tag-poll' }}
         env:
           R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
           UPDATER_MANIFEST: ${{ steps.updater_manifest.outputs.path }}
@@ -835,7 +837,7 @@ jobs:
           fail_on_unmatched_files: true
 
       - name: Promote Cloudflare R2 updater channel
-        if: ${{ needs.resolve_build_context.outputs.build_mode != 'custom' }}
+        if: ${{ needs.resolve_build_context.outputs.build_mode == 'tag-poll' }}
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
