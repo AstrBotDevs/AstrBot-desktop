@@ -852,7 +852,26 @@
         channel: typeof channel === 'string' ? channel : String(channel ?? ''),
       }),
     checkForAppUpdate: () => invokeBridge(BRIDGE_COMMANDS.CHECK_APP_UPDATE),
-    installAppUpdate: () => invokeBridge(BRIDGE_COMMANDS.INSTALL_APP_UPDATE),
+    installAppUpdate: async (onProgress) => {
+      let unlisten;
+      try {
+        if (typeof onProgress === 'function') {
+          try {
+            // Subscribe before invoking so the first download event is not lost.
+            unlisten = await createEventListener('astrbot://app-update-progress', (event) => {
+              try { onProgress(event?.payload); } catch {}
+            });
+          } catch (error) {
+            console.warn('Failed to listen for app update progress', error);
+          }
+        }
+        return await invokeBridge(BRIDGE_COMMANDS.INSTALL_APP_UPDATE);
+      } finally {
+        if (typeof unlisten === 'function') {
+          try { await unlisten(); } catch {}
+        }
+      }
+    },
   };
 
   installNavigationBridges();

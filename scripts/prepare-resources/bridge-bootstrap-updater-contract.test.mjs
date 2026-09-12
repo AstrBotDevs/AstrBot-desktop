@@ -54,8 +54,12 @@ function runBootstrap(source, authResults, sharedState = {}) {
   };
   const window = {
     __TAURI_INTERNALS__: {
+      event: sharedState.event,
       async invoke(command, payload = {}) {
         invocations.push({ command, payload });
+        if (command === 'desktop_bridge_install_app_update' && sharedState.install) {
+          return sharedState.install();
+        }
         if (command === 'desktop_bridge_get_auth_token') {
           const authResult = authResults.shift();
           if (authResult instanceof Error) {
@@ -129,7 +133,47 @@ test('bridge bootstrap defines astrbotAppUpdater methods', async () => {
   assert.match(source, /getUpdateChannel:\s*\(\)\s*=>/);
   assert.match(source, /setUpdateChannel:\s*\(channel\)\s*=>/);
   assert.match(source, /checkForAppUpdate:\s*\(\)\s*=>/);
-  assert.match(source, /installAppUpdate:\s*\(\)\s*=>/);
+  assert.match(source, /installAppUpdate:\s*async\s*\(onProgress\)\s*=>/);
+});
+
+for (const fails of [false, true]) {
+  test(`update progress subscribes before download and cleans up after ${fails ? 'failure' : 'success'}`, async () => {
+    const source = await readFile(bootstrapPath, 'utf8');
+    let listener;
+    let cleanedUp = false;
+    const runtime = runBootstrap(source, [], {
+      event: {
+        async listen(name, handler) {
+          if (name === 'astrbot://app-update-progress') {
+            listener = handler;
+            return () => { cleanedUp = true; };
+          }
+          return () => {};
+        },
+      },
+      install() {
+        assert.equal(typeof listener, 'function');
+        listener({ payload: { phase: 'downloading', downloadedBytes: 50, totalBytes: 100 } });
+        listener({ payload: { phase: 'verifying', downloadedBytes: 0, totalBytes: null } });
+        if (fails) throw new Error('download failed');
+        return { ok: true };
+      },
+    });
+    const received = [];
+    const result = await runtime.window.astrbotAppUpdater.installAppUpdate((payload) => received.push(payload));
+    assert.equal(result.ok, !fails);
+    assert.deepEqual(received.map((event) => event.phase), ['downloading', 'verifying']);
+    assert.equal(received[0].downloadedBytes, 50);
+    assert.equal(cleanedUp, true);
+  });
+}
+
+test('update still installs when progress events are unavailable or no callback is supplied', async () => {
+  const source = await readFile(bootstrapPath, 'utf8');
+  const runtime = runBootstrap(source, []);
+  assert.equal((await runtime.window.astrbotAppUpdater.installAppUpdate()).ok, true);
+  assert.equal((await runtime.window.astrbotAppUpdater.installAppUpdate(() => {})).ok, true);
+  assert.equal(runtime.invocations.filter(({ command }) => command === 'desktop_bridge_install_app_update').length, 2);
 });
 
 test('bridge bootstrap owns desktop passwordless authentication lifecycle', async () => {

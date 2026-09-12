@@ -1,5 +1,5 @@
 use std::process::{Command, Stdio};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_updater::UpdaterExt;
 use url::Url;
 
@@ -7,6 +7,9 @@ use crate::bridge::updater_messages::{
     desktop_manual_download_reason, DESKTOP_UPDATER_UNSUPPORTED_REASON,
 };
 use crate::bridge::updater_mode::{resolve_desktop_update_mode, DesktopUpdateMode};
+use crate::bridge::updater_progress::{
+    AppUpdateProgress, DownloadProgress, APP_UPDATE_PROGRESS_EVENT,
+};
 use crate::bridge::updater_types::{
     map_manual_download_no_update_result, map_manual_download_update_available_result,
     map_no_update_result, map_update_available_result, map_update_channel_error,
@@ -451,13 +454,39 @@ pub(crate) async fn desktop_bridge_install_app_update(
         Err(error) => return map_update_install_error(format!("Failed to check updates: {error}")),
     };
 
-    let bytes = match update.download(|_, _| {}, || {}).await {
+    let _ = app_handle.emit(
+        APP_UPDATE_PROGRESS_EVENT,
+        AppUpdateProgress::stage("downloading"),
+    );
+    let mut progress = DownloadProgress::new();
+    let bytes = match update
+        .download(
+            |chunk_bytes, total_bytes| {
+                if let Some(payload) =
+                    progress.chunk(chunk_bytes, total_bytes, std::time::Instant::now())
+                {
+                    let _ = app_handle.emit(APP_UPDATE_PROGRESS_EVENT, payload);
+                }
+            },
+            || {
+                let _ = app_handle.emit(
+                    APP_UPDATE_PROGRESS_EVENT,
+                    AppUpdateProgress::stage("verifying"),
+                );
+            },
+        )
+        .await
+    {
         Ok(bytes) => bytes,
         Err(error) => {
             return map_update_install_error(format!("Failed to download update: {error}"))
         }
     };
 
+    let _ = app_handle.emit(
+        APP_UPDATE_PROGRESS_EVENT,
+        AppUpdateProgress::stage("installing"),
+    );
     let state = app_handle.state::<BackendState>();
     let stop_managed_backend = cfg!(target_os = "windows") && has_managed_backend_child(&state);
     let restart_backend_after_failed_install = if stop_managed_backend {
