@@ -133,6 +133,8 @@ beforeBuildCommand = pnpm run prepare:resources
 
 ## 7. CI 与发布说明
 
+- stable（`tag-poll`）只选择 `vMAJOR.MINOR.PATCH` 格式的正式版本标签，忽略 beta、alpha、rc、dev、nightly 等预发布标签及其他非正式标签；没有正式标签时任务明确失败，不回退到预发布版本。
+- 手动 `tag-poll` 的 `source_git_ref` 也只接受正式版本标签。需要打包预发布标签、分支或 commit 时使用 `custom`，不会更新 stable 通道。
 - 定时构建（`schedule`）检测到上游新 tag 时，会先自动同步版本文件并提交，再继续构建。
 - 手动触发（`workflow_dispatch`）默认只构建，不自动回写版本文件。
 - Desktop 使用独立 updater manifest，不复用 AstrBot Core 的 `api.soulter.top/releases` 更新索引。

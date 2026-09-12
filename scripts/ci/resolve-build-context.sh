@@ -5,6 +5,7 @@ set -euo pipefail
 DEFAULT_NIGHTLY_UTC_HOUR='3'
 DEFAULT_LS_REMOTE_RETRY_ATTEMPTS='3'
 DEFAULT_LS_REMOTE_RETRY_SLEEP_SECONDS='2'
+STABLE_TAG_PATTERN='^v(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)$'
 
 temp_dirs=()
 cleanup_temp_dirs() {
@@ -139,9 +140,12 @@ resolve_latest_upstream_tag() {
       "${sleep_seconds}"
   )" || return 1
 
+  # Version sort is safe for stable numeric tags only: it ranks beta/rc
+  # suffixes above the corresponding final release, unlike SemVer.
   latest_tag="$(printf '%s\n' "${tag_remote_output}" \
     | awk '{print $2}' \
     | sed -e 's#refs/tags/##' -e 's#\^{}$##' \
+    | awk -v pattern="${STABLE_TAG_PATTERN}" '$0 ~ pattern' \
     | LC_ALL=C sort -Vu \
     | tail -n 1)"
   [ -n "${latest_tag}" ] || return 1
@@ -348,6 +352,10 @@ if [ "${build_mode}" = "nightly" ]; then
   echo "Nightly source resolved from ${nightly_branch}@${source_git_ref} (configured ASTRBOT_NIGHTLY_SOURCE_GIT_REF='${nightly_source_git_ref}')."
 elif [ "${build_mode}" = "tag-poll" ]; then
   if [ "${workflow_source_git_ref_provided}" = "true" ]; then
+    if ! printf '%s\n' "${source_git_ref}" | grep -Eq "${STABLE_TAG_PATTERN}"; then
+      echo "::error::tag-poll only accepts stable release tags in vMAJOR.MINOR.PATCH format; got '${source_git_ref}'. Use custom mode for prerelease tags, branches, or commits." >&2
+      exit 1
+    fi
     if latest_upstream_tag="$(resolve_latest_upstream_tag "${source_git_url}" "${retry_attempts}" "${retry_sleep_seconds}")"; then
       echo "Latest upstream tag is ${latest_upstream_tag}"
     else
@@ -356,7 +364,7 @@ elif [ "${build_mode}" = "tag-poll" ]; then
     echo "workflow_dispatch tag-poll mode: using explicit source ref override ${source_git_ref}"
   else
     if ! latest_upstream_tag="$(resolve_latest_upstream_tag "${source_git_url}" "${retry_attempts}" "${retry_sleep_seconds}")"; then
-      echo "Unable to resolve latest tag from ${source_git_url}" >&2
+      echo "Unable to resolve latest stable tag (vMAJOR.MINOR.PATCH) from ${source_git_url}" >&2
       exit 1
     fi
     echo "Latest upstream tag is ${latest_upstream_tag}"

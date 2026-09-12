@@ -8,7 +8,7 @@ on:
         required: false
         default: https://github.com/AstrBotDevs/AstrBot.git
       source_git_ref:
-        description: Optional source ref override for `tag-poll` or required explicit source ref for `custom` (branch/tag/commit SHA).
+        description: Optional stable tag (vMAJOR.MINOR.PATCH) for `tag-poll`, or required source ref for `custom` (branch/tag/commit SHA).
         required: false
         default: ""
       publish_release:
@@ -19,7 +19,7 @@ on:
       build_mode:
         description: >-
           Build mode (`tag-poll` | `nightly` | `custom`): `nightly` (default) always builds latest upstream commit,
-          `tag-poll` builds latest upstream tag (or `source_git_ref` override), `custom` builds the explicit `source_git_ref`
+          `tag-poll` builds latest stable upstream tag (or stable tag override), `custom` builds the explicit `source_git_ref`
         required: false
         type: choice
         default: nightly

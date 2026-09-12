@@ -139,6 +139,92 @@ const withSandbox = async (env, fn) => {
 
 const runResolveBuildContext = async (env) => withSandbox(env, runInSandbox);
 
+const remoteTags = (...tags) => tags
+  .map((tag) => `1111111111111111111111111111111111111111 refs/tags/${tag}`)
+  .join('|');
+
+const nonStableRefs = [
+  'v4.28.0-beta.1',
+  'v4.29.0-alpha.1',
+  'v4.29.0-rc.1',
+  'v4.29.0-dev.1',
+  'v4.29.0-nightly.20260912',
+  'v4.29.0-preview.1',
+  'v4.29.0a1',
+  'v4.29.0.post1',
+  'v4.29.0+build.1',
+  'v04.29.0',
+  'v4x29x0',
+  'v4.29',
+  'nightly',
+  'master',
+  'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
+];
+
+for (const event of ['schedule', 'workflow_dispatch']) {
+  test(`${event} tag-poll selects 4.28.0 over beta and newer prerelease tags`, async () => {
+    const { result, outputs } = await runResolveBuildContext(makeTagPollEnv({
+      GITHUB_EVENT_NAME: event,
+      ASTRBOT_TEST_GIT_TAGS: remoteTags('v4.9.0', 'v4.27.5', 'v4.28.0', 'v4.28.0^{}', ...nonStableRefs),
+    }));
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(outputs.source_git_ref, 'v4.28.0');
+    assert.equal(outputs.astrbot_version, '4.28.0');
+    assert.equal(outputs.should_build, 'true');
+    assert.equal(outputs.release_tag, 'v4.28.0');
+    assert.equal(outputs.release_prerelease, 'false');
+    assert.equal(outputs.release_make_latest, 'true');
+  });
+}
+
+test('scheduled tag-poll skips an existing stable release even with newer prerelease tags', async () => {
+  const { result, outputs } = await runResolveBuildContext(makeTagPollEnv({
+    GITHUB_EVENT_NAME: 'schedule',
+    ASTRBOT_TEST_GIT_TAGS: remoteTags('v4.27.5', ...nonStableRefs),
+    ASTRBOT_TEST_CURL_HTTP_STATUS: '200',
+  }));
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(outputs.source_git_ref, 'v4.27.5');
+  assert.equal(outputs.should_build, 'false');
+  assert.equal(outputs.release_tag, '');
+  assert.equal(outputs.release_make_latest, 'false');
+});
+
+test('tag-poll fails without a stable tag instead of publishing a prerelease', async () => {
+  const { result, outputs } = await runResolveBuildContext(makeTagPollEnv({
+    ASTRBOT_TEST_GIT_TAGS: remoteTags(...nonStableRefs),
+  }));
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Unable to resolve latest stable tag/);
+  assert.deepEqual(outputs, {});
+});
+
+for (const ref of nonStableRefs) {
+  test(`manual tag-poll rejects non-stable override ${ref}`, async () => {
+    const { result, outputs } = await runResolveBuildContext(makeTagPollEnv({
+      WORKFLOW_SOURCE_GIT_REF: ref,
+    }));
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /tag-poll only accepts stable release tags/);
+    assert.deepEqual(outputs, {});
+  });
+}
+
+test('manual stable override is marked latest when a newer prerelease exists', async () => {
+  const { result, outputs } = await runResolveBuildContext(makeTagPollEnv({
+    WORKFLOW_SOURCE_GIT_REF: 'v4.28.0',
+    ASTRBOT_TEST_GIT_TAGS: remoteTags('v4.28.0', ...nonStableRefs),
+  }));
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(outputs.release_tag, 'v4.28.0');
+  assert.equal(outputs.release_make_latest, 'true');
+});
+
 test('workflow_dispatch tag-poll marks latest only when explicit source ref is the latest upstream tag', async () => {
   const { result, outputs } = await runResolveBuildContext(makeTagPollEnv({
     WORKFLOW_SOURCE_GIT_REF: 'v4.19.0',
@@ -163,13 +249,13 @@ test('workflow_dispatch tag-poll does not mark latest when explicit source ref i
 
 test('workflow_dispatch tag-poll keeps explicit source ref builds running when tag lookup fails', async () => {
   const { result, outputs } = await runResolveBuildContext(makeTagPollEnv({
-    WORKFLOW_SOURCE_GIT_REF: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
+    WORKFLOW_SOURCE_GIT_REF: 'v4.19.7',
     ASTRBOT_TEST_GIT_TAGS_FAIL: '1',
     ASTRBOT_TEST_FETCHED_VERSION: '4.19.7',
   }));
 
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(outputs.source_git_ref, 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef');
+  assert.equal(outputs.source_git_ref, 'v4.19.7');
   assert.equal(outputs.astrbot_version, '4.19.7');
   assert.equal(outputs.release_make_latest, 'false');
 });
