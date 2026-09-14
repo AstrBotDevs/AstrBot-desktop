@@ -9,6 +9,8 @@ ARTIFACT_EXTENSIONS: tuple[str, ...] = (
     ".app.tar.gz.sig",
     ".app.tar.gz",
     ".AppImage.sig",
+    ".deb.sig",
+    ".rpm.sig",
     ".exe.sig",
     ".msi.sig",
     ".zip.sig",
@@ -82,6 +84,23 @@ LINUX_APPIMAGE_UPDATER_PATTERNS: tuple[re.Pattern[str], ...] = (
     # <name>_<version>_<arch>.AppImage
     re.compile(
         rf"(?P<name>.+?)_(?P<version>{LEGACY_VERSION_PATTERN})_(?P<arch>x86_64|x64|amd64|aarch64|arm64)\.AppImage$"
+    ),
+)
+
+LINUX_PACKAGE_UPDATER_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        rf"(?P<name>.+?)_(?P<version>{CANONICAL_VERSION_PATTERN})_linux_"
+        rf"(?P<arch>x86_64|x64|amd64|aarch64|arm64)"
+        rf"{CANONICAL_NIGHTLY_SUFFIX_PATTERN}\.(?P<package>deb|rpm)$"
+    ),
+    # Original Tauri Debian and RPM bundle names, before normalization.
+    re.compile(
+        rf"(?P<name>.+?)_(?P<version>{LEGACY_VERSION_PATTERN})_"
+        rf"(?P<arch>x86_64|x64|amd64|aarch64|arm64)\.(?P<package>deb|rpm)$"
+    ),
+    re.compile(
+        rf"(?P<name>.+?)-(?P<version>{VERSION_PATTERN})-\d+\."
+        rf"(?P<arch>x86_64|aarch64)\.(?P<package>rpm)$"
     ),
 )
 

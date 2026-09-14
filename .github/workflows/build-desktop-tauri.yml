@@ -219,6 +219,28 @@ jobs:
           echo "Building Linux release bundles (deb, rpm, and AppImage)."
           pnpm exec tauri build --bundles deb,rpm,appimage
 
+      - name: Sign Linux package updater artifacts
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for package_type in deb rpm; do
+            packages=(src-tauri/target/release/bundle/"${package_type}"/*."${package_type}")
+            if [ "${#packages[@]}" -ne 1 ]; then
+              echo "Expected exactly one ${package_type} package, found ${#packages[@]}." >&2
+              exit 1
+            fi
+            # Tauri's automatic updater artifact signing only covers AppImage on Linux.
+            pnpm exec tauri signer sign "${packages[0]}"
+            if [ ! -s "${packages[0]}.sig" ]; then
+              echo "Expected a non-empty updater signature: ${packages[0]}.sig" >&2
+              exit 1
+            fi
+          done
+
       - name: Verify Linux AppImage updater artifacts
         shell: bash
         run: |
@@ -252,7 +274,9 @@ jobs:
           if-no-files-found: error
           path: |
             src-tauri/target/release/bundle/**/*.deb
+            src-tauri/target/release/bundle/**/*.deb.sig
             src-tauri/target/release/bundle/**/*.rpm
+            src-tauri/target/release/bundle/**/*.rpm.sig
             src-tauri/target/release/bundle/appimage/*.AppImage
             src-tauri/target/release/bundle/appimage/*.AppImage.sig
 
@@ -722,6 +746,10 @@ jobs:
             --tag "${RELEASE_TAG}" \
             --version "${RELEASE_VERSION}" \
             --channel "${manifest_channel}" \
+            --require-platform linux-x86_64-deb \
+            --require-platform linux-aarch64-deb \
+            --require-platform linux-x86_64-rpm \
+            --require-platform linux-aarch64-rpm \
             "${manifest_args[@]}" \
             --output "${manifest_output}"
 

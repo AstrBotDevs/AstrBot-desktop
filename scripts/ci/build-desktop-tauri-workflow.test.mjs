@@ -111,6 +111,58 @@ test('Linux workflow publishes signed AppImage updater artifacts', async () => {
   assert.match(uploadStep.with?.path ?? '', /appimage\/\*\.AppImage\.sig/);
 });
 
+test('Linux package signing rejects missing, duplicate, unsigned, and failed outputs', async () => {
+  const workflow = await readWorkflowObject(WORKFLOW_FILE);
+  const steps = extractWorkflowJobSteps(workflow, BUILD_LINUX_JOB);
+  const signStep = findStep(steps, 'Linux package signing', (step) => step.name === 'Sign Linux package updater artifacts');
+  const uploadStep = findStep(steps, 'Linux upload', (step) => step.name === 'Upload artifacts');
+  assert.ok(steps.indexOf(signStep) < steps.indexOf(uploadStep));
+  assert.equal(signStep.env.TAURI_SIGNING_PRIVATE_KEY, '${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}');
+  assert.equal(signStep.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD, '${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}');
+  for (const format of ['deb', 'rpm']) {
+    assert.ok(uploadStep.with.path.includes(`/**/*.${format}.sig`));
+  }
+
+  for (const scenario of ['valid', 'missing', 'duplicate', 'unsigned', 'failed']) {
+    const root = await mkdtemp(path.join(tmpdir(), 'astrbot-linux-signing-'));
+    try {
+      const bin = path.join(root, 'bin');
+      await mkdir(bin);
+      await writeFile(path.join(bin, 'pnpm'), `#!/bin/bash
+set -euo pipefail
+[[ "$1 $2 $3 $4" == 'exec tauri signer sign' ]]
+[[ "$TAURI_SIGNING_PRIVATE_KEY" == 'test-key' ]]
+[[ "$TEST_SCENARIO" != failed ]] || exit 1
+[[ "$TEST_SCENARIO" != unsigned ]] || exit 0
+printf 'test-signature' > "$5.sig"
+`, { mode: 0o755 });
+      for (const format of ['deb', 'rpm']) {
+        const directory = path.join(root, 'src-tauri/target/release/bundle', format);
+        await mkdir(directory, { recursive: true });
+        if (scenario === 'missing' && format === 'rpm') continue;
+        await writeFile(path.join(directory, `AstrBot package.${format}`), 'package');
+        if (scenario === 'duplicate' && format === 'deb') {
+          await writeFile(path.join(directory, `extra.${format}`), 'package');
+        }
+      }
+      const result = spawnSync('bash', ['-c', signStep.run], {
+        cwd: root, encoding: 'utf8',
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TAURI_SIGNING_PRIVATE_KEY: 'test-key', TEST_SCENARIO: scenario },
+      });
+      if (scenario === 'valid') {
+        assert.equal(result.status, 0, result.stderr);
+        for (const format of ['deb', 'rpm']) {
+          assert.equal(await readFile(path.join(root, 'src-tauri/target/release/bundle', format, `AstrBot package.${format}.sig`), 'utf8'), 'test-signature');
+        }
+      } else {
+        assert.notEqual(result.status, 0, scenario);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+});
+
 test('macOS workflow packages a drag-to-Applications DMG alongside updater archives', async () => {
   const workflowObject = await readWorkflowObject(WORKFLOW_FILE);
   const steps = extractWorkflowJobSteps(workflowObject, BUILD_MACOS_JOB);
@@ -225,6 +277,15 @@ test('updater manifest generation uses GitHub for nightly and R2 for stable', as
       await mkdir(artifactsRoot);
       await writeFile(path.join(artifactsRoot, artifact), 'installer');
       await writeFile(path.join(artifactsRoot, `${artifact}.sig`), 'test-signature');
+      const linuxPackages = [];
+      for (const arch of ['amd64', 'arm64']) {
+        for (const format of ['deb', 'rpm']) {
+          const filename = `AstrBot_4.19.2_linux_${arch}${nightly ? '_nightly_7ac169c5' : ''}.${format}`;
+          await writeFile(path.join(artifactsRoot, filename), 'linux-package');
+          await writeFile(path.join(artifactsRoot, `${filename}.sig`), `${arch}-${format}-signature`);
+          linuxPackages.push({ arch, format, filename });
+        }
+      }
       const result = spawnSync('bash', ['-c', manifestStep.run], {
         cwd: root,
         encoding: 'utf8',
@@ -247,6 +308,13 @@ test('updater manifest generation uses GitHub for nightly and R2 for stable', as
         : `https://releases.astrbot.app/desktop/releases/${version}/123-1`;
       assert.equal(manifest.channel, channel);
       assert.equal(manifest.platforms['windows-x86_64'].url, `${assetBase}/${artifact}`);
+      for (const { arch, format, filename } of linuxPackages) {
+        const target = `linux-${arch === 'amd64' ? 'x86_64' : 'aarch64'}-${format}`;
+        assert.deepEqual(manifest.platforms[target], {
+          url: `${assetBase}/${filename}`,
+          signature: `${arch}-${format}-signature`,
+        });
+      }
     } finally {
       await rm(root, { recursive: true, force: true });
     }
