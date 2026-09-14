@@ -13,6 +13,7 @@ from scripts.ci.lib.nightly_version import NIGHTLY_CANONICAL_FORMAT, NIGHTLY_VER
 from scripts.ci.lib.release_artifacts import (
     ARTIFACT_EXTENSIONS,
     LINUX_APPIMAGE_UPDATER_PATTERNS,
+    LINUX_PACKAGE_UPDATER_PATTERNS,
     MACOS_UPDATER_ARCHIVE_EXTENSION,
     MACOS_UPDATER_ARCHIVE_PATTERNS,
     MACOS_UPDATER_SIGNATURE_EXTENSION,
@@ -296,6 +297,32 @@ def collect_platforms(
             )
             continue
 
+        if sig_name.endswith((".deb.sig", ".rpm.sig")):
+            source_name = sig_name[:-4]
+            match = match_any(source_name, LINUX_PACKAGE_UPDATER_PATTERNS)
+            if not match:
+                raise ValueError(f"Unexpected Linux package artifact name: {source_name}")
+            arch = normalize_arch(match.group("arch"))
+            package = match.group("package")
+            _, base_version, nightly_suffix = derive_release_metadata(version, channel)
+            artifact_name = (
+                f"{match.group('name')}_{base_version}_linux_{arch}"
+                f"{nightly_suffix}.{package}"
+            )
+            # Keep installer-specific targets: a deb client cannot install AppImage/RPM bytes.
+            target_arch = "x86_64" if arch == "amd64" else "aarch64"
+            add_platform(
+                platforms,
+                f"linux-{target_arch}-{package}",
+                f"Linux {package}",
+                artifact_name,
+                sig_path,
+                repo,
+                tag,
+                asset_base_url,
+            )
+            continue
+
         unsupported_signature_files.append(sig_name)
 
     if unsupported_signature_files:
@@ -316,6 +343,10 @@ def main() -> int:
     parser.add_argument("--channel", choices=["stable", "nightly"])
     parser.add_argument("--output", required=True)
     parser.add_argument("--notes", default="")
+    parser.add_argument(
+        "--require-platform", action="append", default=[],
+        help="Fail if this updater target is missing (repeatable).",
+    )
     parser.add_argument(
         "--asset-base-url",
         help=(
@@ -341,6 +372,9 @@ def main() -> int:
         )
         if not platforms:
             raise ValueError("No updater signatures found under artifacts root")
+        missing_platforms = sorted(set(args.require_platform) - platforms.keys())
+        if missing_platforms:
+            raise ValueError("Missing required updater platforms: " + ", ".join(missing_platforms))
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
 
