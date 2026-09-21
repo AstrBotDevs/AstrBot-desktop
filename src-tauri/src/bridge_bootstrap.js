@@ -27,6 +27,7 @@
     RESTART_BACKEND: 'desktop_bridge_restart_backend',
     STOP_BACKEND: 'desktop_bridge_stop_backend',
     OPEN_EXTERNAL_URL: 'desktop_bridge_open_external_url',
+    OPEN_REPAIR_INSTALL: 'desktop_bridge_open_repair_install',
     CHECK_APP_UPDATE: 'desktop_bridge_check_app_update',
     INSTALL_APP_UPDATE: 'desktop_bridge_install_app_update',
   });
@@ -842,6 +843,7 @@
         url: rawUrl,
       });
     },
+    openRepairInstall: () => invokeBridge(BRIDGE_COMMANDS.OPEN_REPAIR_INSTALL),
     onTrayRestartBackend,
   };
 

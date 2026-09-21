@@ -1,10 +1,19 @@
 use tauri::{AppHandle, Manager};
 
-fn startup_error_script(message: &str) -> String {
+const PACKAGED_RESOURCE_ERROR_PREFIX: &str =
+    "Packaged resources are unavailable for AstrBot Desktop ";
+const STALE_WEBUI_ERROR_PREFIX: &str = "A different or stale AstrBot WebUI is already serving";
+
+fn startup_error_is_repairable(message: &str) -> bool {
+    message.starts_with(PACKAGED_RESOURCE_ERROR_PREFIX)
+        || message.starts_with(STALE_WEBUI_ERROR_PREFIX)
+}
+
+fn startup_error_script(message: &str, repairable: bool) -> String {
     let message_json = serde_json::to_string(message)
         .unwrap_or_else(|_| "\"AstrBot startup failed.\"".to_string());
     format!(
-        "(() => {{ const message = {message_json}; window.__astrbotPendingStartupError = message; if (typeof window.__astrbotShowStartupError === 'function') {{ window.__astrbotShowStartupError(message); }} }})();"
+        "(() => {{ const message = {message_json}; window.__astrbotPendingStartupError = message; window.__astrbotStartupRepairAvailable = {repairable}; if (typeof window.__astrbotShowStartupError === 'function') {{ window.__astrbotShowStartupError(message); }} }})();"
     )
 }
 
@@ -30,6 +39,7 @@ where
 {
     log(&format!("startup error: {message}"));
     eprintln!("AstrBot startup failed: {message}");
+    let repairable = startup_error_is_repairable(message);
     let Some(window) = app_handle.get_webview_window("main") else {
         log("failed to display startup error: main window not found");
         app_handle.exit(1);
@@ -40,7 +50,7 @@ where
             "failed to set startup error window title: {error}"
         ));
     }
-    if let Err(error) = window.eval(startup_error_script(message)) {
+    if let Err(error) = window.eval(startup_error_script(message, repairable)) {
         log(&format!(
             "failed to render startup error in startup shell: {error}"
         ));
@@ -76,15 +86,29 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::startup_error_script;
+    use super::{startup_error_is_repairable, startup_error_script};
+
+    #[test]
+    fn only_packaged_resource_failures_offer_repair_install() {
+        assert!(startup_error_is_repairable(
+            "Packaged resources are unavailable for AstrBot Desktop 4.28.0. direct: mismatch"
+        ));
+        assert!(startup_error_is_repairable(
+            "A different or stale AstrBot WebUI is already serving the Desktop port: expected digest"
+        ));
+        assert!(!startup_error_is_repairable(
+            "Backend startup timed out while waiting for port 6185"
+        ));
+    }
 
     #[test]
     fn startup_error_script_serializes_untrusted_messages_as_data() {
-        let script = startup_error_script("stale \"WebUI\"\n</script>");
+        let script = startup_error_script("stale \"WebUI\"\n</script>", true);
 
         assert!(script.contains("stale \\\"WebUI\\\"\\n</script>"));
         assert!(!script.contains("const message = stale"));
         assert!(script.contains("__astrbotPendingStartupError"));
         assert!(script.contains("__astrbotShowStartupError"));
+        assert!(script.contains("__astrbotStartupRepairAvailable = true"));
     }
 }

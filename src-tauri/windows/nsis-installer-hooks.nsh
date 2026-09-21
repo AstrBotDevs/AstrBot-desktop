@@ -27,6 +27,9 @@
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL
+  ; The updater stages incoming resources here. They are no longer needed after install.
+  RmDir /r "$INSTDIR\_up_"
+
   ; Recreate shortcuts to avoid stale links when users migrate from older installers.
   StrCpy $0 "$INSTDIR\${MAINBINARYNAME}.exe"
   ${If} ${FileExists} "$0"
@@ -42,6 +45,9 @@
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
+  ; This is install-local staging only; never remove %USERPROFILE%\.astrbot here.
+  RmDir /r "$INSTDIR\_up_"
+
   ; Keep behavior aligned with NSIS checkbox: only remove user data when user asked for it.
   ${If} $DeleteAppDataCheckboxState = 1
   ${AndIf} $UpdateMode <> 1

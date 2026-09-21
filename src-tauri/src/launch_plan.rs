@@ -357,6 +357,46 @@ fn validate_packaged_resource_candidate(
     })
 }
 
+fn validate_packaged_resource_candidate_after_install(
+    candidate: PackagedResourceCandidate,
+    expected_desktop_version: &str,
+) -> Result<ResolvedPackagedResources, String> {
+    let manifest_path = candidate.backend_dir.join("runtime-manifest.json");
+    let expected_manifest_sha256 = sha256_file(&manifest_path).map_err(|error| {
+        format!(
+            "cannot hash installed backend manifest {}: {}",
+            manifest_path.display(),
+            error
+        )
+    })?;
+    validate_packaged_resource_candidate(
+        candidate,
+        expected_desktop_version,
+        &expected_manifest_sha256,
+    )
+}
+
+pub(crate) fn validate_packaged_resources_after_install(
+    app: &AppHandle,
+    expected_desktop_version: &str,
+) -> Result<(), String> {
+    let candidate = resolve_packaged_resource_candidate(app, PackagedResourceLocation::Direct)
+        .map_err(|failure| {
+            format!(
+                "installed packaged resources are unavailable for Desktop {expected_desktop_version}: {}: {}",
+                failure.label, failure.reason
+            )
+        })?;
+    validate_packaged_resource_candidate_after_install(candidate, expected_desktop_version).map_err(
+        |reason| {
+            format!(
+                "installed packaged resources are unavailable for Desktop {expected_desktop_version}: direct: {reason}"
+            )
+        },
+    )?;
+    Ok(())
+}
+
 fn select_packaged_resources(
     expected_desktop_version: &str,
     expected_runtime_manifest_sha256: &str,
@@ -702,6 +742,22 @@ mod tests {
     ) -> Result<ResolvedPackagedResources, String> {
         let expected_manifest_sha256 = candidate_manifest_sha256(&candidate);
         validate_packaged_resource_candidate(candidate, desktop_version, &expected_manifest_sha256)
+    }
+
+    #[test]
+    fn post_install_validation_accepts_a_coherent_bundle_without_executable_hash() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let candidate = create_bundle_candidate(
+            &temp_dir,
+            "installed",
+            "direct",
+            DESKTOP_VERSION,
+            CORE_VERSION,
+            "v4.27.4",
+        );
+
+        validate_packaged_resource_candidate_after_install(candidate, DESKTOP_VERSION)
+            .expect("coherent installed bundle should validate");
     }
 
     struct EnvVarGuard {

@@ -87,6 +87,21 @@ test('startup shell loads shared copy config, reuses applyStartupMode, and expos
     /panel\.classList\.add\(["']error["']\)/,
     'expected startup failures to switch the shell into its error state',
   );
+  assert.match(
+    source,
+    /<button id="startup-repair-install"[^>]*type="button"[^>]*hidden>/,
+    'expected repair install action to be hidden by default',
+  );
+  assert.match(
+    source,
+    /window\.astrbotDesktop\?\.openRepairInstall\(\)/,
+    'expected repair install action to call the desktop bridge',
+  );
+  assert.match(
+    source,
+    /__astrbotStartupRepairAvailable\s*===\s*true/,
+    'expected repair action to require the Rust-provided startup classification',
+  );
 
   assert.match(
     configSource,

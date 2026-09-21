@@ -130,6 +130,28 @@
         animation: none;
       }
 
+      .repair-action {
+        margin-top: 16px;
+      }
+
+      .repair-action button {
+        width: 100%;
+        min-height: 40px;
+        border: 1px solid #b42318;
+        border-radius: 8px;
+        padding: 8px 12px;
+        color: #ffffff;
+        background: #b42318;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .repair-action button:disabled {
+        cursor: wait;
+        opacity: 0.65;
+      }
+
       @keyframes slide {
         0% {
           transform: translateX(-65%);
@@ -165,6 +187,9 @@
           <span class="dot" aria-hidden="true"></span>
           <span id="startup-status" role="status" aria-live="polite"></span>
         </div>
+        <div class="repair-action">
+          <button id="startup-repair-install" type="button" hidden></button>
+        </div>
       </section>
     </main>
     <script src="./startup-copy.js"></script>
@@ -173,8 +198,9 @@
         const title = document.getElementById("startup-title");
         const desc = document.getElementById("startup-desc");
         const status = document.getElementById("startup-status");
+        const repairButton = document.getElementById("startup-repair-install");
         const panel = document.querySelector(".panel");
-        if (!title || !desc || !status || !panel) return;
+        if (!title || !desc || !status || !repairButton || !panel) return;
         if (!window.astrbot || !window.astrbot.startupShell) return;
 
         const startupShell = window.astrbot.startupShell;
@@ -202,6 +228,30 @@
           status.textContent = next.status;
         };
 
+        const setRepairInstallAvailable = (available) => {
+          const isEnglish = localeKey === "en";
+          repairButton.hidden = !available;
+          repairButton.disabled = false;
+          repairButton.textContent = isEnglish ? "Download full installer" : "下载完整安装包";
+        };
+
+        repairButton.addEventListener("click", async () => {
+          const isEnglish = localeKey === "en";
+          repairButton.disabled = true;
+          status.textContent = isEnglish ? "Opening download page..." : "正在打开下载页面...";
+          const result = await window.astrbotDesktop?.openRepairInstall();
+          if (result?.ok) {
+            status.textContent = isEnglish
+              ? "Download page opened. Run the full installer, then restart AstrBot Desktop."
+              : "下载页面已打开。运行完整安装包后，重新启动 AstrBot 桌面端。";
+            return;
+          }
+          status.textContent = isEnglish
+            ? `Unable to open the download page: ${result?.reason || "Desktop bridge unavailable."}`
+            : `无法打开下载页面：${result?.reason || "桌面端桥接不可用。"}`;
+          repairButton.disabled = false;
+        });
+
         window.__astrbotSetStartupMode = (mode) => {
           applyStartupMode(typeof mode === "string" ? mode : STARTUP_MODES.LOADING);
         };
@@ -218,6 +268,7 @@
           status.textContent = isEnglish
             ? "Resolve the issue above, then restart AstrBot Desktop."
             : "请按上方提示处理后，重新启动 AstrBot 桌面端。";
+          setRepairInstallAvailable(window.__astrbotStartupRepairAvailable === true);
         };
         applyStartupMode(STARTUP_MODES.LOADING);
         if (typeof window.__astrbotPendingStartupError === "string") {

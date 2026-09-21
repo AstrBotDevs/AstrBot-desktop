@@ -136,6 +136,20 @@ test('bridge bootstrap defines astrbotAppUpdater methods', async () => {
   assert.match(source, /installAppUpdate:\s*async\s*\(onProgress\)\s*=>/);
 });
 
+test('bridge bootstrap exposes a repair install action through the desktop bridge', async () => {
+  const source = await readFile(bootstrapPath, 'utf8');
+  assert.match(source, /OPEN_REPAIR_INSTALL:\s*'desktop_bridge_open_repair_install'/);
+
+  const runtime = runBootstrap(source, []);
+  const result = await runtime.window.astrbotDesktop.openRepairInstall();
+
+  assert.equal(result.ok, true);
+  assert.equal(
+    runtime.invocations.at(-1)?.command,
+    'desktop_bridge_open_repair_install',
+  );
+});
+
 for (const fails of [false, true]) {
   test(`update progress subscribes before download and cleans up after ${fails ? 'failure' : 'success'}`, async () => {
     const source = await readFile(bootstrapPath, 'utf8');
