@@ -108,3 +108,11 @@ test('nsis installer hook looks for the install-root cleanup script before updat
   assert.ok(primaryIdx < fileExistsIdx && fileExistsIdx < fallbackIdx);
   assert.ok(/nsExec::ExecToLog/.test(bodyText));
 });
+
+test('nsis post-install hook removes updater staging without touching user data', async () => {
+  const source = await readFile(hookPath, 'utf8');
+  const postInstallBody = extractNsisMacroBody(source, 'NSIS_HOOK_POSTINSTALL').join('\n');
+
+  assert.match(postInstallBody, /RmDir\s+\/r\s+"\$INSTDIR\\_up_"/);
+  assert.doesNotMatch(postInstallBody, /USERPROFILE|\\\.astrbot/);
+});

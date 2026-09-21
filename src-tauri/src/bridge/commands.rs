@@ -4,7 +4,8 @@ use tauri_plugin_updater::UpdaterExt;
 use url::Url;
 
 use crate::bridge::updater_messages::{
-    desktop_manual_download_reason, DESKTOP_UPDATER_UNSUPPORTED_REASON,
+    desktop_manual_download_reason, resolve_desktop_manual_download_url,
+    DESKTOP_UPDATER_UNSUPPORTED_REASON,
 };
 use crate::bridge::updater_mode::{resolve_desktop_update_mode, DesktopUpdateMode};
 use crate::bridge::updater_progress::{
@@ -110,6 +111,7 @@ fn has_managed_backend_child(state: &BackendState) -> bool {
     }
 }
 
+#[cfg(test)]
 fn run_native_update_install<InstallUpdate, RestartBackend>(
     install_update: InstallUpdate,
     restart_backend_after_failed_install: Option<RestartBackend>,
@@ -119,22 +121,47 @@ where
     InstallUpdate: FnOnce() -> Result<(), String>,
     RestartBackend: FnOnce() -> Result<(), String>,
 {
-    match install_update() {
-        Ok(()) => map_update_install_ok(),
-        Err(install_err) => {
-            if backend_was_stopped {
-                if let Some(restart_backend) = restart_backend_after_failed_install {
-                    if let Err(restart_err) = restart_backend() {
-                        return map_update_install_error(format!(
-                            "Failed to install update: {install_err}. Failed to restart backend after install failure: {restart_err}"
-                        ));
-                    }
-                }
-            }
+    run_native_update_install_with_validation(
+        install_update,
+        || Ok(()),
+        restart_backend_after_failed_install,
+        backend_was_stopped,
+    )
+}
 
-            map_update_install_error(format!("Failed to install update: {install_err}"))
+fn run_native_update_install_with_validation<InstallUpdate, ValidateInstall, RestartBackend>(
+    install_update: InstallUpdate,
+    validate_install: ValidateInstall,
+    restart_backend_after_failed_install: Option<RestartBackend>,
+    backend_was_stopped: bool,
+) -> DesktopAppUpdateResult
+where
+    InstallUpdate: FnOnce() -> Result<(), String>,
+    ValidateInstall: FnOnce() -> Result<(), String>,
+    RestartBackend: FnOnce() -> Result<(), String>,
+{
+    let failure = match install_update() {
+        Ok(()) => validate_install()
+            .err()
+            .map(|error| format!("Failed to validate installed resources: {error}")),
+        Err(error) => Some(format!("Failed to install update: {error}")),
+    };
+
+    let Some(failure) = failure else {
+        return map_update_install_ok();
+    };
+
+    if backend_was_stopped {
+        if let Some(restart_backend) = restart_backend_after_failed_install {
+            if let Err(restart_err) = restart_backend() {
+                return map_update_install_error(format!(
+                    "{failure}. Failed to restart backend after install failure: {restart_err}"
+                ));
+            }
         }
     }
+
+    map_update_install_error(failure)
 }
 
 fn build_restart_backend_after_failed_install(
@@ -312,6 +339,31 @@ pub(crate) fn desktop_bridge_stop_backend(app_handle: AppHandle) -> BackendBridg
 
 #[tauri::command]
 pub(crate) fn desktop_bridge_open_external_url(url: String) -> BackendBridgeResult {
+    let parsed = match parse_openable_url(&url) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            return BackendBridgeResult {
+                ok: false,
+                reason: Some(error),
+            };
+        }
+    };
+
+    match open_url_with_system_browser(parsed.as_ref()) {
+        Ok(()) => BackendBridgeResult {
+            ok: true,
+            reason: None,
+        },
+        Err(error) => BackendBridgeResult {
+            ok: false,
+            reason: Some(error),
+        },
+    }
+}
+
+#[tauri::command]
+pub(crate) fn desktop_bridge_open_repair_install() -> BackendBridgeResult {
+    let url = resolve_desktop_manual_download_url();
     let parsed = match parse_openable_url(&url) {
         Ok(parsed) => parsed,
         Err(error) => {
@@ -517,8 +569,16 @@ pub(crate) async fn desktop_bridge_install_app_update(
         false
     };
 
-    let result = run_native_update_install(
+    let expected_version = update.version.clone();
+    let validation_app_handle = app_handle.clone();
+    let result = run_native_update_install_with_validation(
         || update.install(bytes).map_err(|error| error.to_string()),
+        || {
+            crate::launch_plan::validate_packaged_resources_after_install(
+                &validation_app_handle,
+                &expected_version,
+            )
+        },
         restart_backend_after_failed_install,
         backend_was_stopped,
     );
@@ -719,6 +779,30 @@ mod tests {
             result,
             map_update_install_error(
                 "Failed to install update: installer launch failed. Failed to restart backend after install failure: backend restart timed out"
+            )
+        );
+    }
+
+    #[test]
+    fn run_native_update_install_rejects_post_install_validation_failures() {
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let restart_events = Rc::clone(&events);
+
+        let result = run_native_update_install_with_validation(
+            || Ok(()),
+            || Err("direct bundle still has stale WebUI".to_string()),
+            Some(|| {
+                restart_events.borrow_mut().push("restart");
+                Ok(())
+            }),
+            true,
+        );
+
+        assert_eq!(*events.borrow(), vec!["restart"]);
+        assert_eq!(
+            result,
+            map_update_install_error(
+                "Failed to validate installed resources: direct bundle still has stale WebUI"
             )
         );
     }
