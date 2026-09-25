@@ -1,6 +1,12 @@
 (() => {
   if (typeof window === 'undefined') return;
 
+  // macOS desktop windows use an overlay title bar, so the web UI has to reserve
+  // room for the traffic lights in the top-left corner.
+  if (/Mac OS X|Macintosh/i.test(navigator.userAgent || '')) {
+    document.documentElement.dataset.astrbotDesktopPlatform = 'macos';
+  }
+
   const existingTrayRestartState = window.__astrbotDesktopTrayRestartState;
   if (
     window.astrbotDesktop &&
@@ -31,6 +37,7 @@
     OPEN_REPAIR_INSTALL: 'desktop_bridge_open_repair_install',
     CHECK_APP_UPDATE: 'desktop_bridge_check_app_update',
     INSTALL_APP_UPDATE: 'desktop_bridge_install_app_update',
+    SET_WINDOW_THEME: 'desktop_bridge_set_window_theme',
   });
   const TRAY_RESTART_BACKEND_EVENT = '{TRAY_RESTART_BACKEND_EVENT}';
 
@@ -832,6 +839,10 @@
       });
     },
     stopBackend: () => invokeBridge(BRIDGE_COMMANDS.STOP_BACKEND),
+    setWindowTheme: (theme) =>
+      invokeBridge(BRIDGE_COMMANDS.SET_WINDOW_THEME, {
+        theme: typeof theme === 'string' ? theme : null,
+      }),
     pickDirectory: async (defaultPath = null) => {
       const result = await invokeBridge(BRIDGE_COMMANDS.PICK_DIRECTORY, {
         defaultPath: typeof defaultPath === 'string' ? defaultPath : null,

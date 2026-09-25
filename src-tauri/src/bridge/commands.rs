@@ -409,6 +409,36 @@ pub(crate) fn desktop_bridge_open_repair_install() -> BackendBridgeResult {
 }
 
 #[tauri::command]
+pub(crate) fn desktop_bridge_set_window_theme(
+    app_handle: AppHandle,
+    theme: Option<String>,
+) -> BackendBridgeResult {
+    let Some(window) = app_handle.get_webview_window("main") else {
+        return BackendBridgeResult {
+            ok: false,
+            reason: Some("main window not found".to_string()),
+        };
+    };
+
+    let theme = match theme.as_deref() {
+        Some("dark") => Some(tauri::Theme::Dark),
+        Some("light") => Some(tauri::Theme::Light),
+        _ => None,
+    };
+
+    match window.set_theme(theme) {
+        Ok(()) => BackendBridgeResult {
+            ok: true,
+            reason: None,
+        },
+        Err(error) => BackendBridgeResult {
+            ok: false,
+            reason: Some(error.to_string()),
+        },
+    }
+}
+
+#[tauri::command]
 pub(crate) fn desktop_bridge_set_shell_locale(
     app_handle: AppHandle,
     locale: Option<String>,

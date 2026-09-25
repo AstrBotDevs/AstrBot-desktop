@@ -327,6 +327,7 @@ pub(crate) fn run() {
             crate::bridge::commands::desktop_bridge_pick_directory,
             crate::bridge::commands::desktop_bridge_open_external_url,
             crate::bridge::commands::desktop_bridge_open_repair_install,
+            crate::bridge::commands::desktop_bridge_set_window_theme,
             crate::bridge::commands::desktop_bridge_check_app_update,
             crate::bridge::commands::desktop_bridge_install_app_update
         ])

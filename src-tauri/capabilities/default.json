@@ -7,5 +7,10 @@
   "remote": {
     "urls": ["http://127.0.0.1:*", "http://localhost:*"]
   },
-  "permissions": ["core:default", "dialog:default", "updater:default"]
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "updater:default",
+    "core:window:allow-start-dragging"
+  ]
 }
