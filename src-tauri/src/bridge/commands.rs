@@ -1,5 +1,9 @@
-use std::process::{Command, Stdio};
+use std::{
+    path::PathBuf,
+    process::{Command, Stdio},
+};
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_updater::UpdaterExt;
 use url::Url;
 
@@ -335,6 +339,24 @@ pub(crate) fn desktop_bridge_stop_backend(app_handle: AppHandle) -> BackendBridg
             reason: Some(error),
         },
     }
+}
+
+#[tauri::command]
+pub(crate) async fn desktop_bridge_pick_directory(
+    app_handle: AppHandle,
+    default_path: Option<String>,
+) -> Option<String> {
+    let mut dialog = app_handle.dialog().file();
+    if let Some(default_path) = default_path.filter(|path| !path.trim().is_empty()) {
+        dialog = dialog.set_directory(PathBuf::from(default_path));
+    }
+
+    tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_folder())
+        .await
+        .ok()
+        .flatten()
+        .and_then(|path| path.into_path().ok())
+        .map(|path| path.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
