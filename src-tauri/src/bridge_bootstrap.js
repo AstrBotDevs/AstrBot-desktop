@@ -26,6 +26,7 @@
     SET_APP_UPDATE_CHANNEL: 'desktop_bridge_set_app_update_channel',
     RESTART_BACKEND: 'desktop_bridge_restart_backend',
     STOP_BACKEND: 'desktop_bridge_stop_backend',
+    PICK_DIRECTORY: 'desktop_bridge_pick_directory',
     OPEN_EXTERNAL_URL: 'desktop_bridge_open_external_url',
     OPEN_REPAIR_INSTALL: 'desktop_bridge_open_repair_install',
     CHECK_APP_UPDATE: 'desktop_bridge_check_app_update',
@@ -831,6 +832,12 @@
       });
     },
     stopBackend: () => invokeBridge(BRIDGE_COMMANDS.STOP_BACKEND),
+    pickDirectory: async (defaultPath = null) => {
+      const result = await invokeBridge(BRIDGE_COMMANDS.PICK_DIRECTORY, {
+        defaultPath: typeof defaultPath === 'string' ? defaultPath : null,
+      });
+      return typeof result === 'string' ? result : null;
+    },
     openExternalUrl: (url) => {
       const rawUrl = typeof url === 'string' ? url : String(url ?? '');
       if (!rawUrl.trim()) {

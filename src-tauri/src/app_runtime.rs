@@ -130,6 +130,7 @@ fn configure_plugins(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -323,6 +324,7 @@ pub(crate) fn run() {
             crate::bridge::commands::desktop_bridge_set_app_update_channel,
             crate::bridge::commands::desktop_bridge_restart_backend,
             crate::bridge::commands::desktop_bridge_stop_backend,
+            crate::bridge::commands::desktop_bridge_pick_directory,
             crate::bridge::commands::desktop_bridge_open_external_url,
             crate::bridge::commands::desktop_bridge_open_repair_install,
             crate::bridge::commands::desktop_bridge_check_app_update,
