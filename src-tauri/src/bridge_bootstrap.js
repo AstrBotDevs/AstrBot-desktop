@@ -1,10 +1,16 @@
 (() => {
   if (typeof window === 'undefined') return;
 
-  // macOS desktop windows use an overlay title bar, so the web UI has to reserve
-  // room for the traffic lights in the top-left corner.
-  if (/Mac OS X|Macintosh/i.test(navigator.userAgent || '')) {
+  // Desktop windows use an overlay title bar, so the web UI has to reserve room
+  // for native window controls: traffic lights top-left on macOS, and the
+  // min/max/close caption buttons top-right on Windows.
+  const ua = navigator.userAgent || '';
+  if (/Mac OS X|Macintosh/i.test(ua)) {
     document.documentElement.dataset.astrbotDesktopPlatform = 'macos';
+  } else if (/Windows/i.test(ua)) {
+    document.documentElement.dataset.astrbotDesktopPlatform = 'windows';
+  } else if (/Linux/i.test(ua)) {
+    document.documentElement.dataset.astrbotDesktopPlatform = 'linux';
   }
 
   const existingTrayRestartState = window.__astrbotDesktopTrayRestartState;
