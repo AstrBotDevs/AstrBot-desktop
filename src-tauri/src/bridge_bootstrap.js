@@ -44,6 +44,9 @@
     CHECK_APP_UPDATE: 'desktop_bridge_check_app_update',
     INSTALL_APP_UPDATE: 'desktop_bridge_install_app_update',
     SET_WINDOW_THEME: 'desktop_bridge_set_window_theme',
+    MINIMIZE_WINDOW: 'desktop_bridge_minimize_window',
+    TOGGLE_MAXIMIZE_WINDOW: 'desktop_bridge_toggle_maximize_window',
+    CLOSE_WINDOW: 'desktop_bridge_close_window',
   });
   const TRAY_RESTART_BACKEND_EVENT = '{TRAY_RESTART_BACKEND_EVENT}';
 
@@ -849,6 +852,9 @@
       invokeBridge(BRIDGE_COMMANDS.SET_WINDOW_THEME, {
         theme: typeof theme === 'string' ? theme : null,
       }),
+    minimizeWindow: () => invokeBridge(BRIDGE_COMMANDS.MINIMIZE_WINDOW),
+    toggleMaximizeWindow: () => invokeBridge(BRIDGE_COMMANDS.TOGGLE_MAXIMIZE_WINDOW),
+    closeWindow: () => invokeBridge(BRIDGE_COMMANDS.CLOSE_WINDOW),
     pickDirectory: async (defaultPath = null) => {
       const result = await invokeBridge(BRIDGE_COMMANDS.PICK_DIRECTORY, {
         defaultPath: typeof defaultPath === 'string' ? defaultPath : null,
