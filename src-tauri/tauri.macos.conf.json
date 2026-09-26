@@ -1,0 +1,27 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "AstrBot",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 16, "y": 16 },
+        "transparent": true,
+        "windowEffects": {
+          "effects": ["sidebar"],
+          "state": "active"
+        },
+        "width": 1280,
+        "height": 800,
+        "minWidth": 400,
+        "minHeight": 680,
+        "resizable": true,
+        "visible": false,
+        "fullscreen": false,
+        "backgroundThrottling": "disabled",
+        "dragDropEnabled": false
+      }
+    ]
+  }
+}

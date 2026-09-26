@@ -1,0 +1,21 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "AstrBot",
+        "decorations": false,
+        "shadow": true,
+        "width": 1280,
+        "height": 800,
+        "minWidth": 400,
+        "minHeight": 680,
+        "resizable": true,
+        "visible": false,
+        "fullscreen": false,
+        "backgroundThrottling": "disabled",
+        "dragDropEnabled": false
+      }
+    ]
+  }
+}

@@ -409,6 +409,112 @@ pub(crate) fn desktop_bridge_open_repair_install() -> BackendBridgeResult {
 }
 
 #[tauri::command]
+pub(crate) fn desktop_bridge_set_window_theme(
+    app_handle: AppHandle,
+    theme: Option<String>,
+) -> BackendBridgeResult {
+    let Some(window) = app_handle.get_webview_window("main") else {
+        return BackendBridgeResult {
+            ok: false,
+            reason: Some("main window not found".to_string()),
+        };
+    };
+
+    let theme = match theme.as_deref() {
+        Some("dark") => Some(tauri::Theme::Dark),
+        Some("light") => Some(tauri::Theme::Light),
+        _ => None,
+    };
+
+    match window.set_theme(theme) {
+        Ok(()) => BackendBridgeResult {
+            ok: true,
+            reason: None,
+        },
+        Err(error) => BackendBridgeResult {
+            ok: false,
+            reason: Some(error.to_string()),
+        },
+    }
+}
+
+/// Minimizes the main window (used by the custom caption buttons on Windows,
+/// where the native title bar is disabled).
+#[tauri::command]
+pub(crate) fn desktop_bridge_minimize_window(app_handle: AppHandle) -> BackendBridgeResult {
+    let Some(window) = app_handle.get_webview_window("main") else {
+        return BackendBridgeResult {
+            ok: false,
+            reason: Some("main window not found".to_string()),
+        };
+    };
+    match window.minimize() {
+        Ok(()) => BackendBridgeResult {
+            ok: true,
+            reason: None,
+        },
+        Err(error) => BackendBridgeResult {
+            ok: false,
+            reason: Some(error.to_string()),
+        },
+    }
+}
+
+/// Toggles the main window's maximized state (custom caption buttons).
+#[tauri::command]
+pub(crate) fn desktop_bridge_toggle_maximize_window(
+    app_handle: AppHandle,
+) -> BackendBridgeResult {
+    let Some(window) = app_handle.get_webview_window("main") else {
+        return BackendBridgeResult {
+            ok: false,
+            reason: Some("main window not found".to_string()),
+        };
+    };
+    let result = match window.is_maximized() {
+        Ok(true) => window.unmaximize(),
+        Ok(false) => window.maximize(),
+        Err(error) => {
+            return BackendBridgeResult {
+                ok: false,
+                reason: Some(error.to_string()),
+            };
+        }
+    };
+    match result {
+        Ok(()) => BackendBridgeResult {
+            ok: true,
+            reason: None,
+        },
+        Err(error) => BackendBridgeResult {
+            ok: false,
+            reason: Some(error.to_string()),
+        },
+    }
+}
+
+/// Closes the main window (custom caption buttons).
+#[tauri::command]
+pub(crate) fn desktop_bridge_close_window(app_handle: AppHandle) -> BackendBridgeResult {
+    let Some(window) = app_handle.get_webview_window("main") else {
+        return BackendBridgeResult {
+            ok: false,
+            reason: Some("main window not found".to_string()),
+        };
+    };
+    match window.close() {
+        Ok(()) => BackendBridgeResult {
+            ok: true,
+            reason: None,
+        },
+        Err(error) => BackendBridgeResult {
+            ok: false,
+            reason: Some(error.to_string()),
+        },
+    }
+}
+
+#[tauri::command]
 pub(crate) fn desktop_bridge_set_shell_locale(
     app_handle: AppHandle,
     locale: Option<String>,
