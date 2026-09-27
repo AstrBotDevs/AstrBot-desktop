@@ -4,7 +4,7 @@
   // Desktop windows use an overlay title bar, so the web UI has to reserve room
   // for native window controls: traffic lights top-left on macOS, and the
   // min/max/close caption buttons top-right on Windows.
-  const ua = navigator.userAgent || '';
+  const ua = window.navigator?.userAgent || '';
   if (/Mac OS X|Macintosh/i.test(ua)) {
     document.documentElement.dataset.astrbotDesktopPlatform = 'macos';
   } else if (/Windows/i.test(ua)) {

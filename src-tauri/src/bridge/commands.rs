@@ -462,9 +462,7 @@ pub(crate) fn desktop_bridge_minimize_window(app_handle: AppHandle) -> BackendBr
 
 /// Toggles the main window's maximized state (custom caption buttons).
 #[tauri::command]
-pub(crate) fn desktop_bridge_toggle_maximize_window(
-    app_handle: AppHandle,
-) -> BackendBridgeResult {
+pub(crate) fn desktop_bridge_toggle_maximize_window(app_handle: AppHandle) -> BackendBridgeResult {
     let Some(window) = app_handle.get_webview_window("main") else {
         return BackendBridgeResult {
             ok: false,
