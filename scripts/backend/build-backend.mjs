@@ -45,7 +45,12 @@ const desktopVersionOverride = process.env.ASTRBOT_DESKTOP_VERSION || '';
 const sourceRef = process.env.ASTRBOT_SOURCE_GIT_REF || '';
 const sourceCommit = process.env.ASTRBOT_SOURCE_GIT_COMMIT || '';
 
-const requiredSourceEntries = ['astrbot', 'main.py', 'requirements.txt'];
+const requiredSourceEntries = [
+  'astrbot',
+  'main.py',
+  'requirements.txt',
+  'samples/stt_health_check.wav',
+];
 const optionalSourceEntries = ['changelogs'];
 
 const requireSourceDir = () => {
