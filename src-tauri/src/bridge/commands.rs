@@ -3,10 +3,14 @@ use std::{
     process::{Command, Stdio},
 };
 use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_updater::UpdaterExt;
 use url::Url;
 
+use crate::bridge::plugin_ui_extensions::{
+    decide_plugin_ui_extension_request, PluginUiExtensionDecision, PluginUiExtensionGrantResult,
+    PluginUiExtensionRuntimeState, PluginUiExtensionsBridgeState,
+};
 use crate::bridge::updater_messages::{
     desktop_manual_download_reason, resolve_desktop_manual_download_url,
     DESKTOP_UPDATER_UNSUPPORTED_REASON,
@@ -357,6 +361,103 @@ pub(crate) async fn desktop_bridge_pick_directory(
         .flatten()
         .and_then(|path| path.into_path().ok())
         .map(|path| path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub(crate) fn desktop_bridge_get_plugin_ui_extensions(
+    app_handle: AppHandle,
+) -> PluginUiExtensionsBridgeState {
+    let settings = app_handle.state::<crate::DesktopSettingsCache>().get();
+    PluginUiExtensionsBridgeState {
+        enabled: settings.plugin_ui_extensions_enabled,
+        plugins: settings.plugin_ui_extension_grants,
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn desktop_bridge_request_plugin_ui_extension(
+    app_handle: AppHandle,
+    plugin: String,
+) -> PluginUiExtensionGrantResult {
+    let settings = app_handle.state::<crate::DesktopSettingsCache>().get();
+    let runtime_state = app_handle.state::<PluginUiExtensionRuntimeState>();
+    let decision = decide_plugin_ui_extension_request(
+        &plugin,
+        settings.plugin_ui_extensions_enabled,
+        settings.plugin_ui_extension_grants.contains(&plugin),
+        runtime_state.is_declined(&plugin),
+        runtime_state.is_prompt_open(),
+    );
+    match decision {
+        PluginUiExtensionDecision::Invalid => {
+            return PluginUiExtensionGrantResult::rejected("invalid");
+        }
+        PluginUiExtensionDecision::Disabled => {
+            return PluginUiExtensionGrantResult::rejected("disabled");
+        }
+        PluginUiExtensionDecision::Granted => return PluginUiExtensionGrantResult::granted(),
+        PluginUiExtensionDecision::Declined => {
+            return PluginUiExtensionGrantResult::rejected("declined");
+        }
+        PluginUiExtensionDecision::Busy => {
+            return PluginUiExtensionGrantResult::rejected("busy");
+        }
+        PluginUiExtensionDecision::Prompt => {}
+    }
+
+    let Some(_prompt_guard) = runtime_state.try_acquire_prompt() else {
+        return PluginUiExtensionGrantResult::rejected("busy");
+    };
+    let locale = shell_locale::resolve_shell_locale(
+        DEFAULT_SHELL_LOCALE,
+        runtime_paths::default_packaged_root_dir(),
+    );
+    let dialog_app_handle = app_handle.clone();
+    let dialog_plugin = plugin.clone();
+    let dialog_result = tauri::async_runtime::spawn_blocking(move || {
+        let texts = shell_locale::plugin_ui_extension_dialog_texts(locale, &dialog_plugin);
+        dialog_app_handle
+            .dialog()
+            .message(texts.message)
+            .title(texts.title)
+            .buttons(MessageDialogButtons::OkCancelCustom(
+                texts.allow.to_string(),
+                texts.deny.to_string(),
+            ))
+            .blocking_show()
+    })
+    .await;
+    let granted = match dialog_result {
+        Ok(granted) => granted,
+        Err(error) => {
+            append_desktop_log(&format!(
+                "plugin UI extension authorization dialog failed: {error}"
+            ));
+            return PluginUiExtensionGrantResult::rejected("error");
+        }
+    };
+    if !granted {
+        runtime_state.mark_declined(&plugin);
+        return PluginUiExtensionGrantResult::rejected("declined");
+    }
+
+    match crate::desktop_settings::grant_plugin_ui_extension(
+        runtime_paths::default_packaged_root_dir().as_deref(),
+        &plugin,
+    ) {
+        Ok(updated_settings) => {
+            app_handle
+                .state::<crate::DesktopSettingsCache>()
+                .set(updated_settings);
+            PluginUiExtensionGrantResult::granted()
+        }
+        Err(error) => {
+            append_desktop_log(&format!(
+                "failed to persist plugin UI extension grant for {plugin}: {error}"
+            ));
+            PluginUiExtensionGrantResult::rejected("error")
+        }
+    }
 }
 
 #[tauri::command]

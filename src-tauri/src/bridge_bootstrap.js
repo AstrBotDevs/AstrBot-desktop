@@ -13,16 +13,6 @@
     document.documentElement.dataset.astrbotDesktopPlatform = 'linux';
   }
 
-  const existingTrayRestartState = window.__astrbotDesktopTrayRestartState;
-  if (
-    window.astrbotDesktop &&
-    window.astrbotDesktop.__tauriBridge === true &&
-    typeof window.astrbotDesktop.onTrayRestartBackend === 'function' &&
-    typeof existingTrayRestartState?.unlistenTrayRestartBackendEvent === 'function'
-  ) {
-    return;
-  }
-
   const invoke = window.__TAURI_INTERNALS__?.invoke;
   const transformCallback = window.__TAURI_INTERNALS__?.transformCallback;
   const tauriEvent = window.__TAURI_INTERNALS__?.event ?? window.__TAURI__?.event;
@@ -39,6 +29,8 @@
     RESTART_BACKEND: 'desktop_bridge_restart_backend',
     STOP_BACKEND: 'desktop_bridge_stop_backend',
     PICK_DIRECTORY: 'desktop_bridge_pick_directory',
+    GET_PLUGIN_UI_EXTENSIONS: 'desktop_bridge_get_plugin_ui_extensions',
+    REQUEST_PLUGIN_UI_EXTENSION: 'desktop_bridge_request_plugin_ui_extension',
     OPEN_EXTERNAL_URL: 'desktop_bridge_open_external_url',
     OPEN_REPAIR_INSTALL: 'desktop_bridge_open_repair_install',
     CHECK_APP_UPDATE: 'desktop_bridge_check_app_update',
@@ -48,6 +40,238 @@
     TOGGLE_MAXIMIZE_WINDOW: 'desktop_bridge_toggle_maximize_window',
     CLOSE_WINDOW: 'desktop_bridge_close_window',
   });
+  const PLUGIN_UI_EXTENSION_STATE_KEY = '__astrbotDesktopPluginUiExtensionState';
+
+  function triggerPluginUiExtensions(force = false) {
+    const load = window[PLUGIN_UI_EXTENSION_STATE_KEY]?.load;
+    if (typeof load === 'function') {
+      void load({ force });
+    }
+  }
+
+  function initializePluginUiExtensions() {
+    const state =
+      window[PLUGIN_UI_EXTENSION_STATE_KEY] ||
+      (window[PLUGIN_UI_EXTENSION_STATE_KEY] = {
+        listenerInstalled: false,
+        loadedPlugins: new Set(),
+        pendingPlugins: new Map(),
+        discoveryPromise: null,
+        discoveryToken: null,
+        discoveryQueued: false,
+        completedToken: null,
+        load: null,
+      });
+    const pluginNamePattern = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
+    const requestType = 'astrbot-desktop:plugin-ui-extension-request';
+    const responseType = 'astrbot-desktop:plugin-ui-extension-response';
+    const fetchTimeoutMs = 8000;
+    const maxScriptBytes = 8 * 1024 * 1024;
+
+    const warn = (message, error) => {
+      if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+        console.warn(`[astrbotDesktop] ${message}`, error ?? '');
+      }
+    };
+    const readToken = () => {
+      try {
+        const token = window.localStorage?.getItem('token');
+        return typeof token === 'string' && token ? token : null;
+      } catch {
+        return null;
+      }
+    };
+    const invokePluginCommand = async (command, payload = {}) => {
+      try {
+        return await invoke(command, payload);
+      } catch (error) {
+        warn(`${command} failed`, error);
+        return null;
+      }
+    };
+    // The timeout stays armed until readResponse finishes, so a body that stalls
+    // after its headers is aborted as well.
+    const fetchWithTimeout = async (url, token, readResponse) => {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), fetchTimeoutMs);
+      try {
+        const response = await window.fetch(url, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Cache-Control': 'no-store',
+          },
+          signal: controller.signal,
+        });
+        return await readResponse(response);
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    };
+
+    const loadPlugin = (plugin, token) => {
+      if (state.loadedPlugins.has(plugin)) return Promise.resolve();
+      if (state.pendingPlugins.has(plugin)) return state.pendingPlugins.get(plugin);
+
+      const pending = (async () => {
+        const source = await fetchWithTimeout(
+          `/api/v1/plugins/extensions/${encodeURIComponent(plugin)}/desktop-ui-extension.js`,
+          token,
+          (response) => {
+            if (!response.ok) throw new Error(`script request returned HTTP ${response.status}`);
+            const contentType = response.headers.get('content-type') || '';
+            if (!contentType.toLowerCase().includes('javascript')) {
+              throw new Error(`unexpected script Content-Type: ${contentType || 'missing'}`);
+            }
+            return response.text();
+          },
+        );
+        if (!source.trim()) throw new Error('script is empty');
+        if (new TextEncoder().encode(source).byteLength > maxScriptBytes) {
+          throw new Error('script exceeds 8 MiB');
+        }
+        if (state.loadedPlugins.has(plugin)) return;
+
+        const script = document.createElement('script');
+        script.textContent = source;
+        script.setAttribute('data-astrbot-plugin-ui-extension', plugin);
+        document.head.appendChild(script);
+        state.loadedPlugins.add(plugin);
+      })()
+        .catch((error) => {
+          warn(`plugin UI extension failed for ${plugin}`, error);
+        })
+        .finally(() => {
+          state.pendingPlugins.delete(plugin);
+        });
+      state.pendingPlugins.set(plugin, pending);
+      return pending;
+    };
+
+    const loadPluginUiExtensions = ({ force = false } = {}) => {
+      const token = readToken();
+      if (token && !force && state.completedToken === token) return Promise.resolve();
+      if (state.discoveryPromise) {
+        if (force || state.discoveryToken !== token) state.discoveryQueued = true;
+        return state.discoveryPromise;
+      }
+
+      const promise = (async () => {
+        const settings = await invokePluginCommand(BRIDGE_COMMANDS.GET_PLUGIN_UI_EXTENSIONS);
+        if (settings?.enabled === false) {
+          if (token) state.completedToken = token;
+          return;
+        }
+        if (settings?.enabled !== true || !Array.isArray(settings.plugins)) {
+          throw new Error('invalid plugin UI extension settings response');
+        }
+        if (settings.plugins.length === 0) {
+          if (token) state.completedToken = token;
+          return;
+        }
+        if (!token) return;
+
+        const payload = await fetchWithTimeout('/api/v1/plugins', token, (response) => {
+          if (!response.ok) throw new Error(`plugin list returned HTTP ${response.status}`);
+          return response.json();
+        });
+        if (!Array.isArray(payload?.data)) throw new Error('invalid plugin list response');
+        const grants = new Set(
+          settings.plugins.filter(
+            (plugin) => typeof plugin === 'string' && pluginNamePattern.test(plugin),
+          ),
+        );
+        const targets = new Set();
+        for (const item of payload.data) {
+          const plugin = item?.name;
+          if (
+            item?.activated === true &&
+            typeof plugin === 'string' &&
+            pluginNamePattern.test(plugin) &&
+            grants.has(plugin)
+          ) {
+            targets.add(plugin);
+          }
+        }
+        await Promise.all([...targets].map((plugin) => loadPlugin(plugin, token)));
+        state.completedToken = token;
+      })()
+        .catch((error) => {
+          warn('plugin UI extension discovery failed', error);
+        })
+        .finally(() => {
+          if (state.discoveryPromise === promise) state.discoveryPromise = null;
+          if (state.discoveryQueued) {
+            state.discoveryQueued = false;
+            void loadPluginUiExtensions({ force: true });
+          }
+        });
+      state.discoveryToken = token;
+      state.discoveryPromise = promise;
+      return promise;
+    };
+    state.load = loadPluginUiExtensions;
+
+    const handleMessage = async (event) => {
+      const data = event?.data;
+      if (!data || data.type !== requestType) return;
+      if (typeof document.querySelectorAll !== 'function') return;
+      const frame = [...document.querySelectorAll('iframe')].find(
+        (candidate) => candidate.contentWindow === event.source,
+      );
+      if (!frame) return;
+
+      let plugin;
+      try {
+        const url = new URL(frame.src, window.location.href);
+        if (url.origin !== window.location.origin) return;
+        const match = /^\/api\/v1\/plugins\/([^/]+)\/views\//.exec(url.pathname);
+        if (!match) return;
+        plugin = decodeURIComponent(match[1]);
+      } catch {
+        return;
+      }
+      if (!pluginNamePattern.test(plugin)) return;
+
+      const result = await invokePluginCommand(BRIDGE_COMMANDS.REQUEST_PLUGIN_UI_EXTENSION, {
+        plugin,
+      });
+      const granted = result?.granted === true;
+      const reason = typeof result?.reason === 'string' ? result.reason : 'error';
+      event.source.postMessage(
+        {
+          type: responseType,
+          requestId: data.requestId,
+          granted,
+          reason,
+        },
+        '*',
+      );
+      if (granted) void loadPluginUiExtensions({ force: true });
+    };
+
+    if (!state.listenerInstalled && typeof window.addEventListener === 'function') {
+      window.addEventListener('message', (event) => {
+        void handleMessage(event).catch((error) => {
+          warn('plugin UI extension authorization response failed', error);
+        });
+      });
+      state.listenerInstalled = true;
+    }
+    void loadPluginUiExtensions();
+  }
+
+  initializePluginUiExtensions();
+
+  const existingTrayRestartState = window.__astrbotDesktopTrayRestartState;
+  if (
+    window.astrbotDesktop &&
+    window.astrbotDesktop.__tauriBridge === true &&
+    typeof window.astrbotDesktop.onTrayRestartBackend === 'function' &&
+    typeof existingTrayRestartState?.unlistenTrayRestartBackendEvent === 'function'
+  ) {
+    return;
+  }
   const TRAY_RESTART_BACKEND_EVENT = '{TRAY_RESTART_BACKEND_EVENT}';
 
   const invokeBridge = async (command, payload = {}) => {
@@ -247,6 +471,7 @@
       }
 
       await syncAuthToken(token);
+      triggerPluginUiExtensions();
       // The dashboard waits for its initial router navigation before mounting Vue.
       // Changing the auth hash while that navigation is still in flight can leave
       // #app empty in WKWebView. Reload once after persisting the desktop session
@@ -779,6 +1004,7 @@
           rawSetItem(key, value);
           if (key === TOKEN_STORAGE_KEY) {
             void syncAuthToken(getStoredValue(TOKEN_STORAGE_KEY));
+            triggerPluginUiExtensions();
           } else if (key === SHELL_LOCALE_STORAGE_KEY) {
             void syncShellLocale(getStoredValue(SHELL_LOCALE_STORAGE_KEY));
           }

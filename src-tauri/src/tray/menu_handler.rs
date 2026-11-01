@@ -39,7 +39,7 @@ fn persist_bool_setting_and_update_tray(
     previous_value: bool,
     item: &tauri::menu::CheckMenuItem<tauri::Wry>,
     item_name: &str,
-) {
+) -> bool {
     match desktop_settings::write_desktop_setting(
         runtime_paths::default_packaged_root_dir().as_deref(),
         key,
@@ -50,6 +50,7 @@ fn persist_bool_setting_and_update_tray(
                 .state::<DesktopSettingsCache>()
                 .set(updated_settings);
             set_checked_safe(item, new_value, item_name);
+            true
         }
         Err(error) => {
             append_desktop_log(&format!(
@@ -57,6 +58,7 @@ fn persist_bool_setting_and_update_tray(
                 item_name, error
             ));
             set_checked_safe(item, previous_value, item_name);
+            false
         }
     }
 }
@@ -140,6 +142,41 @@ fn handle_close_to_tray_toggle(app_handle: &AppHandle) {
     );
 }
 
+fn handle_plugin_ui_extensions_toggle(app_handle: &AppHandle) {
+    let Some(tray_state) = app_handle.try_state::<TrayMenuState>() else {
+        return;
+    };
+    let current_settings = app_handle.state::<DesktopSettingsCache>().get();
+    if persist_bool_setting_and_update_tray(
+        app_handle,
+        desktop_settings::DesktopSettingKey::PluginUiExtensions,
+        !current_settings.plugin_ui_extensions_enabled,
+        current_settings.plugin_ui_extensions_enabled,
+        &tray_state.plugin_ui_extensions_item,
+        actions::TRAY_MENU_PLUGIN_UI_EXTENSIONS,
+    ) {
+        window::actions::reload_main_window(app_handle, append_desktop_log);
+    }
+}
+
+fn handle_clear_plugin_ui_extension_grants(app_handle: &AppHandle) {
+    match desktop_settings::clear_plugin_ui_extension_grants(
+        runtime_paths::default_packaged_root_dir().as_deref(),
+    ) {
+        Ok(updated_settings) => {
+            app_handle
+                .state::<DesktopSettingsCache>()
+                .set(updated_settings);
+            window::actions::reload_main_window(app_handle, append_desktop_log);
+        }
+        Err(error) => {
+            append_desktop_log(&format!(
+                "failed to clear plugin UI extension grants: {error}"
+            ));
+        }
+    }
+}
+
 pub fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
     match actions::action_from_menu_id(menu_id) {
         Some(actions::TrayMenuAction::ToggleWindow) => window::actions::toggle_main_window(
@@ -194,6 +231,12 @@ pub fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
         Some(actions::TrayMenuAction::LaunchAtLogin) => handle_launch_at_login_toggle(app_handle),
         Some(actions::TrayMenuAction::SilentLaunch) => handle_silent_launch_toggle(app_handle),
         Some(actions::TrayMenuAction::CloseToTray) => handle_close_to_tray_toggle(app_handle),
+        Some(actions::TrayMenuAction::PluginUiExtensions) => {
+            handle_plugin_ui_extensions_toggle(app_handle)
+        }
+        Some(actions::TrayMenuAction::ClearPluginUiExtensionGrants) => {
+            handle_clear_plugin_ui_extension_grants(app_handle)
+        }
         Some(actions::TrayMenuAction::Quit) => {
             lifecycle::events::handle_tray_quit(app_handle);
         }

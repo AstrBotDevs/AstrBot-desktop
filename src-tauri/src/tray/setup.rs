@@ -83,6 +83,23 @@ pub fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
         None::<&str>,
     )
     .map_err(|error| format!("Failed to create tray close to tray menu item: {error}"))?;
+    let plugin_ui_extensions_item = CheckMenuItem::with_id(
+        app_handle,
+        actions::TRAY_MENU_PLUGIN_UI_EXTENSIONS,
+        shell_texts.tray_plugin_ui_extensions,
+        true,
+        desktop_settings.plugin_ui_extensions_enabled,
+        None::<&str>,
+    )
+    .map_err(|error| format!("Failed to create tray plugin UI extensions menu item: {error}"))?;
+    let clear_plugin_ui_extension_grants_item = MenuItem::with_id(
+        app_handle,
+        actions::TRAY_MENU_CLEAR_PLUGIN_UI_EXTENSION_GRANTS,
+        shell_texts.tray_clear_plugin_ui_extension_grants,
+        true,
+        None::<&str>,
+    )
+    .map_err(|error| format!("Failed to create tray clear plugin UI grants menu item: {error}"))?;
     let quit_item = MenuItem::with_id(
         app_handle,
         actions::TRAY_MENU_QUIT,
@@ -106,6 +123,8 @@ pub fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
             &launch_at_login_item,
             &silent_launch_item,
             &close_to_tray_item,
+            &plugin_ui_extensions_item,
+            &clear_plugin_ui_extension_grants_item,
             &separator,
             &quit_item,
         ],
@@ -119,6 +138,8 @@ pub fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
         launch_at_login_item: launch_at_login_item.clone(),
         silent_launch_item: silent_launch_item.clone(),
         close_to_tray_item: close_to_tray_item.clone(),
+        plugin_ui_extensions_item: plugin_ui_extensions_item.clone(),
+        clear_plugin_ui_extension_grants_item: clear_plugin_ui_extension_grants_item.clone(),
         quit_item: quit_item.clone(),
     }) {
         append_desktop_log("tray menu state already exists, skipping manage");

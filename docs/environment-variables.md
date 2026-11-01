@@ -55,6 +55,7 @@
 | --- | --- | --- |
 | `ASTRBOT_DESKTOP_CLIENT` | 标记桌面客户端环境 | 打包态启动后端时写入 `1` |
 | `ASTRBOT_DESKTOP_MANAGED` | 标记后端由桌面进程托管 | 桌面端启动后端时写入 `1`（包括开发态与打包态）；桌面免密会话必须同时具备此标记 |
+| `ASTRBOT_DESKTOP_PLUGIN_UI_EXTENSIONS` | 标记 Desktop 支持逐个授权的插件界面扩展 | 桌面端启动托管后端时写入 `1`（包括开发态与打包态）；插件应据此检测能力，协议见 `docs/plugin-ui-extensions.md` |
 | `ASTRBOT_DESKTOP_SESSION_SECRET` | 桌面原生层与托管后端之间的内部会话密钥 | 每次桌面进程启动时随机生成 256 位值，仅通过子进程环境和本机回环请求传递，不落盘且不应由用户设置 |
 | `ASTRBOT_INSTALLATION_SOURCE` | 标记 AstrBot 匿名指标中的安装来源 | 打包态启动后端时写入 `desktop` |
 | `ASTRBOT_BACKEND_STARTUP_HEARTBEAT_PATH` | 桌面端写给后端启动器的 heartbeat 文件路径 | 打包态默认写到 `ASTRBOT_ROOT/data/backend-startup-heartbeat.json` |

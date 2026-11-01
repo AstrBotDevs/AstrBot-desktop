@@ -32,6 +32,7 @@ pub(crate) enum DesktopSettingKey {
     LaunchAtLogin,
     SilentLaunch,
     CloseToTray,
+    PluginUiExtensions,
 }
 
 fn default_launch_at_login() -> bool {
@@ -46,6 +47,10 @@ fn default_close_to_tray() -> bool {
     true
 }
 
+fn default_plugin_ui_extensions_enabled() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct DesktopSettings {
     #[serde(rename = "launchAtLogin", default = "default_launch_at_login")]
@@ -54,6 +59,13 @@ pub(crate) struct DesktopSettings {
     pub(crate) silent_launch: bool,
     #[serde(rename = "closeToTray", default = "default_close_to_tray")]
     pub(crate) close_to_tray: bool,
+    #[serde(
+        rename = "pluginUiExtensionsEnabled",
+        default = "default_plugin_ui_extensions_enabled"
+    )]
+    pub(crate) plugin_ui_extensions_enabled: bool,
+    #[serde(rename = "pluginUiExtensionGrants", default)]
+    pub(crate) plugin_ui_extension_grants: Vec<String>,
     #[serde(flatten)]
     other: Map<String, Value>,
 }
@@ -64,6 +76,8 @@ impl Default for DesktopSettings {
             launch_at_login: default_launch_at_login(),
             silent_launch: default_silent_launch(),
             close_to_tray: default_close_to_tray(),
+            plugin_ui_extensions_enabled: default_plugin_ui_extensions_enabled(),
+            plugin_ui_extension_grants: Vec::new(),
             other: Map::new(),
         }
     }
@@ -75,6 +89,7 @@ impl DesktopSettings {
             DesktopSettingKey::LaunchAtLogin => self.launch_at_login = value,
             DesktopSettingKey::SilentLaunch => self.silent_launch = value,
             DesktopSettingKey::CloseToTray => self.close_to_tray = value,
+            DesktopSettingKey::PluginUiExtensions => self.plugin_ui_extensions_enabled = value,
         }
     }
 }
@@ -197,6 +212,45 @@ pub(crate) fn write_desktop_setting(
 
     let mut state = load_state(&state_path)?;
     state.set(key, value);
+    save_state(&state_path, &state)?;
+    Ok(state)
+}
+
+pub(crate) fn grant_plugin_ui_extension(
+    packaged_root_dir: Option<&Path>,
+    plugin: &str,
+) -> Result<DesktopSettings, String> {
+    let Some(state_path) = crate::desktop_state::resolve_desktop_state_path(packaged_root_dir)
+    else {
+        let message =
+            "Desktop settings state path is unavailable; cannot persist plugin UI extension grant."
+                .to_string();
+        crate::append_desktop_log(&message);
+        return Err(message);
+    };
+
+    let mut state = load_state(&state_path)?;
+    state.plugin_ui_extension_grants.push(plugin.to_string());
+    state.plugin_ui_extension_grants.sort();
+    state.plugin_ui_extension_grants.dedup();
+    save_state(&state_path, &state)?;
+    Ok(state)
+}
+
+pub(crate) fn clear_plugin_ui_extension_grants(
+    packaged_root_dir: Option<&Path>,
+) -> Result<DesktopSettings, String> {
+    let Some(state_path) = crate::desktop_state::resolve_desktop_state_path(packaged_root_dir)
+    else {
+        let message =
+            "Desktop settings state path is unavailable; cannot clear plugin UI extension grants."
+                .to_string();
+        crate::append_desktop_log(&message);
+        return Err(message);
+    };
+
+    let mut state = load_state(&state_path)?;
+    state.plugin_ui_extension_grants.clear();
     save_state(&state_path, &state)?;
     Ok(state)
 }
@@ -361,6 +415,70 @@ mod tests {
             parsed.get("closeToTray").and_then(|value| value.as_bool()),
             Some(false)
         );
+    }
+
+    #[test]
+    fn plugin_ui_extensions_default_to_enabled_without_any_grants() {
+        let settings = DesktopSettings::default();
+
+        assert!(settings.plugin_ui_extensions_enabled);
+        assert!(settings.plugin_ui_extension_grants.is_empty());
+    }
+
+    #[test]
+    fn plugin_ui_extension_grants_roundtrip_sorted_and_preserves_unknown_fields() {
+        let _root_guard = EnvVarGuard::clear(crate::ASTRBOT_ROOT_ENV);
+        let root = tempfile::tempdir().expect("temp root");
+        let path = state_path(root.path());
+        fs::create_dir_all(path.parent().expect("state parent")).expect("create state parent");
+        fs::write(&path, r#"{"locale":"zh-CN"}"#).expect("write state");
+
+        grant_plugin_ui_extension(Some(root.path()), "zeta_plugin").expect("grant zeta");
+        let updated =
+            grant_plugin_ui_extension(Some(root.path()), "alpha_plugin").expect("grant alpha");
+        let duplicate =
+            grant_plugin_ui_extension(Some(root.path()), "alpha_plugin").expect("duplicate grant");
+
+        assert_eq!(
+            updated.plugin_ui_extension_grants,
+            vec!["alpha_plugin".to_string(), "zeta_plugin".to_string()]
+        );
+        assert_eq!(
+            duplicate.plugin_ui_extension_grants,
+            updated.plugin_ui_extension_grants
+        );
+        assert_eq!(read_desktop_settings(Some(root.path())), duplicate);
+        let raw = fs::read_to_string(path).expect("read state");
+        let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse state");
+        assert_eq!(
+            parsed.get("locale").and_then(|value| value.as_str()),
+            Some("zh-CN")
+        );
+        assert_eq!(
+            parsed
+                .get("pluginUiExtensionsEnabled")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn clearing_plugin_ui_extension_grants_does_not_change_master_switch() {
+        let _root_guard = EnvVarGuard::clear(crate::ASTRBOT_ROOT_ENV);
+        let root = tempfile::tempdir().expect("temp root");
+        grant_plugin_ui_extension(Some(root.path()), "palette").expect("grant plugin");
+        write_desktop_setting(
+            Some(root.path()),
+            DesktopSettingKey::PluginUiExtensions,
+            false,
+        )
+        .expect("disable extensions");
+
+        let updated = clear_plugin_ui_extension_grants(Some(root.path())).expect("clear grants");
+
+        assert!(updated.plugin_ui_extension_grants.is_empty());
+        assert!(!updated.plugin_ui_extensions_enabled);
+        assert_eq!(read_desktop_settings(Some(root.path())), updated);
     }
 
     #[test]

@@ -20,7 +20,16 @@ pub struct ShellTexts {
     pub tray_launch_at_login: &'static str,
     pub tray_silent_launch: &'static str,
     pub tray_close_to_tray: &'static str,
+    pub tray_plugin_ui_extensions: &'static str,
+    pub tray_clear_plugin_ui_extension_grants: &'static str,
     pub tray_quit: &'static str,
+}
+
+pub struct PluginUiExtensionDialogTexts {
+    pub title: &'static str,
+    pub message: String,
+    pub allow: &'static str,
+    pub deny: &'static str,
 }
 
 pub fn shell_texts_for_locale(locale: &str) -> ShellTexts {
@@ -33,6 +42,8 @@ pub fn shell_texts_for_locale(locale: &str) -> ShellTexts {
             tray_launch_at_login: "Launch at Login",
             tray_silent_launch: "Silent Launch",
             tray_close_to_tray: "Close to Tray",
+            tray_plugin_ui_extensions: "Allow Plugin UI Extensions",
+            tray_clear_plugin_ui_extension_grants: "Clear Plugin UI Authorizations",
             tray_quit: "Quit",
         };
     }
@@ -45,7 +56,34 @@ pub fn shell_texts_for_locale(locale: &str) -> ShellTexts {
         tray_launch_at_login: "开机自启",
         tray_silent_launch: "静默启动",
         tray_close_to_tray: "关闭到托盘",
+        tray_plugin_ui_extensions: "允许插件界面扩展",
+        tray_clear_plugin_ui_extension_grants: "清除插件界面授权",
         tray_quit: "退出",
+    }
+}
+
+pub fn plugin_ui_extension_dialog_texts(
+    locale: &str,
+    plugin: &str,
+) -> PluginUiExtensionDialogTexts {
+    if locale == "en-US" {
+        return PluginUiExtensionDialogTexts {
+            title: "Plugin requests UI extension access",
+            message: format!(
+                "The plugin \"{plugin}\" provides a UI script that will run inside the main AstrBot window.\n\nThe script has the same permissions as your signed-in WebUI session. Only authorize plugins you trust. You can revoke access from the tray menu."
+            ),
+            allow: "Allow",
+            deny: "Deny",
+        };
+    }
+
+    PluginUiExtensionDialogTexts {
+        title: "插件请求界面扩展权限",
+        message: format!(
+            "插件「{plugin}」提供界面脚本，并会在 AstrBot 主界面中运行。\n\n该脚本拥有与已登录 WebUI 相同的权限。请只授权你信任的插件；你可以随时在托盘中撤销授权。"
+        ),
+        allow: "允许",
+        deny: "拒绝",
     }
 }
 
@@ -204,6 +242,14 @@ mod tests {
         assert_eq!(texts.tray_launch_at_login, "Launch at Login");
         assert_eq!(texts.tray_silent_launch, "Silent Launch");
         assert_eq!(texts.tray_close_to_tray, "Close to Tray");
+        assert_eq!(
+            texts.tray_plugin_ui_extensions,
+            "Allow Plugin UI Extensions"
+        );
+        assert_eq!(
+            texts.tray_clear_plugin_ui_extension_grants,
+            "Clear Plugin UI Authorizations"
+        );
         assert_eq!(texts.tray_quit, "Quit");
     }
 
@@ -214,7 +260,37 @@ mod tests {
         assert_eq!(texts.tray_launch_at_login, "开机自启");
         assert_eq!(texts.tray_silent_launch, "静默启动");
         assert_eq!(texts.tray_close_to_tray, "关闭到托盘");
+        assert_eq!(texts.tray_plugin_ui_extensions, "允许插件界面扩展");
+        assert_eq!(
+            texts.tray_clear_plugin_ui_extension_grants,
+            "清除插件界面授权"
+        );
         assert_eq!(texts.tray_quit, "退出");
+    }
+
+    #[test]
+    fn plugin_ui_extension_dialog_texts_explain_permissions_in_english() {
+        let texts = plugin_ui_extension_dialog_texts("en-US", "palette");
+
+        assert_eq!(texts.title, "Plugin requests UI extension access");
+        assert!(texts.message.contains("\"palette\""));
+        assert!(texts.message.contains("same permissions"));
+        assert!(texts.message.contains("Only authorize plugins you trust"));
+        assert_eq!(texts.allow, "Allow");
+        assert_eq!(texts.deny, "Deny");
+    }
+
+    #[test]
+    fn plugin_ui_extension_dialog_texts_explain_permissions_in_chinese() {
+        let texts = plugin_ui_extension_dialog_texts("zh-CN", "调色盘");
+
+        assert_eq!(texts.title, "插件请求界面扩展权限");
+        assert!(texts.message.contains("插件「调色盘」"));
+        assert!(texts.message.contains("相同的权限"));
+        assert!(texts.message.contains("只授权你信任的插件"));
+        assert!(texts.message.contains("托盘中撤销授权"));
+        assert_eq!(texts.allow, "允许");
+        assert_eq!(texts.deny, "拒绝");
     }
 
     #[test]
