@@ -314,6 +314,7 @@ pub(crate) fn run() {
                 runtime_paths::default_packaged_root_dir().as_deref(),
             ),
         ))
+        .manage(bridge::plugin_ui_extensions::PluginUiExtensionRuntimeState::default())
         .invoke_handler(tauri::generate_handler![
             crate::bridge::commands::desktop_bridge_is_desktop_runtime,
             crate::bridge::commands::desktop_bridge_get_backend_state,
@@ -325,6 +326,8 @@ pub(crate) fn run() {
             crate::bridge::commands::desktop_bridge_restart_backend,
             crate::bridge::commands::desktop_bridge_stop_backend,
             crate::bridge::commands::desktop_bridge_pick_directory,
+            crate::bridge::commands::desktop_bridge_get_plugin_ui_extensions,
+            crate::bridge::commands::desktop_bridge_request_plugin_ui_extension,
             crate::bridge::commands::desktop_bridge_open_external_url,
             crate::bridge::commands::desktop_bridge_open_repair_install,
             crate::bridge::commands::desktop_bridge_set_window_theme,

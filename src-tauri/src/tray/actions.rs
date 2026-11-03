@@ -4,6 +4,9 @@ pub const TRAY_MENU_RESTART_BACKEND: &str = "tray_restart_backend";
 pub const TRAY_MENU_LAUNCH_AT_LOGIN: &str = "tray_launch_at_login";
 pub const TRAY_MENU_SILENT_LAUNCH: &str = "tray_silent_launch";
 pub const TRAY_MENU_CLOSE_TO_TRAY: &str = "tray_close_to_tray";
+pub const TRAY_MENU_PLUGIN_UI_EXTENSIONS: &str = "tray_plugin_ui_extensions";
+pub const TRAY_MENU_CLEAR_PLUGIN_UI_EXTENSION_GRANTS: &str =
+    "tray_clear_plugin_ui_extension_grants";
 pub const TRAY_MENU_QUIT: &str = "tray_quit";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,6 +17,8 @@ pub enum TrayMenuAction {
     LaunchAtLogin,
     SilentLaunch,
     CloseToTray,
+    PluginUiExtensions,
+    ClearPluginUiExtensionGrants,
     Quit,
 }
 
@@ -25,6 +30,10 @@ pub fn action_from_menu_id(menu_id: &str) -> Option<TrayMenuAction> {
         TRAY_MENU_LAUNCH_AT_LOGIN => Some(TrayMenuAction::LaunchAtLogin),
         TRAY_MENU_SILENT_LAUNCH => Some(TrayMenuAction::SilentLaunch),
         TRAY_MENU_CLOSE_TO_TRAY => Some(TrayMenuAction::CloseToTray),
+        TRAY_MENU_PLUGIN_UI_EXTENSIONS => Some(TrayMenuAction::PluginUiExtensions),
+        TRAY_MENU_CLEAR_PLUGIN_UI_EXTENSION_GRANTS => {
+            Some(TrayMenuAction::ClearPluginUiExtensionGrants)
+        }
         TRAY_MENU_QUIT => Some(TrayMenuAction::Quit),
         _ => None,
     }
@@ -63,6 +72,14 @@ mod tests {
         assert_eq!(
             action_from_menu_id(TRAY_MENU_CLOSE_TO_TRAY),
             Some(TrayMenuAction::CloseToTray)
+        );
+        assert_eq!(
+            action_from_menu_id(TRAY_MENU_PLUGIN_UI_EXTENSIONS),
+            Some(TrayMenuAction::PluginUiExtensions)
+        );
+        assert_eq!(
+            action_from_menu_id(TRAY_MENU_CLEAR_PLUGIN_UI_EXTENSION_GRANTS),
+            Some(TrayMenuAction::ClearPluginUiExtensionGrants)
         );
     }
 

@@ -111,6 +111,18 @@ pub fn update_tray_menu_labels_with_visibility<F>(
         actions::TRAY_MENU_CLOSE_TO_TRAY,
         &log,
     );
+    set_check_menu_text_safe(
+        &tray_state.plugin_ui_extensions_item,
+        shell_texts.tray_plugin_ui_extensions,
+        actions::TRAY_MENU_PLUGIN_UI_EXTENSIONS,
+        &log,
+    );
+    set_menu_text_safe(
+        &tray_state.clear_plugin_ui_extension_grants_item,
+        shell_texts.tray_clear_plugin_ui_extension_grants,
+        actions::TRAY_MENU_CLEAR_PLUGIN_UI_EXTENSION_GRANTS,
+        &log,
+    );
     set_menu_text_safe(
         &tray_state.quit_item,
         shell_texts.tray_quit,

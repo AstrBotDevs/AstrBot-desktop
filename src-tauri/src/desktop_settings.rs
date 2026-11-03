@@ -1,6 +1,6 @@
 use std::{fs, io::Write, path::Path, sync::Mutex};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
 
 #[derive(Debug)]
@@ -22,8 +22,13 @@ impl DesktopSettingsCache {
             .clone()
     }
 
-    pub(crate) fn set(&self, settings: DesktopSettings) {
-        *self.settings.lock().expect("desktop settings cache lock") = settings;
+    pub(crate) fn update(
+        &self,
+        persist: impl FnOnce(&DesktopSettings) -> Result<DesktopSettings, String>,
+    ) -> Result<(), String> {
+        let mut settings = self.settings.lock().expect("desktop settings cache lock");
+        *settings = persist(&settings)?;
+        Ok(())
     }
 }
 
@@ -32,6 +37,7 @@ pub(crate) enum DesktopSettingKey {
     LaunchAtLogin,
     SilentLaunch,
     CloseToTray,
+    PluginUiExtensions,
 }
 
 fn default_launch_at_login() -> bool {
@@ -46,6 +52,23 @@ fn default_close_to_tray() -> bool {
     true
 }
 
+fn default_plugin_ui_extensions_enabled() -> bool {
+    true
+}
+
+fn deserialize_plugin_ui_extension_grants<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(match Value::deserialize(deserializer)? {
+        Value::Array(grants) => grants
+            .into_iter()
+            .filter_map(|grant| grant.as_str().map(str::to_owned))
+            .collect(),
+        _ => Vec::new(),
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct DesktopSettings {
     #[serde(rename = "launchAtLogin", default = "default_launch_at_login")]
@@ -54,6 +77,17 @@ pub(crate) struct DesktopSettings {
     pub(crate) silent_launch: bool,
     #[serde(rename = "closeToTray", default = "default_close_to_tray")]
     pub(crate) close_to_tray: bool,
+    #[serde(
+        rename = "pluginUiExtensionsEnabled",
+        default = "default_plugin_ui_extensions_enabled"
+    )]
+    pub(crate) plugin_ui_extensions_enabled: bool,
+    #[serde(
+        rename = "pluginUiExtensionGrants",
+        default,
+        deserialize_with = "deserialize_plugin_ui_extension_grants"
+    )]
+    pub(crate) plugin_ui_extension_grants: Vec<String>,
     #[serde(flatten)]
     other: Map<String, Value>,
 }
@@ -64,6 +98,8 @@ impl Default for DesktopSettings {
             launch_at_login: default_launch_at_login(),
             silent_launch: default_silent_launch(),
             close_to_tray: default_close_to_tray(),
+            plugin_ui_extensions_enabled: default_plugin_ui_extensions_enabled(),
+            plugin_ui_extension_grants: Vec::new(),
             other: Map::new(),
         }
     }
@@ -75,6 +111,7 @@ impl DesktopSettings {
             DesktopSettingKey::LaunchAtLogin => self.launch_at_login = value,
             DesktopSettingKey::SilentLaunch => self.silent_launch = value,
             DesktopSettingKey::CloseToTray => self.close_to_tray = value,
+            DesktopSettingKey::PluginUiExtensions => self.plugin_ui_extensions_enabled = value,
         }
     }
 }
@@ -168,6 +205,7 @@ fn save_state(path: &Path, state: &DesktopSettings) -> Result<(), String> {
 }
 
 pub(crate) fn read_desktop_settings(packaged_root_dir: Option<&Path>) -> DesktopSettings {
+    let _state_guard = crate::desktop_state::lock_desktop_state();
     let Some(state_path) = crate::desktop_state::resolve_desktop_state_path(packaged_root_dir)
     else {
         return DesktopSettings::default();
@@ -187,6 +225,7 @@ pub(crate) fn write_desktop_setting(
     key: DesktopSettingKey,
     value: bool,
 ) -> Result<DesktopSettings, String> {
+    let _state_guard = crate::desktop_state::lock_desktop_state();
     let Some(state_path) = crate::desktop_state::resolve_desktop_state_path(packaged_root_dir)
     else {
         let message =
@@ -197,6 +236,47 @@ pub(crate) fn write_desktop_setting(
 
     let mut state = load_state(&state_path)?;
     state.set(key, value);
+    save_state(&state_path, &state)?;
+    Ok(state)
+}
+
+pub(crate) fn grant_plugin_ui_extension(
+    packaged_root_dir: Option<&Path>,
+    plugin: &str,
+) -> Result<DesktopSettings, String> {
+    let _state_guard = crate::desktop_state::lock_desktop_state();
+    let Some(state_path) = crate::desktop_state::resolve_desktop_state_path(packaged_root_dir)
+    else {
+        let message =
+            "Desktop settings state path is unavailable; cannot persist plugin UI extension grant."
+                .to_string();
+        crate::append_desktop_log(&message);
+        return Err(message);
+    };
+
+    let mut state = load_state(&state_path)?;
+    state.plugin_ui_extension_grants.push(plugin.to_string());
+    state.plugin_ui_extension_grants.sort();
+    state.plugin_ui_extension_grants.dedup();
+    save_state(&state_path, &state)?;
+    Ok(state)
+}
+
+pub(crate) fn clear_plugin_ui_extension_grants(
+    packaged_root_dir: Option<&Path>,
+) -> Result<DesktopSettings, String> {
+    let _state_guard = crate::desktop_state::lock_desktop_state();
+    let Some(state_path) = crate::desktop_state::resolve_desktop_state_path(packaged_root_dir)
+    else {
+        let message =
+            "Desktop settings state path is unavailable; cannot clear plugin UI extension grants."
+                .to_string();
+        crate::append_desktop_log(&message);
+        return Err(message);
+    };
+
+    let mut state = load_state(&state_path)?;
+    state.plugin_ui_extension_grants.clear();
     save_state(&state_path, &state)?;
     Ok(state)
 }
@@ -227,13 +307,19 @@ mod tests {
     struct EnvVarGuard {
         key: &'static str,
         previous: Option<String>,
+        _root_guard: std::sync::MutexGuard<'static, ()>,
     }
 
     impl EnvVarGuard {
         fn clear(key: &'static str) -> Self {
+            let guard = crate::desktop_state::ROOT_ENV_TEST_LOCK.lock().unwrap();
             let previous = std::env::var(key).ok();
             std::env::remove_var(key);
-            Self { key, previous }
+            Self {
+                key,
+                previous,
+                _root_guard: guard,
+            }
         }
     }
 
@@ -297,13 +383,135 @@ mod tests {
     }
 
     #[test]
+    fn malformed_plugin_grants_do_not_reset_other_desktop_state() {
+        let _root_guard = EnvVarGuard::clear(crate::ASTRBOT_ROOT_ENV);
+        let root = tempfile::tempdir().expect("temp root");
+        let path = state_path(root.path());
+        fs::create_dir_all(path.parent().expect("state parent")).expect("create state parent");
+        for (grants, normalized) in [
+            (serde_json::json!(null), serde_json::json!([])),
+            (serde_json::json!(false), serde_json::json!([])),
+            (serde_json::json!(42), serde_json::json!([])),
+            (serde_json::json!(1.5), serde_json::json!([])),
+            (serde_json::json!("palette"), serde_json::json!([])),
+            (serde_json::json!({"palette": true}), serde_json::json!([])),
+            (serde_json::json!([]), serde_json::json!([])),
+            (
+                serde_json::json!([null, false, 42, {}, []]),
+                serde_json::json!([]),
+            ),
+            (
+                serde_json::json!(["palette", null, 42, false, {}, [], "other"]),
+                serde_json::json!(["palette", "other"]),
+            ),
+            (
+                serde_json::json!(["zeta", "palette", "palette"]),
+                serde_json::json!(["zeta", "palette", "palette"]),
+            ),
+        ] {
+            let mut expected = serde_json::json!({
+                "launchAtLogin": true,
+                "silentLaunch": false,
+                "closeToTray": false,
+                "pluginUiExtensionsEnabled": false,
+                "pluginUiExtensionGrants": grants,
+                "locale": "en-US",
+                "updateChannel": "nightly",
+                "unknown": {"preserve": [1, true, "value"]}
+            });
+            let original = serde_json::to_vec(&expected).unwrap();
+            fs::write(&path, &original).expect("write state");
+
+            let recovered = read_desktop_settings(Some(root.path()));
+            assert!(recovered.launch_at_login);
+            assert!(!recovered.close_to_tray);
+            assert!(!recovered.plugin_ui_extensions_enabled);
+            assert_eq!(
+                serde_json::to_value(&recovered.plugin_ui_extension_grants).unwrap(),
+                normalized
+            );
+            assert_eq!(recovered.other["unknown"], expected["unknown"]);
+            assert_eq!(fs::read(&path).unwrap(), original);
+
+            write_desktop_setting(Some(root.path()), DesktopSettingKey::SilentLaunch, true)
+                .unwrap();
+            expected["silentLaunch"] = serde_json::json!(true);
+            expected["pluginUiExtensionGrants"] = normalized;
+            let persisted: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            assert_eq!(persisted, expected);
+        }
+    }
+
+    #[test]
     fn desktop_settings_cache_returns_updated_value_without_reloading_file() {
         let cache = DesktopSettingsCache::new(DesktopSettings::default());
         let updated = settings(true, true, false);
 
-        cache.set(updated.clone());
+        cache.update(|_| Ok(updated.clone())).expect("update cache");
 
         assert_eq!(cache.get(), updated);
+    }
+
+    #[test]
+    fn cache_keeps_previous_settings_when_persistence_fails() {
+        let previous = settings(true, false, false);
+        let cache = DesktopSettingsCache::new(previous.clone());
+        assert_eq!(
+            cache.update(|_| Err("write failed".to_string())),
+            Err("write failed".to_string())
+        );
+        assert_eq!(cache.get(), previous);
+    }
+
+    #[test]
+    fn concurrent_cache_updates_publish_in_persistence_order() {
+        let _root_guard = EnvVarGuard::clear(crate::ASTRBOT_ROOT_ENV);
+        let root = tempfile::tempdir().unwrap();
+        let cache = DesktopSettingsCache::new(DesktopSettings::default());
+        let (persisted_tx, persisted_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| {
+            let cache_ref = &cache;
+            let root_path = root.path();
+            let first = scope.spawn(move || {
+                cache_ref.update(|_| {
+                    let updated = grant_plugin_ui_extension(Some(root_path), "palette")?;
+                    persisted_tx.send(()).unwrap();
+                    release_rx.recv().unwrap();
+                    Ok(updated)
+                })
+            });
+            persisted_rx.recv().unwrap();
+            let second = scope.spawn(|| {
+                started_tx.send(()).unwrap();
+                cache.update(|_| {
+                    entered_tx.send(()).unwrap();
+                    write_desktop_setting(
+                        Some(root.path()),
+                        DesktopSettingKey::PluginUiExtensions,
+                        false,
+                    )
+                })
+            });
+            started_rx.recv().unwrap();
+            let entered_early = entered_rx.recv_timeout(std::time::Duration::from_millis(50));
+            release_tx.send(()).unwrap();
+            first.join().unwrap().unwrap();
+            second.join().unwrap().unwrap();
+            assert_eq!(
+                entered_early,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+            );
+        });
+        let current = cache.get();
+        assert!(!current.plugin_ui_extensions_enabled);
+        assert_eq!(
+            current.plugin_ui_extension_grants,
+            vec!["palette".to_string()]
+        );
+        assert_eq!(current, read_desktop_settings(Some(root.path())));
     }
 
     #[test]
@@ -361,6 +569,204 @@ mod tests {
             parsed.get("closeToTray").and_then(|value| value.as_bool()),
             Some(false)
         );
+    }
+
+    #[test]
+    fn plugin_ui_extensions_default_to_enabled_without_any_grants() {
+        let settings = DesktopSettings::default();
+
+        assert!(settings.plugin_ui_extensions_enabled);
+        assert!(settings.plugin_ui_extension_grants.is_empty());
+    }
+
+    #[test]
+    fn plugin_ui_extension_grants_roundtrip_sorted_and_preserves_unknown_fields() {
+        let _root_guard = EnvVarGuard::clear(crate::ASTRBOT_ROOT_ENV);
+        let root = tempfile::tempdir().expect("temp root");
+        let path = state_path(root.path());
+        fs::create_dir_all(path.parent().expect("state parent")).expect("create state parent");
+        fs::write(&path, r#"{"locale":"zh-CN"}"#).expect("write state");
+
+        grant_plugin_ui_extension(Some(root.path()), "zeta_plugin").expect("grant zeta");
+        let updated =
+            grant_plugin_ui_extension(Some(root.path()), "alpha_plugin").expect("grant alpha");
+        let duplicate =
+            grant_plugin_ui_extension(Some(root.path()), "alpha_plugin").expect("duplicate grant");
+
+        assert_eq!(
+            updated.plugin_ui_extension_grants,
+            vec!["alpha_plugin".to_string(), "zeta_plugin".to_string()]
+        );
+        assert_eq!(
+            duplicate.plugin_ui_extension_grants,
+            updated.plugin_ui_extension_grants
+        );
+        assert_eq!(read_desktop_settings(Some(root.path())), duplicate);
+        let raw = fs::read_to_string(path).expect("read state");
+        let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse state");
+        assert_eq!(
+            parsed.get("locale").and_then(|value| value.as_str()),
+            Some("zh-CN")
+        );
+        assert_eq!(
+            parsed
+                .get("pluginUiExtensionsEnabled")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn clearing_plugin_ui_extension_grants_does_not_change_master_switch() {
+        let _root_guard = EnvVarGuard::clear(crate::ASTRBOT_ROOT_ENV);
+        let root = tempfile::tempdir().expect("temp root");
+        grant_plugin_ui_extension(Some(root.path()), "palette").expect("grant plugin");
+        write_desktop_setting(
+            Some(root.path()),
+            DesktopSettingKey::PluginUiExtensions,
+            false,
+        )
+        .expect("disable extensions");
+
+        let updated = clear_plugin_ui_extension_grants(Some(root.path())).expect("clear grants");
+
+        assert!(updated.plugin_ui_extension_grants.is_empty());
+        assert!(!updated.plugin_ui_extensions_enabled);
+        assert_eq!(read_desktop_settings(Some(root.path())), updated);
+    }
+
+    #[test]
+    fn locale_updates_replace_state_without_modifying_the_previous_file() {
+        let _root_guard = EnvVarGuard::clear(crate::ASTRBOT_ROOT_ENV);
+        let root = tempfile::tempdir().unwrap();
+        grant_plugin_ui_extension(Some(root.path()), "palette").unwrap();
+        let path = state_path(root.path());
+        let previous = fs::read(&path).unwrap();
+        let snapshot = root.path().join("previous-state.json");
+        fs::hard_link(&path, &snapshot).unwrap();
+
+        crate::shell_locale::write_cached_shell_locale(Some("en-US"), Some(root.path())).unwrap();
+
+        assert_eq!(fs::read(snapshot).unwrap(), previous);
+        let parsed: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        assert_eq!(parsed["locale"], "en-US");
+        assert_eq!(
+            parsed["pluginUiExtensionGrants"],
+            serde_json::json!(["palette"])
+        );
+    }
+
+    #[test]
+    fn failed_locale_staging_preserves_existing_settings() {
+        let _root_guard = EnvVarGuard::clear(crate::ASTRBOT_ROOT_ENV);
+        let root = tempfile::tempdir().unwrap();
+        let original = grant_plugin_ui_extension(Some(root.path()), "palette").unwrap();
+        let path = state_path(root.path());
+        let previous = fs::read(&path).unwrap();
+        fs::create_dir(path.with_extension("json.tmp")).unwrap();
+
+        assert!(
+            crate::shell_locale::write_cached_shell_locale(Some("en-US"), Some(root.path()))
+                .is_err()
+        );
+        assert_eq!(fs::read(path).unwrap(), previous);
+        assert_eq!(read_desktop_settings(Some(root.path())), original);
+    }
+
+    #[test]
+    fn concurrent_plugin_ui_toggles_restore_original_value() {
+        let _root_guard = EnvVarGuard::clear(crate::ASTRBOT_ROOT_ENV);
+        let root = tempfile::tempdir().unwrap();
+        let original = grant_plugin_ui_extension(Some(root.path()), "palette").unwrap();
+        let cache = DesktopSettingsCache::new(original.clone());
+        let start = std::sync::Barrier::new(2);
+        std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..2)
+                .map(|_| {
+                    scope.spawn(|| {
+                        start.wait();
+                        cache.update(|current| {
+                            write_desktop_setting(
+                                Some(root.path()),
+                                DesktopSettingKey::PluginUiExtensions,
+                                !current.plugin_ui_extensions_enabled,
+                            )
+                        })
+                    })
+                })
+                .collect();
+            for handle in handles {
+                handle.join().unwrap().unwrap();
+            }
+        });
+        assert_eq!(cache.get(), original);
+        assert_eq!(read_desktop_settings(Some(root.path())), original);
+    }
+
+    #[test]
+    fn concurrent_state_writers_preserve_grants_switch_locale_and_channel() {
+        let _root_guard = EnvVarGuard::clear(crate::ASTRBOT_ROOT_ENV);
+        let root = tempfile::tempdir().expect("temp root");
+        let path = state_path(root.path());
+        fs::create_dir_all(path.parent().expect("state parent")).unwrap();
+        fs::write(&path, r#"{"unrelated":42}"#).unwrap();
+        let start = std::sync::Barrier::new(4);
+        std::thread::scope(|scope| {
+            let grant = scope.spawn(|| {
+                start.wait();
+                for index in 0..24 {
+                    grant_plugin_ui_extension(Some(root.path()), &format!("plugin_{index:02}"))?;
+                }
+                Ok::<_, String>(())
+            });
+            let toggle = scope.spawn(|| {
+                start.wait();
+                for _ in 0..24 {
+                    write_desktop_setting(
+                        Some(root.path()),
+                        DesktopSettingKey::PluginUiExtensions,
+                        false,
+                    )?;
+                }
+                Ok::<_, String>(())
+            });
+            let locale = scope.spawn(|| {
+                start.wait();
+                for _ in 0..24 {
+                    crate::shell_locale::write_cached_shell_locale(
+                        Some("en-US"),
+                        Some(root.path()),
+                    )?;
+                }
+                Ok::<_, String>(())
+            });
+            let channel = scope.spawn(|| {
+                start.wait();
+                for _ in 0..24 {
+                    crate::update_channel::write_cached_update_channel(
+                        Some(crate::update_channel::UpdateChannel::Nightly),
+                        Some(root.path()),
+                    )?;
+                }
+                Ok::<_, String>(())
+            });
+            for thread in [grant, toggle, locale, channel] {
+                thread.join().unwrap().expect("concurrent state write");
+            }
+        });
+        let settings = read_desktop_settings(Some(root.path()));
+        assert!(!settings.plugin_ui_extensions_enabled);
+        assert_eq!(
+            settings.plugin_ui_extension_grants,
+            (0..24)
+                .map(|index| format!("plugin_{index:02}"))
+                .collect::<Vec<_>>()
+        );
+        let parsed: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(parsed["locale"], "en-US");
+        assert_eq!(parsed["updateChannel"], "nightly");
+        assert_eq!(parsed["unrelated"], 42);
     }
 
     #[test]

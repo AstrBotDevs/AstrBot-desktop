@@ -33,6 +33,7 @@ const ASTRBOT_DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV: &str =
 const DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH_ENV: &str = "DASHBOARD_SKIP_DEFAULT_PASSWORD_AUTH";
 const ASTRBOT_DESKTOP_CLIENT_ENV: &str = "ASTRBOT_DESKTOP_CLIENT";
 const ASTRBOT_DESKTOP_MANAGED_ENV: &str = "ASTRBOT_DESKTOP_MANAGED";
+const ASTRBOT_DESKTOP_PLUGIN_UI_EXTENSIONS_ENV: &str = "ASTRBOT_DESKTOP_PLUGIN_UI_EXTENSIONS";
 const ASTRBOT_INSTALLATION_SOURCE_ENV: &str = "ASTRBOT_INSTALLATION_SOURCE";
 const DESKTOP_INSTALLATION_SOURCE: &str = "desktop";
 const ENABLED_ENV_VALUE: &str = "1";
@@ -144,6 +145,7 @@ fn mark_as_desktop_managed(
     packaged_mode: bool,
 ) {
     command.env(ASTRBOT_DESKTOP_MANAGED_ENV, ENABLED_ENV_VALUE);
+    command.env(ASTRBOT_DESKTOP_PLUGIN_UI_EXTENSIONS_ENV, ENABLED_ENV_VALUE);
     command.env(DESKTOP_SESSION_SECRET_ENV, desktop_session_secret.as_str());
     if packaged_mode {
         command.env(ASTRBOT_DESKTOP_CLIENT_ENV, ENABLED_ENV_VALUE);
@@ -667,6 +669,10 @@ mod tests {
             Some(Some(ENABLED_ENV_VALUE.to_string()))
         );
         assert_eq!(
+            get_command_env_value(&command, super::ASTRBOT_DESKTOP_PLUGIN_UI_EXTENSIONS_ENV),
+            Some(Some(ENABLED_ENV_VALUE.to_string()))
+        );
+        assert_eq!(
             get_command_env_value(&command, DESKTOP_SESSION_SECRET_ENV),
             Some(Some(desktop_session_secret.as_str().to_string()))
         );
@@ -690,6 +696,10 @@ mod tests {
         );
         assert_eq!(
             get_command_env_value(&command, ASTRBOT_DESKTOP_MANAGED_ENV),
+            Some(Some(ENABLED_ENV_VALUE.to_string()))
+        );
+        assert_eq!(
+            get_command_env_value(&command, super::ASTRBOT_DESKTOP_PLUGIN_UI_EXTENSIONS_ENV),
             Some(Some(ENABLED_ENV_VALUE.to_string()))
         );
         assert_eq!(

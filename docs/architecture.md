@@ -79,7 +79,9 @@ backend 子系统对上提供统一的“后端可否管理、如何启动、何
 - `bridge/origin_policy.rs`
   - bridge 注入来源判定。
 - `bridge/commands.rs`
-  - desktop bridge IPC 命令入口，收敛 backend、locale、updater 相关返回结构。
+  - desktop bridge IPC 命令入口，收敛 backend、locale、插件界面授权和 updater 相关返回结构。
+- `bridge/plugin_ui_extensions.rs`
+  - 插件名规则、授权请求纯决策、运行期拒绝记录和单弹窗原子占用。
 - `bridge/updater_messages.rs`
   - updater 不支持/手动下载原因文案，以及 manual-download 文案里的下载地址解析。
 - `bridge/updater_mode.rs`
@@ -114,8 +116,9 @@ backend 子系统对上提供统一的“后端可否管理、如何启动、何
 - 路径优先级：`ASTRBOT_ROOT/data/desktop_state.json` -> 打包根目录下的 `data/desktop_state.json`。
 - `shell_locale.rs` 维护 `locale` 字段。
 - `update_channel.rs` 维护 `updateChannel` 字段，并保留其他 JSON 字段。
+- `desktop_settings.rs` 维护启动与窗口设置，以及插件界面扩展字段：`pluginUiExtensionsEnabled` 默认 `true`，`pluginUiExtensionGrants` 默认空数组；总开关只决定是否允许使用扩展，实际加载仍需逐个插件授权。
 
-当前维护约定是：locale 和 update channel 共用同一个状态文件，但各模块只管理自己的字段。
+当前维护约定是：各模块共用同一个状态文件，但只管理自己的字段；共享锁覆盖完整的读改写，避免并发更新互相覆盖，读取和损坏文件修复也使用同一把锁。Desktop 设置缓存把持久化与缓存更新串行化；未知字段保留避免丢弃其他模块的配置。
 
 ### 3.2 updater endpoint 与模式解析
 
@@ -157,7 +160,10 @@ backend 子系统对上提供统一的“后端可否管理、如何启动、何
 1. `bridge/origin_policy.rs` 判断当前页面是否允许注入 desktop bridge。
 2. `bridge/desktop.rs` 把 bootstrap 脚本注入 WebView。
 3. WebUI 通过 `bridge/commands.rs` 调用 desktop IPC。
-4. tray / window 子系统根据当前 locale 和窗口状态刷新文案与可见性。
+4. 插件设置页请求界面授权时，bootstrap 在主文档按实际 iframe 的 `contentWindow` 和同源插件视图地址识别插件；`bridge/plugin_ui_extensions.rs` 负责决策与单弹窗占用，原生确认成功后才持久化授权并更新缓存。
+5. bootstrap 读取 Desktop 总开关与授权名单，再用当前登录令牌读取 Core 插件列表，只加载两者交集中 `activated === true` 的插件脚本；脚本响应还需通过 JavaScript 类型、非空、单脚本 `8 MiB` 和页面总预算 `32 MiB` 限制，最多两个脚本并发读取。独立全局状态保证 Started/Finished 重入、令牌同步和授权回复不会重复插入脚本。
+6. 托盘可停用全部扩展或清除授权；两者在保存成功后刷新主窗口，使已执行脚本失效。协议与安全边界见 `docs/plugin-ui-extensions.md`。
+7. tray / window 子系统根据当前 locale 和窗口状态刷新文案与可见性。
 
 ### 4.4 更新检查/安装流程
 

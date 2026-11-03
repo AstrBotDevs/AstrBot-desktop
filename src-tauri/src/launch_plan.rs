@@ -763,13 +763,19 @@ mod tests {
     struct EnvVarGuard {
         key: &'static str,
         previous: Option<String>,
+        _root_guard: std::sync::MutexGuard<'static, ()>,
     }
 
     impl EnvVarGuard {
         fn set(key: &'static str, value: &str) -> Self {
+            let guard = crate::desktop_state::ROOT_ENV_TEST_LOCK.lock().unwrap();
             let previous = env::var(key).ok();
             env::set_var(key, value);
-            Self { key, previous }
+            Self {
+                key,
+                previous,
+                _root_guard: guard,
+            }
         }
     }
 
