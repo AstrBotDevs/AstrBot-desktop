@@ -22,8 +22,13 @@ impl DesktopSettingsCache {
             .clone()
     }
 
-    pub(crate) fn set(&self, settings: DesktopSettings) {
-        *self.settings.lock().expect("desktop settings cache lock") = settings;
+    pub(crate) fn update(
+        &self,
+        persist: impl FnOnce() -> Result<DesktopSettings, String>,
+    ) -> Result<(), String> {
+        let mut settings = self.settings.lock().expect("desktop settings cache lock");
+        *settings = persist()?;
+        Ok(())
     }
 }
 
@@ -183,6 +188,7 @@ fn save_state(path: &Path, state: &DesktopSettings) -> Result<(), String> {
 }
 
 pub(crate) fn read_desktop_settings(packaged_root_dir: Option<&Path>) -> DesktopSettings {
+    let _state_guard = crate::desktop_state::lock_desktop_state();
     let Some(state_path) = crate::desktop_state::resolve_desktop_state_path(packaged_root_dir)
     else {
         return DesktopSettings::default();
@@ -202,6 +208,7 @@ pub(crate) fn write_desktop_setting(
     key: DesktopSettingKey,
     value: bool,
 ) -> Result<DesktopSettings, String> {
+    let _state_guard = crate::desktop_state::lock_desktop_state();
     let Some(state_path) = crate::desktop_state::resolve_desktop_state_path(packaged_root_dir)
     else {
         let message =
@@ -220,6 +227,7 @@ pub(crate) fn grant_plugin_ui_extension(
     packaged_root_dir: Option<&Path>,
     plugin: &str,
 ) -> Result<DesktopSettings, String> {
+    let _state_guard = crate::desktop_state::lock_desktop_state();
     let Some(state_path) = crate::desktop_state::resolve_desktop_state_path(packaged_root_dir)
     else {
         let message =
@@ -240,6 +248,7 @@ pub(crate) fn grant_plugin_ui_extension(
 pub(crate) fn clear_plugin_ui_extension_grants(
     packaged_root_dir: Option<&Path>,
 ) -> Result<DesktopSettings, String> {
+    let _state_guard = crate::desktop_state::lock_desktop_state();
     let Some(state_path) = crate::desktop_state::resolve_desktop_state_path(packaged_root_dir)
     else {
         let message =
@@ -281,13 +290,19 @@ mod tests {
     struct EnvVarGuard {
         key: &'static str,
         previous: Option<String>,
+        _root_guard: std::sync::MutexGuard<'static, ()>,
     }
 
     impl EnvVarGuard {
         fn clear(key: &'static str) -> Self {
+            let guard = crate::desktop_state::ROOT_ENV_TEST_LOCK.lock().unwrap();
             let previous = std::env::var(key).ok();
             std::env::remove_var(key);
-            Self { key, previous }
+            Self {
+                key,
+                previous,
+                _root_guard: guard,
+            }
         }
     }
 
@@ -355,9 +370,71 @@ mod tests {
         let cache = DesktopSettingsCache::new(DesktopSettings::default());
         let updated = settings(true, true, false);
 
-        cache.set(updated.clone());
+        cache.update(|| Ok(updated.clone())).expect("update cache");
 
         assert_eq!(cache.get(), updated);
+    }
+
+    #[test]
+    fn cache_keeps_previous_settings_when_persistence_fails() {
+        let previous = settings(true, false, false);
+        let cache = DesktopSettingsCache::new(previous.clone());
+        assert_eq!(
+            cache.update(|| Err("write failed".to_string())),
+            Err("write failed".to_string())
+        );
+        assert_eq!(cache.get(), previous);
+    }
+
+    #[test]
+    fn concurrent_cache_updates_publish_in_persistence_order() {
+        let _root_guard = EnvVarGuard::clear(crate::ASTRBOT_ROOT_ENV);
+        let root = tempfile::tempdir().unwrap();
+        let cache = DesktopSettingsCache::new(DesktopSettings::default());
+        let (persisted_tx, persisted_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| {
+            let cache_ref = &cache;
+            let root_path = root.path();
+            let first = scope.spawn(move || {
+                cache_ref.update(|| {
+                    let updated = grant_plugin_ui_extension(Some(root_path), "palette")?;
+                    persisted_tx.send(()).unwrap();
+                    release_rx.recv().unwrap();
+                    Ok(updated)
+                })
+            });
+            persisted_rx.recv().unwrap();
+            let second = scope.spawn(|| {
+                started_tx.send(()).unwrap();
+                cache.update(|| {
+                    entered_tx.send(()).unwrap();
+                    write_desktop_setting(
+                        Some(root.path()),
+                        DesktopSettingKey::PluginUiExtensions,
+                        false,
+                    )
+                })
+            });
+            started_rx.recv().unwrap();
+            let entered_early = entered_rx.recv_timeout(std::time::Duration::from_millis(50));
+            release_tx.send(()).unwrap();
+            first.join().unwrap().unwrap();
+            second.join().unwrap().unwrap();
+            assert_eq!(
+                entered_early,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+            );
+        });
+        let current = cache.get();
+        assert!(!current.plugin_ui_extensions_enabled);
+        assert_eq!(
+            current.plugin_ui_extension_grants,
+            vec!["palette".to_string()]
+        );
+        assert_eq!(current, read_desktop_settings(Some(root.path())));
     }
 
     #[test]
@@ -479,6 +556,72 @@ mod tests {
         assert!(updated.plugin_ui_extension_grants.is_empty());
         assert!(!updated.plugin_ui_extensions_enabled);
         assert_eq!(read_desktop_settings(Some(root.path())), updated);
+    }
+
+    #[test]
+    fn concurrent_state_writers_preserve_grants_switch_locale_and_channel() {
+        let _root_guard = EnvVarGuard::clear(crate::ASTRBOT_ROOT_ENV);
+        let root = tempfile::tempdir().expect("temp root");
+        let path = state_path(root.path());
+        fs::create_dir_all(path.parent().expect("state parent")).unwrap();
+        fs::write(&path, r#"{"unrelated":42}"#).unwrap();
+        let start = std::sync::Barrier::new(4);
+        std::thread::scope(|scope| {
+            let grant = scope.spawn(|| {
+                start.wait();
+                for index in 0..24 {
+                    grant_plugin_ui_extension(Some(root.path()), &format!("plugin_{index:02}"))?;
+                }
+                Ok::<_, String>(())
+            });
+            let toggle = scope.spawn(|| {
+                start.wait();
+                for _ in 0..24 {
+                    write_desktop_setting(
+                        Some(root.path()),
+                        DesktopSettingKey::PluginUiExtensions,
+                        false,
+                    )?;
+                }
+                Ok::<_, String>(())
+            });
+            let locale = scope.spawn(|| {
+                start.wait();
+                for _ in 0..24 {
+                    crate::shell_locale::write_cached_shell_locale(
+                        Some("en-US"),
+                        Some(root.path()),
+                    )?;
+                }
+                Ok::<_, String>(())
+            });
+            let channel = scope.spawn(|| {
+                start.wait();
+                for _ in 0..24 {
+                    crate::update_channel::write_cached_update_channel(
+                        Some(crate::update_channel::UpdateChannel::Nightly),
+                        Some(root.path()),
+                    )?;
+                }
+                Ok::<_, String>(())
+            });
+            for thread in [grant, toggle, locale, channel] {
+                thread.join().unwrap().expect("concurrent state write");
+            }
+        });
+        let settings = read_desktop_settings(Some(root.path()));
+        assert!(!settings.plugin_ui_extensions_enabled);
+        assert_eq!(
+            settings.plugin_ui_extension_grants,
+            (0..24)
+                .map(|index| format!("plugin_{index:02}"))
+                .collect::<Vec<_>>()
+        );
+        let parsed: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(parsed["locale"], "en-US");
+        assert_eq!(parsed["updateChannel"], "nightly");
+        assert_eq!(parsed["unrelated"], 42);
     }
 
     #[test]

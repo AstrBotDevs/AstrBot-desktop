@@ -441,16 +441,15 @@ pub(crate) async fn desktop_bridge_request_plugin_ui_extension(
         return PluginUiExtensionGrantResult::rejected("declined");
     }
 
-    match crate::desktop_settings::grant_plugin_ui_extension(
-        runtime_paths::default_packaged_root_dir().as_deref(),
-        &plugin,
-    ) {
-        Ok(updated_settings) => {
-            app_handle
-                .state::<crate::DesktopSettingsCache>()
-                .set(updated_settings);
-            PluginUiExtensionGrantResult::granted()
-        }
+    match app_handle
+        .state::<crate::DesktopSettingsCache>()
+        .update(|| {
+            crate::desktop_settings::grant_plugin_ui_extension(
+                runtime_paths::default_packaged_root_dir().as_deref(),
+                &plugin,
+            )
+        }) {
+        Ok(()) => PluginUiExtensionGrantResult::granted(),
         Err(error) => {
             append_desktop_log(&format!(
                 "failed to persist plugin UI extension grant for {plugin}: {error}"

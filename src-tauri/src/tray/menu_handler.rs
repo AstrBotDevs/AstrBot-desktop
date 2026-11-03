@@ -40,15 +40,14 @@ fn persist_bool_setting_and_update_tray(
     item: &tauri::menu::CheckMenuItem<tauri::Wry>,
     item_name: &str,
 ) -> bool {
-    match desktop_settings::write_desktop_setting(
-        runtime_paths::default_packaged_root_dir().as_deref(),
-        key,
-        new_value,
-    ) {
-        Ok(updated_settings) => {
-            app_handle
-                .state::<DesktopSettingsCache>()
-                .set(updated_settings);
+    match app_handle.state::<DesktopSettingsCache>().update(|| {
+        desktop_settings::write_desktop_setting(
+            runtime_paths::default_packaged_root_dir().as_deref(),
+            key,
+            new_value,
+        )
+    }) {
+        Ok(()) => {
             set_checked_safe(item, new_value, item_name);
             true
         }
@@ -160,13 +159,12 @@ fn handle_plugin_ui_extensions_toggle(app_handle: &AppHandle) {
 }
 
 fn handle_clear_plugin_ui_extension_grants(app_handle: &AppHandle) {
-    match desktop_settings::clear_plugin_ui_extension_grants(
-        runtime_paths::default_packaged_root_dir().as_deref(),
-    ) {
-        Ok(updated_settings) => {
-            app_handle
-                .state::<DesktopSettingsCache>()
-                .set(updated_settings);
+    match app_handle.state::<DesktopSettingsCache>().update(|| {
+        desktop_settings::clear_plugin_ui_extension_grants(
+            runtime_paths::default_packaged_root_dir().as_deref(),
+        )
+    }) {
+        Ok(()) => {
             window::actions::reload_main_window(app_handle, append_desktop_log);
         }
         Err(error) => {

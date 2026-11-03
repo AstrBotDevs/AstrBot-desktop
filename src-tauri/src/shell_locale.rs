@@ -129,6 +129,7 @@ pub(crate) fn normalize_shell_locale(raw: &str) -> Option<&'static str> {
 }
 
 fn read_cached_shell_locale(packaged_root_dir: Option<&Path>) -> Option<&'static str> {
+    let _state_guard = crate::desktop_state::lock_desktop_state();
     let state_path = crate::desktop_state::resolve_desktop_state_path(packaged_root_dir)?;
     let raw = fs::read_to_string(state_path).ok()?;
     let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
@@ -152,6 +153,7 @@ pub(crate) fn write_cached_shell_locale(
     locale: Option<&str>,
     packaged_root_dir: Option<&Path>,
 ) -> Result<(), String> {
+    let _state_guard = crate::desktop_state::lock_desktop_state();
     let normalized_locale = locale.and_then(normalize_shell_locale);
     if let Some(raw_locale) = locale {
         if normalized_locale.is_none() {

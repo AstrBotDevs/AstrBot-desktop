@@ -264,6 +264,7 @@ pub(crate) fn infer_channel_from_version(version: &Version) -> UpdateChannel {
 pub(crate) fn read_cached_update_channel(
     packaged_root_dir: Option<&Path>,
 ) -> Option<UpdateChannel> {
+    let _state_guard = crate::desktop_state::lock_desktop_state();
     let state_path = crate::desktop_state::resolve_desktop_state_path(packaged_root_dir)?;
     let raw = fs::read_to_string(state_path).ok()?;
     let state: DesktopState = serde_json::from_str(&raw).ok()?;
@@ -362,6 +363,7 @@ pub(crate) fn write_cached_update_channel(
     channel: Option<UpdateChannel>,
     packaged_root_dir: Option<&Path>,
 ) -> Result<(), String> {
+    let _state_guard = crate::desktop_state::lock_desktop_state();
     let Some(state_path) = crate::desktop_state::resolve_desktop_state_path(packaged_root_dir)
     else {
         let message =
@@ -448,13 +450,20 @@ mod tests {
         pub(super) struct EnvVarGuard {
             key: &'static str,
             previous: Option<String>,
+            _root_guard: Option<std::sync::MutexGuard<'static, ()>>,
         }
 
         impl EnvVarGuard {
             pub(super) fn clear(key: &'static str) -> Self {
+                let guard = (key == crate::ASTRBOT_ROOT_ENV)
+                    .then(|| crate::desktop_state::ROOT_ENV_TEST_LOCK.lock().unwrap());
                 let previous = std::env::var(key).ok();
                 std::env::remove_var(key);
-                Self { key, previous }
+                Self {
+                    key,
+                    previous,
+                    _root_guard: guard,
+                }
             }
         }
 

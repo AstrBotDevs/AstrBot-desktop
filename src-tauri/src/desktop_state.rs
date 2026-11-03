@@ -1,7 +1,17 @@
 use std::{
     env,
     path::{Path, PathBuf},
+    sync::{Mutex, MutexGuard},
 };
+
+pub(crate) fn lock_desktop_state() -> MutexGuard<'static, ()> {
+    // Every module updates the same file, so lock the entire read-modify-write.
+    static LOCK: Mutex<()> = Mutex::new(());
+    LOCK.lock().expect("desktop state lock")
+}
+
+#[cfg(test)]
+pub(crate) static ROOT_ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 pub(crate) fn resolve_desktop_state_path(packaged_root_dir: Option<&Path>) -> Option<PathBuf> {
     resolve_desktop_state_path_with_root(
