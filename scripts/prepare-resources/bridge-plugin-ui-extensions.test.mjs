@@ -58,6 +58,7 @@ async function createRuntime(options = {}) {
   const invocations = [];
   const requests = [];
   const scripts = [];
+  const insertedScriptDetails = [];
   const timers = [];
   const messageListeners = [];
   const warnings = [];
@@ -94,6 +95,13 @@ async function createRuntime(options = {}) {
     head: {
       appendChild(script) {
         scripts.push(script);
+        insertedScriptDetails.push({
+          plugin: script.attributes['data-astrbot-plugin-ui-extension'],
+          hadSource: Boolean(script.textContent),
+          matchesExpectedSource: options.expectedScriptSource
+            ? script.textContent === options.expectedScriptSource
+            : undefined,
+        });
       },
     },
     addEventListener() {},
@@ -111,6 +119,7 @@ async function createRuntime(options = {}) {
         setAttribute(name, value) {
           this.attributes[name] = value;
         },
+        remove() {},
       };
     },
   };
@@ -154,7 +163,10 @@ async function createRuntime(options = {}) {
       if (command === 'desktop_bridge_get_auth_token') {
         return options.authResult ?? { ok: false, reason: 'password login' };
       }
-      return { ok: true, reason: null };
+      if (command === 'desktop_bridge_get_backend_state') {
+        return { ok: true, reason: null };
+      }
+      throw new Error(`unexpected IPC command: ${command}`);
     },
   };
   window.fetch = async (url, fetchOptions) => {
@@ -210,6 +222,7 @@ async function createRuntime(options = {}) {
     invocations,
     requests,
     scripts,
+    insertedScriptDetails,
     timers,
     messageListeners,
     warnings,
@@ -236,7 +249,8 @@ for (const [label, settings] of [
 }
 
 test('an authorized activated plugin loads once with bearer auth across triggers and bridge reentry', async () => {
-  const runtime = await createRuntime({ token: 'jwt-token' });
+  const expectedScriptSource = 'window.__paletteExtensionLoaded = true;';
+  const runtime = await createRuntime({ token: 'jwt-token', expectedScriptSource });
 
   assert.equal(runtime.requests.length, 2);
   assert.equal(runtime.requests[0].url, '/api/v1/plugins');
@@ -252,7 +266,8 @@ test('an authorized activated plugin loads once with bearer auth across triggers
     runtime.scripts[0].attributes['data-astrbot-plugin-ui-extension'],
     'astrbot_plugin_palette',
   );
-  assert.equal(runtime.scripts[0].textContent, 'window.__paletteExtensionLoaded = true;');
+  assert.equal(runtime.insertedScriptDetails[0].matchesExpectedSource, true);
+  assert.equal(runtime.scripts[0].textContent, '');
   assert.equal(runtime.messageListeners.length, 1);
 
   await runtime.state.load();
@@ -342,9 +357,14 @@ for (const contentLength of [null, '1']) {
 for (const size of [8 * 1024 * 1024 - 1, 8 * 1024 * 1024]) {
   test(`a script of ${size} bytes is accepted`, async () => {
     const source = 'x'.repeat(size);
-    const runtime = await createRuntime({ token: 'jwt', scriptBodies: { astrbot_plugin_palette: source } });
+    const runtime = await createRuntime({
+      token: 'jwt',
+      expectedScriptSource: source,
+      scriptBodies: { astrbot_plugin_palette: source },
+    });
     assert.equal(runtime.scripts.length, 1);
-    assert.equal(runtime.scripts[0].textContent, source);
+    assert.equal(runtime.insertedScriptDetails[0].matchesExpectedSource, true);
+    assert.equal(runtime.state.loadedScriptBytes, size);
   });
 }
 
@@ -353,6 +373,7 @@ test('UTF-8 characters split across stream chunks are decoded intact', async () 
   const bytes = new TextEncoder().encode(source);
   const runtime = await createRuntime({
     token: 'jwt',
+    expectedScriptSource: source,
     fetchImpl({ url }) {
       if (url !== extensionPath) {
         return createResponse({ jsonBody: { data: [{ name: 'astrbot_plugin_palette', activated: true }] } });
@@ -366,7 +387,8 @@ test('UTF-8 characters split across stream chunks are decoded intact', async () 
     },
   });
   assert.equal(runtime.scripts.length, 1);
-  assert.equal(runtime.scripts[0].textContent, source);
+  assert.equal(runtime.insertedScriptDetails[0].matchesExpectedSource, true);
+  assert.equal(runtime.scripts[0].textContent, '');
 });
 
 test('one plugin network failure does not block another plugin or existing bridge methods', async () => {
@@ -394,7 +416,99 @@ test('one plugin network failure does not block another plugin or existing bridg
 
   assert.equal(runtime.scripts.length, 1);
   assert.equal(runtime.scripts[0].attributes['data-astrbot-plugin-ui-extension'], 'good_plugin');
-  assert.equal((await runtime.window.astrbotDesktop.getBackendState()).ok, true);
+  const backendState = await runtime.window.astrbotDesktop.getBackendState();
+  assert.equal(backendState.ok, true);
+  assert.ok(runtime.invocations.some(({ command }) => command === 'desktop_bridge_get_backend_state'));
+});
+
+test('script loading limits concurrent bodies to two and clears inserted source text', async () => {
+  const started = [];
+  const release = new Map();
+  const plugins = ['plugin_a', 'plugin_b', 'plugin_c'];
+  const runtime = await createRuntime({
+    token: 'jwt',
+    settleInitial: false,
+    settings: { enabled: true, plugins },
+    pluginData: plugins.map((name) => ({ name, activated: true })),
+    fetchImpl({ url }) {
+      if (url === '/api/v1/plugins') {
+        return createResponse({
+          contentType: 'application/json',
+          jsonBody: { data: plugins.map((name) => ({ name, activated: true })) },
+        });
+      }
+      const plugin = plugins.find((name) => url.includes(`/${name}/`));
+      assert.ok(plugin, `unexpected URL: ${url}`);
+      return new Response(
+        new ReadableStream(
+          {
+            pull(controller) {
+              if (release.has(plugin)) return;
+              started.push(plugin);
+              release.set(plugin, () => {
+                controller.enqueue(new TextEncoder().encode(`window.loaded_${plugin} = true;`));
+                controller.close();
+              });
+            },
+          },
+          { highWaterMark: 0 },
+        ),
+        { headers: { 'Content-Type': 'application/javascript' } },
+      );
+    },
+  });
+
+  await settle();
+  assert.deepEqual(started, ['plugin_a', 'plugin_b']);
+  const discovery = runtime.state.discoveryPromise;
+  release.get('plugin_a')();
+  await settle();
+  assert.deepEqual(started, ['plugin_a', 'plugin_b', 'plugin_c']);
+  release.get('plugin_b')();
+  release.get('plugin_c')();
+  await discovery;
+  await settle();
+
+  assert.equal(runtime.scripts.length, 3);
+  assert.equal(runtime.insertedScriptDetails.length, 3);
+  assert.deepEqual(runtime.insertedScriptDetails.map(({ plugin }) => plugin), plugins);
+  assert.ok(runtime.insertedScriptDetails.every(({ hadSource }) => hadSource));
+  assert.ok(runtime.scripts.every((script) => script.textContent === ''));
+});
+
+test('combined extension scripts never exceed the 32 MiB window budget', async () => {
+  const plugins = ['plugin_a', 'plugin_b', 'plugin_c', 'plugin_d', 'plugin_e'];
+  const requested = [];
+  const oneMiB = new Uint8Array(1024 * 1024).fill(120);
+  const runtime = await createRuntime({
+    token: 'jwt',
+    settings: { enabled: true, plugins },
+    pluginData: plugins.map((name) => ({ name, activated: true })),
+    fetchImpl({ url }) {
+      if (url === '/api/v1/plugins') {
+        return createResponse({
+          contentType: 'application/json',
+          jsonBody: { data: plugins.map((name) => ({ name, activated: true })) },
+        });
+      }
+      const plugin = plugins.find((name) => url.includes(`/${name}/`));
+      assert.ok(plugin, `unexpected URL: ${url}`);
+      requested.push(plugin);
+      let chunks = 8;
+      return new Response(new ReadableStream({
+        pull(controller) {
+          controller.enqueue(oneMiB);
+          chunks -= 1;
+          if (chunks === 0) controller.close();
+        },
+      }), { headers: { 'Content-Type': 'application/javascript' } });
+    },
+  });
+
+  assert.deepEqual(requested, plugins.slice(0, 4));
+  assert.equal(runtime.scripts.length, 4);
+  assert.equal(runtime.state.loadedScriptBytes, 32 * 1024 * 1024);
+  assert.ok(runtime.scripts.every((script) => script.textContent === ''));
 });
 
 test('a manually aborted discovery times out without an unhandled rejection', async () => {

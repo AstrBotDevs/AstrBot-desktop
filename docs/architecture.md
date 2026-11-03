@@ -161,7 +161,7 @@ backend 子系统对上提供统一的“后端可否管理、如何启动、何
 2. `bridge/desktop.rs` 把 bootstrap 脚本注入 WebView。
 3. WebUI 通过 `bridge/commands.rs` 调用 desktop IPC。
 4. 插件设置页请求界面授权时，bootstrap 在主文档按实际 iframe 的 `contentWindow` 和同源插件视图地址识别插件；`bridge/plugin_ui_extensions.rs` 负责决策与单弹窗占用，原生确认成功后才持久化授权并更新缓存。
-5. bootstrap 读取 Desktop 总开关与授权名单，再用当前登录令牌读取 Core 插件列表，只加载两者交集中 `activated === true` 的插件脚本；脚本响应还需通过 JavaScript 类型、非空和 `8 MiB` 限制。独立全局状态保证 Started/Finished 重入、令牌同步和授权回复不会重复插入脚本。
+5. bootstrap 读取 Desktop 总开关与授权名单，再用当前登录令牌读取 Core 插件列表，只加载两者交集中 `activated === true` 的插件脚本；脚本响应还需通过 JavaScript 类型、非空、单脚本 `8 MiB` 和页面总预算 `32 MiB` 限制，最多两个脚本并发读取。独立全局状态保证 Started/Finished 重入、令牌同步和授权回复不会重复插入脚本。
 6. 托盘可停用全部扩展或清除授权；两者在保存成功后刷新主窗口，使已执行脚本失效。协议与安全边界见 `docs/plugin-ui-extensions.md`。
 7. tray / window 子系统根据当前 locale 和窗口状态刷新文案与可见性。
 

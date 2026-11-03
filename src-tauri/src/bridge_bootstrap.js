@@ -60,13 +60,19 @@
         discoveryToken: null,
         discoveryQueued: false,
         completedToken: null,
+        loadedScriptBytes: 0,
+        pendingScriptBytes: 0,
         load: null,
       });
+    state.loadedScriptBytes ??= 0;
+    state.pendingScriptBytes ??= 0;
     const pluginNamePattern = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
     const requestType = 'astrbot-desktop:plugin-ui-extension-request';
     const responseType = 'astrbot-desktop:plugin-ui-extension-response';
     const fetchTimeoutMs = 8000;
     const maxScriptBytes = 8 * 1024 * 1024;
+    const maxTotalScriptBytes = 32 * 1024 * 1024;
+    const maxConcurrentPluginLoads = 2;
 
     const warn = (message, error) => {
       if (typeof console !== 'undefined' && typeof console.warn === 'function') {
@@ -112,8 +118,18 @@
     const loadPlugin = (plugin, token) => {
       if (state.loadedPlugins.has(plugin)) return Promise.resolve();
       if (state.pendingPlugins.has(plugin)) return state.pendingPlugins.get(plugin);
+      const reservedBytes = Math.min(
+        maxScriptBytes,
+        maxTotalScriptBytes - state.loadedScriptBytes - state.pendingScriptBytes,
+      );
+      if (reservedBytes <= 0) {
+        warn(`plugin UI extension budget exhausted before loading ${plugin}`);
+        return Promise.resolve();
+      }
+      state.pendingScriptBytes += reservedBytes;
 
       const pending = (async () => {
+        let sourceBytes = 0;
         const source = await fetchWithTimeout(
           `/api/v1/plugins/extensions/${encodeURIComponent(plugin)}/desktop-ui-extension.js`,
           token,
@@ -132,12 +148,17 @@
                 const { done, value } = await reader.read();
                 if (done) break;
                 bytes += value.byteLength;
-                if (bytes > maxScriptBytes) {
+                if (bytes > reservedBytes) {
                   await reader.cancel();
-                  throw new Error('script exceeds 8 MiB');
+                  throw new Error(
+                    reservedBytes === maxScriptBytes
+                      ? 'script exceeds 8 MiB'
+                      : 'script exceeds remaining plugin UI extension budget',
+                  );
                 }
                 source += decoder.decode(value, { stream: true });
               }
+              sourceBytes = bytes;
               return source + decoder.decode();
             } finally {
               reader.releaseLock();
@@ -150,14 +171,21 @@
         const script = document.createElement('script');
         script.textContent = source;
         script.setAttribute('data-astrbot-plugin-ui-extension', plugin);
-        document.head.appendChild(script);
+        try {
+          document.head.appendChild(script);
+        } finally {
+          script.textContent = '';
+          script.remove();
+        }
         state.loadedPlugins.add(plugin);
+        state.loadedScriptBytes += sourceBytes;
       })()
         .catch((error) => {
           warn(`plugin UI extension failed for ${plugin}`, error);
         })
         .finally(() => {
           state.pendingPlugins.delete(plugin);
+          state.pendingScriptBytes -= reservedBytes;
         });
       state.pendingPlugins.set(plugin, pending);
       return pending;
@@ -208,7 +236,18 @@
             targets.add(plugin);
           }
         }
-        await Promise.all([...targets].map((plugin) => loadPlugin(plugin, token)));
+        const targetPlugins = [...targets];
+        let nextTarget = 0;
+        await Promise.all(
+          Array.from(
+            { length: Math.min(maxConcurrentPluginLoads, targetPlugins.length) },
+            async () => {
+              while (nextTarget < targetPlugins.length) {
+                await loadPlugin(targetPlugins[nextTarget++], token);
+              }
+            },
+          ),
+        );
         state.completedToken = token;
       })()
         .catch((error) => {
