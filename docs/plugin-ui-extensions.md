@@ -28,7 +28,7 @@ Desktop 使用当前登录令牌请求插件列表和脚本，并发送 `Cache-C
 
 - HTTP 状态为成功。
 - `Content-Type` 包含 `javascript`，例如 `application/javascript; charset=utf-8`。
-- 内容非空，按 UTF-8 编码后不超过 `8 MiB`。
+- 内容非空；流式读取时累计正文实际字节数，超过 `8 MiB` 立即取消读取，不信任 `Content-Length`。
 - 从发出请求到读完内容不超过 `8` 秒；插件列表请求同样受此限制。
 
 Core 在扩展路由不存在时也可能返回 HTTP 200 和 JSON 错误，因此插件必须返回正确的 JavaScript `Content-Type`，调用方也必须检查它。插件列表或脚本请求失败、超时、类型不符或内容不合格时，Desktop 只记录警告，不执行对应内容，也不阻断其他插件或原有桥接功能。

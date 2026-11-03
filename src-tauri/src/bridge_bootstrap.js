@@ -117,19 +117,34 @@
         const source = await fetchWithTimeout(
           `/api/v1/plugins/extensions/${encodeURIComponent(plugin)}/desktop-ui-extension.js`,
           token,
-          (response) => {
+          async (response) => {
             if (!response.ok) throw new Error(`script request returned HTTP ${response.status}`);
             const contentType = response.headers.get('content-type') || '';
             if (!contentType.toLowerCase().includes('javascript')) {
               throw new Error(`unexpected script Content-Type: ${contentType || 'missing'}`);
             }
-            return response.text();
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let bytes = 0;
+            let source = '';
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                bytes += value.byteLength;
+                if (bytes > maxScriptBytes) {
+                  await reader.cancel();
+                  throw new Error('script exceeds 8 MiB');
+                }
+                source += decoder.decode(value, { stream: true });
+              }
+              return source + decoder.decode();
+            } finally {
+              reader.releaseLock();
+            }
           },
         );
         if (!source.trim()) throw new Error('script is empty');
-        if (new TextEncoder().encode(source).byteLength > maxScriptBytes) {
-          throw new Error('script exceeds 8 MiB');
-        }
         if (state.loadedPlugins.has(plugin)) return;
 
         const script = document.createElement('script');

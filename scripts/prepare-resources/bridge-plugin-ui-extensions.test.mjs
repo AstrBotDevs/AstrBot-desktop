@@ -39,6 +39,7 @@ function createResponse({
   return {
     ok: status >= 200 && status < 300,
     status,
+    body: new Blob([textBody]).stream(),
     headers: {
       get(name) {
         return name.toLowerCase() === 'content-type' ? contentType : null;
@@ -182,6 +183,7 @@ async function createRuntime(options = {}) {
     document,
     URL,
     TextEncoder,
+    TextDecoder,
     AbortController,
     Element: MockElement,
     HTMLAnchorElement: MockAnchor,
@@ -305,6 +307,68 @@ for (const [label, response] of [
   });
 }
 
+for (const contentLength of [null, '1']) {
+  test(`an oversized stream is cancelled before reading its remainder (Content-Length: ${contentLength})`, async () => {
+    const chunks = [new Uint8Array(8 * 1024 * 1024).fill(120), new Uint8Array([120]), new Uint8Array([120])];
+    let pulls = 0;
+    let cancelled = false;
+    const body = new ReadableStream({
+      pull(controller) {
+        if (pulls < chunks.length) controller.enqueue(chunks[pulls++]);
+        else controller.close();
+      },
+      cancel() {
+        cancelled = true;
+      },
+    }, { highWaterMark: 0 });
+    const headers = { 'Content-Type': 'application/javascript' };
+    if (contentLength !== null) headers['Content-Length'] = contentLength;
+    const runtime = await createRuntime({
+      token: 'jwt',
+      fetchImpl({ url }) {
+        return url === extensionPath
+          ? new Response(body, { headers })
+          : createResponse({ jsonBody: { data: [{ name: 'astrbot_plugin_palette', activated: true }] } });
+      },
+    });
+    assert.equal(runtime.scripts.length, 0);
+    assert.equal(cancelled, true);
+    assert.equal(pulls, 2);
+    assert.equal(body.locked, false);
+    assert.ok(runtime.warnings.some((warning) => warning.includes('exceeds 8 MiB')));
+  });
+}
+
+for (const size of [8 * 1024 * 1024 - 1, 8 * 1024 * 1024]) {
+  test(`a script of ${size} bytes is accepted`, async () => {
+    const source = 'x'.repeat(size);
+    const runtime = await createRuntime({ token: 'jwt', scriptBodies: { astrbot_plugin_palette: source } });
+    assert.equal(runtime.scripts.length, 1);
+    assert.equal(runtime.scripts[0].textContent, source);
+  });
+}
+
+test('UTF-8 characters split across stream chunks are decoded intact', async () => {
+  const source = '// 调色盘🙂';
+  const bytes = new TextEncoder().encode(source);
+  const runtime = await createRuntime({
+    token: 'jwt',
+    fetchImpl({ url }) {
+      if (url !== extensionPath) {
+        return createResponse({ jsonBody: { data: [{ name: 'astrbot_plugin_palette', activated: true }] } });
+      }
+      return new Response(new ReadableStream({
+        start(controller) {
+          for (const byte of bytes) controller.enqueue(new Uint8Array([byte]));
+          controller.close();
+        },
+      }), { headers: { 'Content-Type': 'application/javascript' } });
+    },
+  });
+  assert.equal(runtime.scripts.length, 1);
+  assert.equal(runtime.scripts[0].textContent, source);
+});
+
 test('one plugin network failure does not block another plugin or existing bridge methods', async () => {
   const runtime = await createRuntime({
     token: 'jwt',
@@ -368,6 +432,11 @@ test('a script body that stalls after its headers is cut off by the same timeout
       }
       return {
         ...createResponse(),
+        body: new ReadableStream({
+          start(controller) {
+            options.signal.addEventListener('abort', () => controller.error(new Error('body aborted')));
+          },
+        }),
         text: () =>
           new Promise((resolve, reject) => {
             options.signal.addEventListener('abort', () => reject(new Error('body aborted')));
