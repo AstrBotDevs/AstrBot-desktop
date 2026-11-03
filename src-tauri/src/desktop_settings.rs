@@ -1,6 +1,6 @@
 use std::{fs, io::Write, path::Path, sync::Mutex};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
 
 #[derive(Debug)]
@@ -56,6 +56,19 @@ fn default_plugin_ui_extensions_enabled() -> bool {
     true
 }
 
+fn deserialize_plugin_ui_extension_grants<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(match Value::deserialize(deserializer)? {
+        Value::Array(grants) => grants
+            .into_iter()
+            .filter_map(|grant| grant.as_str().map(str::to_owned))
+            .collect(),
+        _ => Vec::new(),
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct DesktopSettings {
     #[serde(rename = "launchAtLogin", default = "default_launch_at_login")]
@@ -69,7 +82,11 @@ pub(crate) struct DesktopSettings {
         default = "default_plugin_ui_extensions_enabled"
     )]
     pub(crate) plugin_ui_extensions_enabled: bool,
-    #[serde(rename = "pluginUiExtensionGrants", default)]
+    #[serde(
+        rename = "pluginUiExtensionGrants",
+        default,
+        deserialize_with = "deserialize_plugin_ui_extension_grants"
+    )]
     pub(crate) plugin_ui_extension_grants: Vec<String>,
     #[serde(flatten)]
     other: Map<String, Value>,
@@ -363,6 +380,66 @@ mod tests {
             read_desktop_settings(Some(&root)),
             settings(false, true, true)
         );
+    }
+
+    #[test]
+    fn malformed_plugin_grants_do_not_reset_other_desktop_state() {
+        let _root_guard = EnvVarGuard::clear(crate::ASTRBOT_ROOT_ENV);
+        let root = tempfile::tempdir().expect("temp root");
+        let path = state_path(root.path());
+        fs::create_dir_all(path.parent().expect("state parent")).expect("create state parent");
+        for (grants, normalized) in [
+            (serde_json::json!(null), serde_json::json!([])),
+            (serde_json::json!(false), serde_json::json!([])),
+            (serde_json::json!(42), serde_json::json!([])),
+            (serde_json::json!(1.5), serde_json::json!([])),
+            (serde_json::json!("palette"), serde_json::json!([])),
+            (serde_json::json!({"palette": true}), serde_json::json!([])),
+            (serde_json::json!([]), serde_json::json!([])),
+            (
+                serde_json::json!([null, false, 42, {}, []]),
+                serde_json::json!([]),
+            ),
+            (
+                serde_json::json!(["palette", null, 42, false, {}, [], "other"]),
+                serde_json::json!(["palette", "other"]),
+            ),
+            (
+                serde_json::json!(["zeta", "palette", "palette"]),
+                serde_json::json!(["zeta", "palette", "palette"]),
+            ),
+        ] {
+            let mut expected = serde_json::json!({
+                "launchAtLogin": true,
+                "silentLaunch": false,
+                "closeToTray": false,
+                "pluginUiExtensionsEnabled": false,
+                "pluginUiExtensionGrants": grants,
+                "locale": "en-US",
+                "updateChannel": "nightly",
+                "unknown": {"preserve": [1, true, "value"]}
+            });
+            let original = serde_json::to_vec(&expected).unwrap();
+            fs::write(&path, &original).expect("write state");
+
+            let recovered = read_desktop_settings(Some(root.path()));
+            assert!(recovered.launch_at_login);
+            assert!(!recovered.close_to_tray);
+            assert!(!recovered.plugin_ui_extensions_enabled);
+            assert_eq!(
+                serde_json::to_value(&recovered.plugin_ui_extension_grants).unwrap(),
+                normalized
+            );
+            assert_eq!(recovered.other["unknown"], expected["unknown"]);
+            assert_eq!(fs::read(&path).unwrap(), original);
+
+            write_desktop_setting(Some(root.path()), DesktopSettingKey::SilentLaunch, true)
+                .unwrap();
+            expected["silentLaunch"] = serde_json::json!(true);
+            expected["pluginUiExtensionGrants"] = normalized;
+            let persisted: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            assert_eq!(persisted, expected);
+        }
     }
 
     #[test]
