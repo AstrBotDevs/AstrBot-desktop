@@ -24,10 +24,10 @@ impl DesktopSettingsCache {
 
     pub(crate) fn update(
         &self,
-        persist: impl FnOnce() -> Result<DesktopSettings, String>,
+        persist: impl FnOnce(&DesktopSettings) -> Result<DesktopSettings, String>,
     ) -> Result<(), String> {
         let mut settings = self.settings.lock().expect("desktop settings cache lock");
-        *settings = persist()?;
+        *settings = persist(&settings)?;
         Ok(())
     }
 }
@@ -370,7 +370,7 @@ mod tests {
         let cache = DesktopSettingsCache::new(DesktopSettings::default());
         let updated = settings(true, true, false);
 
-        cache.update(|| Ok(updated.clone())).expect("update cache");
+        cache.update(|_| Ok(updated.clone())).expect("update cache");
 
         assert_eq!(cache.get(), updated);
     }
@@ -380,7 +380,7 @@ mod tests {
         let previous = settings(true, false, false);
         let cache = DesktopSettingsCache::new(previous.clone());
         assert_eq!(
-            cache.update(|| Err("write failed".to_string())),
+            cache.update(|_| Err("write failed".to_string())),
             Err("write failed".to_string())
         );
         assert_eq!(cache.get(), previous);
@@ -399,7 +399,7 @@ mod tests {
             let cache_ref = &cache;
             let root_path = root.path();
             let first = scope.spawn(move || {
-                cache_ref.update(|| {
+                cache_ref.update(|_| {
                     let updated = grant_plugin_ui_extension(Some(root_path), "palette")?;
                     persisted_tx.send(()).unwrap();
                     release_rx.recv().unwrap();
@@ -409,7 +409,7 @@ mod tests {
             persisted_rx.recv().unwrap();
             let second = scope.spawn(|| {
                 started_tx.send(()).unwrap();
-                cache.update(|| {
+                cache.update(|_| {
                     entered_tx.send(()).unwrap();
                     write_desktop_setting(
                         Some(root.path()),
@@ -556,6 +556,74 @@ mod tests {
         assert!(updated.plugin_ui_extension_grants.is_empty());
         assert!(!updated.plugin_ui_extensions_enabled);
         assert_eq!(read_desktop_settings(Some(root.path())), updated);
+    }
+
+    #[test]
+    fn locale_updates_replace_state_without_modifying_the_previous_file() {
+        let _root_guard = EnvVarGuard::clear(crate::ASTRBOT_ROOT_ENV);
+        let root = tempfile::tempdir().unwrap();
+        grant_plugin_ui_extension(Some(root.path()), "palette").unwrap();
+        let path = state_path(root.path());
+        let previous = fs::read(&path).unwrap();
+        let snapshot = root.path().join("previous-state.json");
+        fs::hard_link(&path, &snapshot).unwrap();
+
+        crate::shell_locale::write_cached_shell_locale(Some("en-US"), Some(root.path())).unwrap();
+
+        assert_eq!(fs::read(snapshot).unwrap(), previous);
+        let parsed: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        assert_eq!(parsed["locale"], "en-US");
+        assert_eq!(
+            parsed["pluginUiExtensionGrants"],
+            serde_json::json!(["palette"])
+        );
+    }
+
+    #[test]
+    fn failed_locale_staging_preserves_existing_settings() {
+        let _root_guard = EnvVarGuard::clear(crate::ASTRBOT_ROOT_ENV);
+        let root = tempfile::tempdir().unwrap();
+        let original = grant_plugin_ui_extension(Some(root.path()), "palette").unwrap();
+        let path = state_path(root.path());
+        let previous = fs::read(&path).unwrap();
+        fs::create_dir(path.with_extension("json.tmp")).unwrap();
+
+        assert!(
+            crate::shell_locale::write_cached_shell_locale(Some("en-US"), Some(root.path()))
+                .is_err()
+        );
+        assert_eq!(fs::read(path).unwrap(), previous);
+        assert_eq!(read_desktop_settings(Some(root.path())), original);
+    }
+
+    #[test]
+    fn concurrent_plugin_ui_toggles_restore_original_value() {
+        let _root_guard = EnvVarGuard::clear(crate::ASTRBOT_ROOT_ENV);
+        let root = tempfile::tempdir().unwrap();
+        let original = grant_plugin_ui_extension(Some(root.path()), "palette").unwrap();
+        let cache = DesktopSettingsCache::new(original.clone());
+        let start = std::sync::Barrier::new(2);
+        std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..2)
+                .map(|_| {
+                    scope.spawn(|| {
+                        start.wait();
+                        cache.update(|current| {
+                            write_desktop_setting(
+                                Some(root.path()),
+                                DesktopSettingKey::PluginUiExtensions,
+                                !current.plugin_ui_extensions_enabled,
+                            )
+                        })
+                    })
+                })
+                .collect();
+            for handle in handles {
+                handle.join().unwrap().unwrap();
+            }
+        });
+        assert_eq!(cache.get(), original);
+        assert_eq!(read_desktop_settings(Some(root.path())), original);
     }
 
     #[test]

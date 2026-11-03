@@ -443,7 +443,7 @@ pub(crate) async fn desktop_bridge_request_plugin_ui_extension(
 
     match app_handle
         .state::<crate::DesktopSettingsCache>()
-        .update(|| {
+        .update(|_| {
             crate::desktop_settings::grant_plugin_ui_extension(
                 runtime_paths::default_packaged_root_dir().as_deref(),
                 &plugin,

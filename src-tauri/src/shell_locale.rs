@@ -1,5 +1,6 @@
 use std::{
     env, fs,
+    io::Write,
     path::{Path, PathBuf},
 };
 
@@ -222,9 +223,26 @@ pub(crate) fn write_cached_shell_locale(
 
     let serialized = serde_json::to_string_pretty(&parsed)
         .map_err(|error| format!("Failed to serialize shell locale state: {error}"))?;
-    fs::write(&state_path, serialized).map_err(|error| {
+    let tmp_path = state_path.with_extension("json.tmp");
+    let mut file = fs::File::create(&tmp_path).map_err(|error| {
         format!(
-            "Failed to write shell locale state {}: {}",
+            "Failed to create temporary shell locale state file {}: {}",
+            tmp_path.display(),
+            error
+        )
+    })?;
+    file.write_all(serialized.as_bytes())
+        .and_then(|_| file.sync_all())
+        .map_err(|error| {
+            format!(
+                "Failed to write temporary shell locale state file {}: {}",
+                tmp_path.display(),
+                error
+            )
+        })?;
+    fs::rename(&tmp_path, &state_path).map_err(|error| {
+        format!(
+            "Failed to atomically replace shell locale state file {}: {}",
             state_path.display(),
             error
         )

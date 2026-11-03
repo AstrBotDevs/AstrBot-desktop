@@ -35,18 +35,23 @@ fn set_checked_safe(item: &tauri::menu::CheckMenuItem<tauri::Wry>, checked: bool
 fn persist_bool_setting_and_update_tray(
     app_handle: &AppHandle,
     key: desktop_settings::DesktopSettingKey,
-    new_value: bool,
-    previous_value: bool,
+    change: impl FnOnce(&desktop_settings::DesktopSettings) -> (bool, bool),
     item: &tauri::menu::CheckMenuItem<tauri::Wry>,
     item_name: &str,
 ) -> bool {
-    match app_handle.state::<DesktopSettingsCache>().update(|| {
-        desktop_settings::write_desktop_setting(
-            runtime_paths::default_packaged_root_dir().as_deref(),
-            key,
-            new_value,
-        )
-    }) {
+    let mut transition = (false, false);
+    let result = app_handle
+        .state::<DesktopSettingsCache>()
+        .update(|settings| {
+            transition = change(settings);
+            desktop_settings::write_desktop_setting(
+                runtime_paths::default_packaged_root_dir().as_deref(),
+                key,
+                transition.1,
+            )
+        });
+    let (previous_value, new_value) = transition;
+    match result {
         Ok(()) => {
             set_checked_safe(item, new_value, item_name);
             true
@@ -104,8 +109,7 @@ fn handle_launch_at_login_toggle(app_handle: &AppHandle) {
     persist_bool_setting_and_update_tray(
         app_handle,
         desktop_settings::DesktopSettingKey::LaunchAtLogin,
-        desired_enabled,
-        current_enabled,
+        |_| (current_enabled, desired_enabled),
         &tray_state.launch_at_login_item,
         actions::TRAY_MENU_LAUNCH_AT_LOGIN,
     );
@@ -115,12 +119,10 @@ fn handle_silent_launch_toggle(app_handle: &AppHandle) {
     let Some(tray_state) = app_handle.try_state::<TrayMenuState>() else {
         return;
     };
-    let current_settings = app_handle.state::<DesktopSettingsCache>().get();
     persist_bool_setting_and_update_tray(
         app_handle,
         desktop_settings::DesktopSettingKey::SilentLaunch,
-        !current_settings.silent_launch,
-        current_settings.silent_launch,
+        |settings| (settings.silent_launch, !settings.silent_launch),
         &tray_state.silent_launch_item,
         actions::TRAY_MENU_SILENT_LAUNCH,
     );
@@ -130,12 +132,10 @@ fn handle_close_to_tray_toggle(app_handle: &AppHandle) {
     let Some(tray_state) = app_handle.try_state::<TrayMenuState>() else {
         return;
     };
-    let current_settings = app_handle.state::<DesktopSettingsCache>().get();
     persist_bool_setting_and_update_tray(
         app_handle,
         desktop_settings::DesktopSettingKey::CloseToTray,
-        !current_settings.close_to_tray,
-        current_settings.close_to_tray,
+        |settings| (settings.close_to_tray, !settings.close_to_tray),
         &tray_state.close_to_tray_item,
         actions::TRAY_MENU_CLOSE_TO_TRAY,
     );
@@ -145,12 +145,15 @@ fn handle_plugin_ui_extensions_toggle(app_handle: &AppHandle) {
     let Some(tray_state) = app_handle.try_state::<TrayMenuState>() else {
         return;
     };
-    let current_settings = app_handle.state::<DesktopSettingsCache>().get();
     if persist_bool_setting_and_update_tray(
         app_handle,
         desktop_settings::DesktopSettingKey::PluginUiExtensions,
-        !current_settings.plugin_ui_extensions_enabled,
-        current_settings.plugin_ui_extensions_enabled,
+        |settings| {
+            (
+                settings.plugin_ui_extensions_enabled,
+                !settings.plugin_ui_extensions_enabled,
+            )
+        },
         &tray_state.plugin_ui_extensions_item,
         actions::TRAY_MENU_PLUGIN_UI_EXTENSIONS,
     ) {
@@ -159,7 +162,7 @@ fn handle_plugin_ui_extensions_toggle(app_handle: &AppHandle) {
 }
 
 fn handle_clear_plugin_ui_extension_grants(app_handle: &AppHandle) {
-    match app_handle.state::<DesktopSettingsCache>().update(|| {
+    match app_handle.state::<DesktopSettingsCache>().update(|_| {
         desktop_settings::clear_plugin_ui_extension_grants(
             runtime_paths::default_packaged_root_dir().as_deref(),
         )
