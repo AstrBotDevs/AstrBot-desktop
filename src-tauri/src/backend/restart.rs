@@ -468,10 +468,15 @@ mod tests {
         };
         let state = BackendState::default();
 
-        assert_eq!(
-            state.restart_strategy(&plan, true),
+        // A managed child on Windows packaged mode skips the graceful restart path; the
+        // graceful fallback only applies elsewhere. Keep the platform in the expectation so
+        // the delegating wrapper is asserted against the same inputs the strategy module sees.
+        let expected = if cfg!(target_os = "windows") {
+            RestartStrategy::ManagedSkipGraceful
+        } else {
             RestartStrategy::ManagedWithGracefulFallback
-        );
+        };
+        assert_eq!(state.restart_strategy(&plan, true), expected);
     }
 
     fn identity(pid: u32, created_at: Option<u64>) -> Option<ProcessIdentity> {

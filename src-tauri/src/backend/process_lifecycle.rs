@@ -49,19 +49,51 @@ impl BackendState {
             .lock()
             .map_err(|_| "Backend process lock poisoned.".to_string())?;
 
-        let Some(child) = guard.as_mut() else {
+        // A `Child` whose process already exited still answers `try_wait` with `Some`
+        // forever, and its PID may already belong to an unrelated process. Sending
+        // `taskkill /pid` to that handle would kill the wrong process, so the stale handle
+        // is dropped here instead of being used as a stop target.
+        let (pid, already_exited) = {
+            let Some(child) = guard.as_mut() else {
+                return Ok(());
+            };
+            let pid = child.id();
+            match child.try_wait() {
+                Ok(Some(status)) => (pid, Some(status.to_string())),
+                Ok(None) => (pid, None),
+                Err(error) => {
+                    append_desktop_log(&format!(
+                        "failed to poll backend process status before stop: pid={pid}, error={error}"
+                    ));
+                    (pid, None)
+                }
+            }
+        };
+        if let Some(status) = already_exited {
+            append_desktop_log(&format!(
+                "backend process already exited before stop, drop stale handle: pid={pid}, status={status}"
+            ));
+            *guard = None;
             return Ok(());
+        }
+
+        // Prefer the identity captured while the process was certainly alive. Re-reading it
+        // here could describe a recycled PID instead of the backend this shell spawned.
+        let identity = self.stop_identity(pid);
+
+        let graceful = {
+            let Some(child) = guard.as_mut() else {
+                return Ok(());
+            };
+            process_control::stop_child_process_gracefully(child, timeout, append_desktop_log)
         };
 
-        // Capture the identity before stopping: it is the only thing that can later
-        // separate "our backend exited" from "some other process answers on that PID".
-        let identity = process_control::capture_process_identity(child.id());
-
-        if process_control::stop_child_process_gracefully(child, timeout, append_desktop_log) {
-            // Drop the reaped handle before confirming. Keeping it would leave a `Child`
-            // whose `try_wait` reports `Some` forever; a retried stop would then taskkill
-            // that stale PID even after the OS recycled it for an unrelated process.
+        if graceful {
+            // Drop the reaped handle before confirming so a retried stop cannot taskkill
+            // the stale PID, and release the child lock before the confirming wait so the
+            // bridge and readiness probes are not blocked for the whole timeout.
             *guard = None;
+            drop(guard);
             confirm_process_identity_exit(identity)?;
             return Ok(());
         }
@@ -70,6 +102,15 @@ impl BackendState {
             "Backend process did not exit after {}ms graceful stop timeout.",
             timeout.as_millis()
         ))
+    }
+
+    /// Identity to hold a stop against, preferring the one recorded at spawn time.
+    ///
+    /// The recorded identity was captured while the process was certainly alive; capturing
+    /// again after the fact can describe a recycled PID.
+    fn stop_identity(&self, pid: u32) -> process_control::ProcessIdentity {
+        self.spawned_identity_for(pid)
+            .unwrap_or_else(|| process_control::capture_process_identity(pid))
     }
 
     #[cfg(target_os = "windows")]
