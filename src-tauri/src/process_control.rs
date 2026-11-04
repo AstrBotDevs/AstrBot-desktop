@@ -12,16 +12,41 @@ use std::{
 use windows_sys::Win32::{
     Foundation::{
         CloseHandle, ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER, ERROR_NOT_FOUND,
-        ERROR_NO_MORE_FILES, HANDLE, INVALID_HANDLE_VALUE,
+        ERROR_NO_MORE_FILES, FILETIME, HANDLE, INVALID_HANDLE_VALUE, STILL_ACTIVE,
     },
     System::{
         Diagnostics::ToolHelp::{
             CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
             TH32CS_SNAPPROCESS,
         },
-        Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE},
+        Threading::{
+            GetExitCodeProcess, GetProcessTimes, OpenProcess, TerminateProcess,
+            PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+        },
     },
 };
+
+/// Identity of a process this shell spawned and still believes it owns.
+///
+/// `created_at` is the platform creation timestamp when the platform exposes one.
+/// Comparing it across probes is what keeps a recycled PID from being mistaken for the
+/// backend that was captured before a stop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ProcessIdentity {
+    pub(crate) pid: u32,
+    pub(crate) created_at: Option<u64>,
+}
+
+/// Result of a single liveness probe for one PID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProcessProbe {
+    /// No running process owns this PID.
+    Missing,
+    /// A running process owns this PID; `created_at` is set when the platform reports it.
+    Alive { created_at: Option<u64> },
+    /// The platform refused to answer. Callers must not read this as proof of exit.
+    Unknown,
+}
 
 const FORCE_STOP_WAIT_MIN_MS: u64 = 200;
 #[cfg(target_os = "windows")]
@@ -211,6 +236,219 @@ fn is_process_snapshot_end_error(error: &io::Error) -> bool {
         return false;
     };
     code as u32 == ERROR_NO_MORE_FILES
+}
+
+/// Probe a PID for liveness on Windows without trusting any `Child` handle.
+///
+/// `OpenProcess` fails with `ERROR_INVALID_PARAMETER` only when the PID is truly gone,
+/// so it separates "no such process" from "the process exists but denies us access".
+/// A live process is additionally stamped with its creation time, which is what makes
+/// PID recycling detectable: a recycled PID would come back with a different stamp.
+#[cfg(target_os = "windows")]
+fn probe_pid_windows(pid: u32) -> ProcessProbe {
+    if pid == 0 {
+        return ProcessProbe::Missing;
+    }
+
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if handle.is_null() {
+        let error = io::Error::last_os_error();
+        return match error.raw_os_error().map(|code| code as u32) {
+            Some(ERROR_INVALID_PARAMETER) => ProcessProbe::Missing,
+            // The PID still resolves but we may not query it: treat as alive so a
+            // permission problem can never be mistaken for a clean exit.
+            Some(ERROR_ACCESS_DENIED) => ProcessProbe::Alive { created_at: None },
+            _ => ProcessProbe::Unknown,
+        };
+    }
+
+    let mut exit_code: u32 = 0;
+    let exit_code_ok = unsafe { GetExitCodeProcess(handle, &mut exit_code) } != 0;
+    if exit_code_ok && exit_code != STILL_ACTIVE as u32 {
+        close_handle(handle);
+        return ProcessProbe::Missing;
+    }
+
+    let created_at = process_creation_time(handle);
+    close_handle(handle);
+
+    if !exit_code_ok {
+        return ProcessProbe::Unknown;
+    }
+
+    ProcessProbe::Alive { created_at }
+}
+
+/// Read a process creation timestamp in 100 ns units, matching `FILETIME` semantics.
+#[cfg(target_os = "windows")]
+fn process_creation_time(handle: HANDLE) -> Option<u64> {
+    let mut creation = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let mut exit = creation;
+    let mut kernel = creation;
+    let mut user = creation;
+    let ok =
+        unsafe { GetProcessTimes(handle, &mut creation, &mut exit, &mut kernel, &mut user) } != 0;
+    if !ok {
+        return None;
+    }
+
+    Some((u64::from(creation.dwHighDateTime) << 32) | u64::from(creation.dwLowDateTime))
+}
+
+/// Probe a PID for liveness on Unix via the `/proc` filesystem, which also exposes the
+/// process start time needed for recycling detection.
+#[cfg(not(target_os = "windows"))]
+fn probe_pid_unix(pid: u32) -> ProcessProbe {
+    use std::{fs, path::Path};
+
+    if pid == 0 {
+        return ProcessProbe::Missing;
+    }
+
+    let proc_dir = Path::new("/proc").join(pid.to_string());
+    if !proc_dir.exists() {
+        return if Path::new("/proc/self").exists() {
+            ProcessProbe::Missing
+        } else {
+            // No procfs: honour POSIX signal 0 as the liveness test instead.
+            probe_pid_with_signal(pid)
+        };
+    }
+
+    let stat = match fs::read_to_string(proc_dir.join("stat")) {
+        Ok(stat) => stat,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return ProcessProbe::Missing,
+        Err(_) => return ProcessProbe::Unknown,
+    };
+
+    // A zombie or dead task still holds a /proc entry but no longer runs, so treat both
+    // as exited. Field 3 of /proc/<pid>/stat is the state letter, after the "(name)" tail.
+    let state = stat
+        .rsplit_once(')')
+        .map(|(_, trailer)| trailer.trim_start().chars().next());
+    if matches!(state, Some('Z') | Some('X') | Some('x')) {
+        return ProcessProbe::Missing;
+    }
+
+    let created_at = stat
+        .rsplit_once(')')
+        .and_then(|(_, trailer)| trailer.split_whitespace().nth(19))
+        .and_then(|value| value.parse::<u64>().ok());
+
+    ProcessProbe::Alive { created_at }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn probe_pid_with_signal(pid: u32) -> ProcessProbe {
+    // `SystemTime` has no per-process creation stamp, so recycling stays undetectable
+    // on exotic platforms; falling back to `Unknown` would be worse than a plain probe.
+    match unsafe_libc_kill_zero(pid) {
+        Ok(()) => ProcessProbe::Alive { created_at: None },
+        Err(()) => ProcessProbe::Missing,
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn unsafe_libc_kill_zero(pid: u32) -> Result<(), ()> {
+    // Signal 0 performs the permission and existence checks without delivering a signal.
+    let result = std::process::Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .stdin(Stdio::null())
+        .status();
+    match result {
+        Ok(status) if status.success() => Ok(()),
+        _ => Err(()),
+    }
+}
+
+/// Probe one PID for liveness. Never blocks longer than a couple of system calls.
+pub(crate) fn probe_process(pid: u32) -> ProcessProbe {
+    #[cfg(target_os = "windows")]
+    {
+        probe_pid_windows(pid)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        probe_pid_unix(pid)
+    }
+}
+
+fn probe_matches_identity(probe: ProcessProbe, identity: ProcessIdentity) -> bool {
+    match probe {
+        ProcessProbe::Missing => false,
+        ProcessProbe::Unknown => true,
+        ProcessProbe::Alive { created_at } => match (identity.created_at, created_at) {
+            (Some(expected), Some(actual)) => expected == actual,
+            // Without a timestamp on either side the PID alone is all we have, so a
+            // live process on that PID must be treated as the old backend.
+            _ => true,
+        },
+    }
+}
+
+/// Capture the identity of a still-running process, so later probes can tell the
+/// original process apart from a recycled PID.
+pub(crate) fn capture_process_identity(pid: u32) -> ProcessIdentity {
+    let created_at = match probe_process(pid) {
+        ProcessProbe::Alive { created_at } => created_at,
+        ProcessProbe::Missing | ProcessProbe::Unknown => None,
+    };
+    ProcessIdentity { pid, created_at }
+}
+
+/// Outcome of waiting for a previously spawned process to disappear.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProcessExitOutcome {
+    /// The PID is gone, or it now belongs to a different process.
+    Exited,
+    /// The PID still answers and still matches the captured identity.
+    StillRunning,
+}
+
+/// Poll until the captured process is gone or `timeout` elapses.
+///
+/// This deliberately ignores the `Child` handle. `Child::try_wait` reports `Some` for a
+/// handle whose process is long gone, which is exactly how a restart used to conclude
+/// "backend stopped" while an unrelated process still held the listening port.
+pub(crate) fn wait_for_process_identity_exit(
+    identity: ProcessIdentity,
+    timeout: Duration,
+    poll_interval: Duration,
+) -> ProcessExitOutcome {
+    wait_for_process_identity_exit_with(identity, timeout, poll_interval, probe_process)
+}
+
+/// Same as [`wait_for_process_identity_exit`] with an injectable probe, so the timeout and
+/// recycling rules can be exercised without spawning real processes.
+pub(crate) fn wait_for_process_identity_exit_with<F>(
+    identity: ProcessIdentity,
+    timeout: Duration,
+    poll_interval: Duration,
+    probe: F,
+) -> ProcessExitOutcome
+where
+    F: Fn(u32) -> ProcessProbe,
+{
+    let start = Instant::now();
+    let poll_interval = poll_interval.max(Duration::from_millis(10));
+
+    loop {
+        if !probe_matches_identity(probe(identity.pid), identity) {
+            return ProcessExitOutcome::Exited;
+        }
+
+        if start.elapsed() >= timeout {
+            return ProcessExitOutcome::StillRunning;
+        }
+
+        let remaining = timeout.saturating_sub(start.elapsed());
+        thread::sleep(poll_interval.min(remaining));
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -453,5 +691,140 @@ mod tests {
         let snapshot = logs.lock().expect("lock logs");
         assert_eq!(snapshot.len(), 1);
         assert!(snapshot[0].contains("shorten graceful wait"));
+    }
+
+    fn test_identity(pid: u32, created_at: Option<u64>) -> ProcessIdentity {
+        ProcessIdentity { pid, created_at }
+    }
+
+    #[test]
+    fn missing_probe_never_matches_a_identity() {
+        assert!(!probe_matches_identity(
+            ProcessProbe::Missing,
+            test_identity(42, Some(7))
+        ));
+        assert!(!probe_matches_identity(
+            ProcessProbe::Missing,
+            test_identity(42, None)
+        ));
+    }
+
+    #[test]
+    fn alive_probe_matches_only_when_the_creation_stamp_agrees() {
+        assert!(probe_matches_identity(
+            ProcessProbe::Alive {
+                created_at: Some(7)
+            },
+            test_identity(42, Some(7))
+        ));
+        assert!(
+            !probe_matches_identity(
+                ProcessProbe::Alive {
+                    created_at: Some(8)
+                },
+                test_identity(42, Some(7))
+            ),
+            "a different creation stamp means the PID was recycled"
+        );
+        assert!(
+            probe_matches_identity(
+                ProcessProbe::Alive { created_at: None },
+                test_identity(42, None)
+            ),
+            "without timestamps the PID alone is the only evidence left"
+        );
+        assert!(
+            probe_matches_identity(
+                ProcessProbe::Alive {
+                    created_at: Some(7)
+                },
+                test_identity(42, None)
+            ),
+            "an unknown expected stamp must not clear a live PID"
+        );
+    }
+
+    #[test]
+    fn unknown_probe_is_treated_as_still_running() {
+        assert!(
+            probe_matches_identity(ProcessProbe::Unknown, test_identity(42, Some(7))),
+            "a probe the OS refused to answer must never be read as proof of exit"
+        );
+    }
+
+    #[test]
+    fn wait_returns_exited_as_soon_as_the_probe_reports_missing() {
+        let outcome = wait_for_process_identity_exit_with(
+            test_identity(42, Some(7)),
+            Duration::from_millis(1_000),
+            Duration::from_millis(10),
+            |_| ProcessProbe::Missing,
+        );
+
+        assert_eq!(outcome, ProcessExitOutcome::Exited);
+    }
+
+    #[test]
+    fn wait_returns_still_running_after_the_timeout_elapses() {
+        let start = Instant::now();
+        let outcome = wait_for_process_identity_exit_with(
+            test_identity(42, Some(7)),
+            Duration::from_millis(50),
+            Duration::from_millis(10),
+            |_| ProcessProbe::Alive {
+                created_at: Some(7),
+            },
+        );
+
+        assert_eq!(outcome, ProcessExitOutcome::StillRunning);
+        assert!(
+            start.elapsed() >= Duration::from_millis(50),
+            "the timeout must actually be spent before giving up"
+        );
+    }
+
+    #[test]
+    fn wait_keeps_polling_until_a_late_exit_is_observed() {
+        let remaining = Mutex::new(3_u8);
+        let outcome = wait_for_process_identity_exit_with(
+            test_identity(42, Some(7)),
+            Duration::from_millis(2_000),
+            Duration::from_millis(10),
+            |_| {
+                let mut remaining = remaining.lock().expect("lock remaining");
+                if *remaining == 0 {
+                    ProcessProbe::Missing
+                } else {
+                    *remaining -= 1;
+                    ProcessProbe::Alive {
+                        created_at: Some(7),
+                    }
+                }
+            },
+        );
+
+        assert_eq!(outcome, ProcessExitOutcome::Exited);
+    }
+
+    #[test]
+    fn wait_treats_the_current_process_as_alive() {
+        // Sanity check of the real probe: this test process is definitely running, so a
+        // zero timeout must report it as still there rather than missing.
+        let identity = capture_process_identity(std::process::id());
+        let outcome =
+            wait_for_process_identity_exit(identity, Duration::ZERO, Duration::from_millis(10));
+        assert_eq!(outcome, ProcessExitOutcome::StillRunning);
+    }
+
+    #[test]
+    fn wait_reports_an_impossible_pid_as_exited() {
+        // PID 0 is never a real user process on Windows, and the Unix probe rejects it too.
+        let identity = test_identity(0, None);
+        let outcome = wait_for_process_identity_exit(
+            identity,
+            Duration::from_millis(50),
+            Duration::from_millis(10),
+        );
+        assert_eq!(outcome, ProcessExitOutcome::Exited);
     }
 }
