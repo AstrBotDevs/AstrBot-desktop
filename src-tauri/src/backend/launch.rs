@@ -533,6 +533,9 @@ impl BackendState {
             .child
             .lock()
             .map_err(|_| "Backend process lock poisoned.")? = Some(child);
+        // Record the identity while the process is certainly alive; a later restart uses
+        // it to prove the process is gone instead of trusting the `Child` handle.
+        self.record_spawned_identity(child_pid);
         if let Some(log_path) = backend_log_path {
             self.start_backend_log_rotation_worker(app, log_path, child_pid);
         } else {

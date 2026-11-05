@@ -9,6 +9,13 @@ pub(crate) const DESKTOP_AUTH_REQUEST_TIMEOUT_MS: u64 = 2_500;
 pub(crate) const GRACEFUL_RESTART_START_TIME_TIMEOUT_MS: u64 = 1_800;
 pub(crate) const GRACEFUL_RESTART_POLL_INTERVAL_MS: u64 = 350;
 pub(crate) const GRACEFUL_STOP_TIMEOUT_MS: u64 = 10_000;
+// Upper bound for confirming the previously spawned backend has really left the OS
+// before a restart is allowed to spawn a replacement. The stop path can spend up to
+// GRACEFUL_STOP_TIMEOUT_MS plus the force-kill follow-up, so this only covers the
+// final "PID is gone" hand-off; it must stay short enough that a genuine failure is
+// reported to the user instead of turning a restart into a long hang.
+pub(crate) const BACKEND_EXIT_CONFIRM_TIMEOUT_MS: u64 = 3_000;
+pub(crate) const BACKEND_EXIT_CONFIRM_POLL_INTERVAL_MS: u64 = 100;
 #[cfg(target_os = "windows")]
 pub(crate) const SYSTEM_SHUTDOWN_STOP_TIMEOUT_MS: u64 = 2_000;
 pub(crate) const DEFAULT_BACKEND_READY_POLL_INTERVAL_MS: u64 = 300;
