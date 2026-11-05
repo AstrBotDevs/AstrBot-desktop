@@ -328,7 +328,7 @@ fn probe_pid_unix(pid: u32) -> ProcessProbe {
     // as exited. Field 3 of /proc/<pid>/stat is the state letter, after the "(name)" tail.
     let state = stat
         .rsplit_once(')')
-        .map(|(_, trailer)| trailer.trim_start().chars().next());
+        .and_then(|(_, trailer)| trailer.trim_start().chars().next());
     if matches!(state, Some('Z') | Some('X') | Some('x')) {
         return ProcessProbe::Missing;
     }
