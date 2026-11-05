@@ -345,24 +345,30 @@ fn probe_pid_unix(pid: u32) -> ProcessProbe {
 fn probe_pid_with_signal(pid: u32) -> ProcessProbe {
     // `SystemTime` has no per-process creation stamp, so recycling stays undetectable
     // on exotic platforms; falling back to `Unknown` would be worse than a plain probe.
-    match unsafe_libc_kill_zero(pid) {
-        Ok(()) => ProcessProbe::Alive { created_at: None },
-        Err(()) => ProcessProbe::Missing,
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn unsafe_libc_kill_zero(pid: u32) -> Result<(), ()> {
     // Signal 0 performs the permission and existence checks without delivering a signal.
-    let result = std::process::Command::new("kill")
+    let output = std::process::Command::new("kill")
         .args(["-0", &pid.to_string()])
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .stdin(Stdio::null())
-        .status();
-    match result {
-        Ok(status) if status.success() => Ok(()),
-        _ => Err(()),
+        .output();
+    match output {
+        Ok(output) if output.status.success() => ProcessProbe::Alive { created_at: None },
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
+            if stderr.contains("no such process") {
+                ProcessProbe::Missing
+            } else if stderr.contains("permitted") || stderr.contains("permission denied") {
+                // The PID exists but belongs to another user, so it is still alive.
+                ProcessProbe::Alive { created_at: None }
+            } else {
+                // The `kill` invocation itself failed, which says nothing about the PID.
+                // Reporting Unknown makes the caller refuse the restart instead of
+                // assuming a clean exit.
+                ProcessProbe::Unknown
+            }
+        }
+        Err(_) => ProcessProbe::Unknown,
     }
 }
 
@@ -826,5 +832,14 @@ mod tests {
             Duration::from_millis(10),
         );
         assert_eq!(outcome, ProcessExitOutcome::Exited);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn signal_probe_reports_a_missing_pid_as_exited() {
+        // The signal fallback only runs where procfs is unavailable. A PID that cannot
+        // exist must come back as Missing; reporting Unknown would make the restart
+        // preflight treat a dead process as alive and refuse a valid restart.
+        assert_eq!(probe_pid_with_signal(u32::MAX - 1), ProcessProbe::Missing);
     }
 }
