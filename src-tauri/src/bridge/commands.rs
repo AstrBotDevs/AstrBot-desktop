@@ -181,6 +181,9 @@ fn build_restart_backend_after_failed_install(
             "update install failed before exit, revalidating resources before restarting managed backend",
         );
         let restart_plan = state.resolve_launch_plan(&app_handle)?;
+        // The update flow stopped the backend before installing. Only respawn once the old
+        // process is provably gone, otherwise the replacement would serve alongside it.
+        state.confirm_previous_backend_exited()?;
         state.start_backend_process(&app_handle, &restart_plan)?;
         state.wait_for_backend(&restart_plan)
     }

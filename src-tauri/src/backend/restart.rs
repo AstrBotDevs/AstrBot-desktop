@@ -325,7 +325,7 @@ impl BackendState {
     /// A failure returns an error instead of force-killing the PID: after a multi-second
     /// pause the PID may already belong to an unrelated process, and terminating an
     /// unknown process is worse than telling the user to stop the old backend manually.
-    fn confirm_previous_backend_exited(&self) -> Result<(), String> {
+    pub(crate) fn confirm_previous_backend_exited(&self) -> Result<(), String> {
         let stopped_pid = self.restart_stop_pid.swap(0, Ordering::AcqRel);
         let identity = self.spawned_identity_for(stopped_pid);
         let result = preflight_before_respawn(

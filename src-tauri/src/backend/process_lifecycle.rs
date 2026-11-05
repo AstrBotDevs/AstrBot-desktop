@@ -80,6 +80,11 @@ impl BackendState {
         // Prefer the identity captured while the process was certainly alive. Re-reading it
         // here could describe a recycled PID instead of the backend this shell spawned.
         let identity = self.stop_identity(pid);
+        // Remember the target so any caller that respawns afterwards can confirm the PID is
+        // really gone. The restart flow sets this itself; recording it here as well covers
+        // the paths that stop the backend without going through a restart first, such as
+        // the update flow's failed-install recovery.
+        self.restart_stop_pid.store(pid, Ordering::Release);
 
         let graceful = {
             let Some(child) = guard.as_mut() else {
