@@ -16,10 +16,9 @@ use crate::{
 /// Gate a respawn on observable facts instead of the previous `Child` handle.
 ///
 /// Two independent checks run before any spawn, in this order:
-/// 1. the process this shell stopped is gone from the OS PID table (catches a reused PID
-///    and a handle that reaped without the backend actually dying);
-/// 2. nothing else answers on the backend endpoint (catches a backend this shell never
-///    tracked, for example one started from a terminal).
+/// 1. the recorded process identity is no longer present, allowing a reused PID only
+///    when its creation timestamp proves that it is a different process;
+/// 2. the backend endpoint explicitly refuses connections on every resolved address.
 ///
 /// The endpoint probe is a closure so it is evaluated only after the PID gate passes.
 /// Sampling it up front would judge the port while the old backend is still shutting
@@ -35,11 +34,10 @@ fn preflight_before_respawn<P, E>(
     poll_interval: Duration,
     probe: P,
     endpoint_probe: E,
-    backend_url: &str,
 ) -> Result<(), String>
 where
     P: Fn(u32) -> process_control::ProcessProbe,
-    E: FnOnce() -> bool,
+    E: FnOnce() -> Result<(), String>,
 {
     if stopped_pid != 0 {
         let identity = identity.unwrap_or(process_control::ProcessIdentity {
@@ -54,23 +52,13 @@ where
         );
         if outcome == process_control::ProcessExitOutcome::StillRunning {
             return Err(format!(
-                "Previous backend is still running: pid={stopped_pid} did not exit within {}ms. Stop it manually before starting another backend.",
+                "Previous backend exit could not be confirmed: pid={stopped_pid} still exists or cannot be inspected after {}ms. Wait and retry. Stop it manually only after verifying it is the backend.",
                 timeout.as_millis()
             ));
         }
     }
 
-    if !endpoint_probe() {
-        return Err(backend_endpoint_conflict_error(backend_url));
-    }
-
-    Ok(())
-}
-
-fn backend_endpoint_conflict_error(backend_url: &str) -> String {
-    format!(
-        "Backend endpoint {backend_url} is still answering after the restart stop. Another backend is already running; stop it manually before restarting AstrBot Desktop."
-    )
+    endpoint_probe()
 }
 
 impl BackendState {
@@ -171,21 +159,20 @@ impl BackendState {
     }
 
     pub(crate) fn stop_backend_for_bridge(&self) -> Result<(), String> {
+        let _spawn_guard = AtomicFlagGuard::try_set(&self.is_spawning)
+            .ok_or_else(|| "Backend action already in progress.".to_string())?;
         let has_managed_child = self
             .child
             .lock()
             .map_err(|_| "Backend process lock poisoned.".to_string())?
             .is_some();
         if has_managed_child {
-            return self.stop_backend();
+            self.stop_backend()?;
         }
 
-        if self.ping_backend(backend::runtime::backend_ping_timeout_ms(
+        self.confirm_backend_endpoint_available(backend::runtime::backend_ping_timeout_ms(
             append_desktop_log,
-        )) {
-            return Err("Backend is running but not managed by desktop process.".to_string());
-        }
-        Ok(())
+        ))
     }
 
     fn has_managed_child(&self) -> Result<bool, String> {
@@ -314,19 +301,18 @@ impl BackendState {
     /// Refuse to spawn unless the old backend is provably gone.
     ///
     /// Runs both gates exactly once, in this order:
-    /// 1) the process this shell stopped is gone from the OS PID table;
-    /// 2) nothing answers on the backend endpoint.
+    /// 1) the recorded process identity is no longer present;
+    /// 2) the backend endpoint explicitly refuses connections.
     ///
-    /// The first catches a reused PID and a handle that reaped while the backend lived on.
-    /// The second catches a backend this shell never tracked — including the Windows
-    /// double-bind case, where a second Hypercorn bind would silently succeed because the
-    /// Python side sets SO_REUSEADDR.
+    /// An unknown process identity or endpoint result blocks the replacement. A missing
+    /// creation timestamp can also conservatively block a reused PID, so a failed check
+    /// preserves the target for a retry instead of asserting that the backend is alive.
     ///
     /// A failure returns an error instead of force-killing the PID: after a multi-second
     /// pause the PID may already belong to an unrelated process, and terminating an
     /// unknown process is worse than telling the user to stop the old backend manually.
     pub(crate) fn confirm_previous_backend_exited(&self) -> Result<(), String> {
-        let stopped_pid = self.restart_stop_pid.swap(0, Ordering::AcqRel);
+        let stopped_pid = self.restart_stop_pid.load(Ordering::Acquire);
         let identity = self.spawned_identity_for(stopped_pid);
         let result = preflight_before_respawn(
             stopped_pid,
@@ -335,12 +321,19 @@ impl BackendState {
             Duration::from_millis(BACKEND_EXIT_CONFIRM_POLL_INTERVAL_MS),
             process_control::probe_process,
             || {
-                !self.ping_backend(backend::runtime::backend_ping_timeout_ms(
+                self.confirm_backend_endpoint_available(backend::runtime::backend_ping_timeout_ms(
                     append_desktop_log,
                 ))
             },
-            &self.backend_url,
         );
+        if result.is_ok() {
+            let _ = self.restart_stop_pid.compare_exchange(
+                stopped_pid,
+                0,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            );
+        }
         match &result {
             Ok(()) if stopped_pid != 0 => append_restart_log(&format!(
                 "previous backend confirmed exited before respawn: pid={stopped_pid}"
@@ -356,7 +349,6 @@ impl BackendState {
         app: &AppHandle,
         plan: &LaunchPlan,
     ) -> Result<(), String> {
-        let _spawn_guard = AtomicFlagGuard::set(&self.is_spawning);
         self.confirm_previous_backend_exited()?;
         self.start_backend_process(app, plan)?;
         self.wait_for_backend(plan)
@@ -369,6 +361,8 @@ impl BackendState {
     ) -> Result<(), String> {
         append_restart_log("backend restart requested");
 
+        let _spawn_guard = AtomicFlagGuard::try_set(&self.is_spawning)
+            .ok_or_else(|| "Backend action already in progress.".to_string())?;
         let _restart_guard = AtomicFlagGuard::try_set(&self.is_restarting)
             .ok_or_else(|| "Backend action already in progress.".to_string())?;
         let plan = self.resolve_launch_plan(app)?;
@@ -427,13 +421,101 @@ impl BackendState {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
+    use std::{
+        net::TcpListener,
+        process::{Command, Stdio},
+        sync::{atomic::Ordering, Mutex},
+    };
 
-    use super::{backend_endpoint_conflict_error, preflight_before_respawn, BackendState};
+    use super::{preflight_before_respawn, BackendState};
     use crate::{
         backend::restart_strategy::RestartStrategy, process_control::ProcessIdentity,
         process_control::ProcessProbe,
     };
+
+    #[test]
+    fn bridge_stop_rejects_an_action_already_in_progress() {
+        let state = BackendState {
+            backend_url: "invalid URL".to_string(),
+            ..BackendState::default()
+        };
+        state.is_spawning.store(true, Ordering::Release);
+
+        assert_eq!(
+            state.stop_backend_for_bridge(),
+            Err("Backend action already in progress.".to_string())
+        );
+        assert!(state.is_spawning.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn bridge_stop_reports_an_answering_backend_after_dropping_a_stale_child() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind backend endpoint");
+        let mut child = Command::new(std::env::current_exe().expect("locate test executable"))
+            .arg("--list")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn a short-lived child");
+        child.wait().expect("reap the child");
+        let state = BackendState {
+            child: Mutex::new(Some(child)),
+            backend_url: format!("http://{}/", listener.local_addr().unwrap()),
+            ..BackendState::default()
+        };
+
+        assert!(state.stop_backend_for_bridge().is_err());
+        assert!(state.child.lock().unwrap().is_none());
+        assert!(!state.is_spawning.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn bridge_stop_rejects_an_inconclusive_endpoint_probe() {
+        let state = BackendState {
+            backend_url: "invalid URL".to_string(),
+            ..BackendState::default()
+        };
+
+        let error = state
+            .stop_backend_for_bridge()
+            .expect_err("a failed probe must not report a successful stop");
+        assert!(error.contains("Cannot confirm backend endpoint"));
+        assert!(!state.is_spawning.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn failed_endpoint_confirmation_retains_the_pid_for_a_retry() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind backend endpoint");
+        let mut child = Command::new(std::env::current_exe().expect("locate test executable"))
+            .arg("--list")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn a short-lived child");
+        let pid = child.id();
+        child.wait().expect("reap the child");
+        let state = BackendState {
+            backend_url: format!("http://{}/", listener.local_addr().unwrap()),
+            ..BackendState::default()
+        };
+        state.restart_stop_pid.store(pid, Ordering::Release);
+
+        assert!(state.confirm_previous_backend_exited().is_err());
+        assert_eq!(state.restart_stop_pid.load(Ordering::Acquire), pid);
+        drop(listener);
+        assert_eq!(state.confirm_previous_backend_exited(), Ok(()));
+        assert_eq!(state.restart_stop_pid.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn stopping_an_empty_child_slot_remembers_the_last_spawned_identity() {
+        let state = BackendState::default();
+        let pid = std::process::id();
+        state.record_spawned_identity(pid);
+
+        assert_eq!(state.stop_backend(), Ok(()));
+        assert_eq!(state.restart_stop_pid.load(Ordering::Acquire), pid);
+    }
 
     #[test]
     fn sanitize_auth_token_rejects_empty_and_newline_tokens() {
@@ -493,12 +575,18 @@ mod tests {
             |_| ProcessProbe::Alive {
                 created_at: Some(100),
             },
-            || true,
-            "http://127.0.0.1:6185/",
+            || Ok(()),
         );
 
         let error = result.expect_err("a still-running backend must block the respawn");
-        assert!(error.contains("still running"), "unexpected error: {error}");
+        assert!(
+            error.contains("could not be confirmed"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            error.contains("Wait and retry"),
+            "unexpected error: {error}"
+        );
         assert!(error.contains("pid=14360"), "unexpected error: {error}");
         assert!(
             error.contains("Stop it manually"),
@@ -518,8 +606,7 @@ mod tests {
                 probes.lock().expect("lock probes").push(pid);
                 ProcessProbe::Missing
             },
-            || true,
-            "http://127.0.0.1:6185/",
+            || Ok(()),
         );
 
         assert!(result.is_ok(), "unexpected error: {result:?}");
@@ -541,8 +628,7 @@ mod tests {
             |_| ProcessProbe::Alive {
                 created_at: Some(999),
             },
-            || true,
-            "http://127.0.0.1:6185/",
+            || Ok(()),
         );
 
         assert!(result.is_ok(), "unexpected error: {result:?}");
@@ -559,8 +645,7 @@ mod tests {
             |_| ProcessProbe::Alive {
                 created_at: Some(100),
             },
-            || true,
-            "http://127.0.0.1:6185/",
+            || Ok(()),
         );
 
         assert!(result.is_err());
@@ -579,15 +664,11 @@ mod tests {
             std::time::Duration::from_millis(50),
             std::time::Duration::from_millis(10),
             |_| ProcessProbe::Missing,
-            || false,
-            "http://127.0.0.1:6185/",
+            || Err("endpoint occupied".to_string()),
         );
 
         let error = result.expect_err("an answering endpoint must block the respawn");
-        assert_eq!(
-            error,
-            backend_endpoint_conflict_error("http://127.0.0.1:6185/")
-        );
+        assert_eq!(error, "endpoint occupied");
     }
 
     #[test]
@@ -604,9 +685,8 @@ mod tests {
             },
             || {
                 endpoint_called.set(true);
-                true
+                Ok(())
             },
-            "http://127.0.0.1:6185/",
         );
 
         assert!(result.is_err());
@@ -624,8 +704,7 @@ mod tests {
             std::time::Duration::from_millis(50),
             std::time::Duration::from_millis(10),
             |_| panic!("no PID means nothing to probe"),
-            || true,
-            "http://127.0.0.1:6185/",
+            || Ok(()),
         );
         assert!(ok.is_ok());
 
@@ -635,16 +714,24 @@ mod tests {
             std::time::Duration::from_millis(50),
             std::time::Duration::from_millis(10),
             |_| panic!("no PID means nothing to probe"),
-            || false,
-            "http://127.0.0.1:6185/",
+            || Err("endpoint occupied".to_string()),
         );
         assert!(blocked.is_err());
     }
 
     #[test]
-    fn conflicting_endpoint_error_names_the_url_and_the_remedy() {
-        let message = backend_endpoint_conflict_error("http://127.0.0.1:6185/");
-        assert!(message.contains("http://127.0.0.1:6185/"));
-        assert!(message.contains("stop it manually"));
+    fn preflight_preserves_an_inconclusive_endpoint_error() {
+        let result = preflight_before_respawn(
+            0,
+            None,
+            std::time::Duration::from_millis(50),
+            std::time::Duration::from_millis(10),
+            |_| panic!("there is no stopped PID to probe"),
+            || Err("DNS resolution timed out; endpoint availability is unknown".to_string()),
+        );
+        assert_eq!(
+            result,
+            Err("DNS resolution timed out; endpoint availability is unknown".to_string())
+        );
     }
 }

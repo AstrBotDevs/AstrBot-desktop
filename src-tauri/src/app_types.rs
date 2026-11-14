@@ -115,11 +115,6 @@ pub(crate) struct AtomicFlagGuard<'a> {
 }
 
 impl<'a> AtomicFlagGuard<'a> {
-    pub(crate) fn set(flag: &'a AtomicBool) -> Self {
-        flag.store(true, Ordering::Relaxed);
-        Self { flag }
-    }
-
     pub(crate) fn try_set(flag: &'a AtomicBool) -> Option<Self> {
         flag.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .ok()?;
@@ -161,16 +156,6 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     use super::AtomicFlagGuard;
-
-    #[test]
-    fn atomic_flag_guard_set_resets_flag_on_drop() {
-        let flag = AtomicBool::new(false);
-        {
-            let _guard = AtomicFlagGuard::set(&flag);
-            assert!(flag.load(Ordering::Relaxed));
-        }
-        assert!(!flag.load(Ordering::Relaxed));
-    }
 
     #[test]
     fn atomic_flag_guard_try_set_rejects_double_set_until_drop() {

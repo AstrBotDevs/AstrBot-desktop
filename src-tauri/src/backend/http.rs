@@ -1,10 +1,10 @@
 use std::{
     io::{ErrorKind, Read, Write},
-    net::{TcpStream, ToSocketAddrs},
+    net::{SocketAddr, TcpStream, ToSocketAddrs},
     time::{Duration, Instant},
 };
 
-use url::Url;
+use url::{Host, Url};
 
 use crate::{
     backend::http_response,
@@ -14,6 +14,84 @@ use crate::{
 
 const MAX_BACKEND_HTTP_HEADER_BYTES: usize = 64 * 1024;
 const MAX_BACKEND_HTTP_BODY_BYTES: usize = 32 * 1024 * 1024;
+
+/// Require refused connections on every resolved address before permitting a respawn.
+fn confirm_backend_endpoint_available_with_resolver<F>(
+    backend_url: &str,
+    timeout: Duration,
+    resolve: F,
+) -> Result<(), String>
+where
+    F: FnOnce(String, u16) -> std::io::Result<Vec<SocketAddr>> + Send + 'static,
+{
+    let inconclusive = |reason: &str| {
+        format!(
+            "Cannot confirm backend endpoint {backend_url} is available: {reason}. Refusing to start another backend."
+        )
+    };
+    let deadline = Instant::now()
+        .checked_add(timeout)
+        .ok_or_else(|| inconclusive("invalid probe timeout"))?;
+    let parsed =
+        Url::parse(backend_url).map_err(|error| inconclusive(&format!("invalid URL: {error}")))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(inconclusive("unsupported backend URL scheme"));
+    }
+    let port = parsed
+        .port_or_known_default()
+        .ok_or_else(|| inconclusive("URL has no port"))?;
+    let addrs = match parsed.host() {
+        Some(Host::Ipv4(ip)) => vec![SocketAddr::from((ip, port))],
+        Some(Host::Ipv6(ip)) => vec![SocketAddr::from((ip, port))],
+        Some(Host::Domain(host)) => {
+            let host = host.to_string();
+            let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+            // The OS resolver cannot be cancelled. Bound the caller's wait and let a
+            // late worker discard its result after the receiver has been dropped.
+            std::thread::Builder::new()
+                .name("backend-endpoint-resolver".to_string())
+                .spawn(move || {
+                    let _ = sender.send(resolve(host, port));
+                })
+                .map_err(|error| {
+                    inconclusive(&format!("could not start name resolution: {error}"))
+                })?;
+            let remaining = deadline
+                .checked_duration_since(Instant::now())
+                .filter(|remaining| !remaining.is_zero())
+                .ok_or_else(|| inconclusive("probe timed out during name resolution"))?;
+            receiver
+                .recv_timeout(remaining)
+                .map_err(|error| inconclusive(&format!("name resolution did not finish: {error}")))?
+                .map_err(|error| inconclusive(&format!("name resolution failed: {error}")))?
+        }
+        None => return Err(inconclusive("URL has no host")),
+    };
+    if addrs.is_empty() {
+        return Err(inconclusive("name resolution returned no addresses"));
+    }
+
+    for address in addrs {
+        let remaining = deadline
+            .checked_duration_since(Instant::now())
+            .filter(|remaining| !remaining.is_zero())
+            .ok_or_else(|| inconclusive("probe timed out"))?;
+        match TcpStream::connect_timeout(&address, remaining) {
+            Ok(_) => {
+                return Err(format!(
+                    "Backend endpoint {backend_url} is already answering. Stop the existing backend before starting another."
+                ));
+            }
+            Err(error) if error.kind() == ErrorKind::ConnectionRefused => {}
+            Err(error) => {
+                return Err(inconclusive(&format!(
+                    "connection to {address} failed: {error}"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
 
 trait ResponseReader: Read {
     fn set_response_read_timeout(&self, timeout: Duration) -> std::io::Result<()>;
@@ -33,6 +111,18 @@ struct BackendRequestOptions<'a> {
 }
 
 impl BackendState {
+    pub(crate) fn confirm_backend_endpoint_available(&self, timeout_ms: u64) -> Result<(), String> {
+        confirm_backend_endpoint_available_with_resolver(
+            &self.backend_url,
+            Duration::from_millis(timeout_ms.max(1)),
+            |host, port| {
+                (host.as_str(), port)
+                    .to_socket_addrs()
+                    .map(Iterator::collect)
+            },
+        )
+    }
+
     pub(crate) fn ping_backend(&self, timeout_ms: u64) -> bool {
         let parsed = match Url::parse(&self.backend_url) {
             Ok(url) => url,
@@ -373,6 +463,122 @@ fn read_http_response_bytes<R: ResponseReader>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restart_endpoint_probe_rejects_invalid_urls() {
+        let state = BackendState {
+            backend_url: "not a backend URL".to_string(),
+            ..BackendState::default()
+        };
+
+        assert!(
+            state.confirm_backend_endpoint_available(50).is_err(),
+            "an invalid endpoint must not authorize a replacement backend"
+        );
+    }
+
+    #[test]
+    fn restart_endpoint_probe_rejects_a_listening_backend() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let state = BackendState {
+            backend_url: format!(
+                "http://{}/",
+                listener.local_addr().expect("listener address")
+            ),
+            ..BackendState::default()
+        };
+
+        let error = state
+            .confirm_backend_endpoint_available(200)
+            .expect_err("an answering endpoint must block a respawn");
+        assert!(error.contains("already answering"));
+    }
+
+    #[test]
+    fn restart_endpoint_probe_accepts_refused_loopback_connections() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let address = listener.local_addr().expect("listener address");
+        drop(listener);
+
+        let result = confirm_backend_endpoint_available_with_resolver(
+            &format!("http://{address}/"),
+            Duration::from_millis(200),
+            |_, _| panic!("numeric addresses must not invoke DNS"),
+        );
+        assert!(
+            result.is_ok(),
+            "a refused connection must permit respawn: {result:?}"
+        );
+    }
+
+    #[test]
+    fn restart_endpoint_probe_does_not_treat_resolution_errors_as_available() {
+        let error = confirm_backend_endpoint_available_with_resolver(
+            "http://backend.invalid:6185/",
+            Duration::from_millis(200),
+            |_, _| Err(std::io::Error::from(ErrorKind::PermissionDenied)),
+        )
+        .expect_err("an inconclusive resolution must block a respawn");
+
+        assert!(error.contains("Cannot confirm backend endpoint"));
+        assert!(error.contains("name resolution failed"));
+    }
+
+    #[test]
+    fn restart_endpoint_probe_rejects_empty_resolution_results() {
+        assert!(confirm_backend_endpoint_available_with_resolver(
+            "http://backend.invalid:6185/",
+            Duration::from_millis(200),
+            |_, _| Ok(Vec::new()),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn restart_endpoint_probe_bounds_hostname_resolution_by_the_total_deadline() {
+        let (release, blocked) = std::sync::mpsc::channel();
+        let (finished, completed) = std::sync::mpsc::channel();
+        let start = Instant::now();
+        let result = confirm_backend_endpoint_available_with_resolver(
+            "http://backend.invalid:6185/",
+            Duration::from_millis(100),
+            move |_, _| {
+                let _ = blocked.recv_timeout(Duration::from_secs(2));
+                let _ = finished.send(());
+                Err(std::io::Error::from(ErrorKind::TimedOut))
+            },
+        );
+        let elapsed = start.elapsed();
+        let _ = release.send(());
+        completed
+            .recv_timeout(Duration::from_secs(1))
+            .expect("resolver worker must finish after being released");
+
+        assert!(result.is_err(), "a timed-out probe must block a respawn");
+        assert!(
+            elapsed < Duration::from_secs(1),
+            "DNS must share the probe deadline instead of blocking for {elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn restart_endpoint_probe_checks_every_resolved_address() {
+        let available_listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("bind available address");
+        let available = available_listener.local_addr().expect("available address");
+        let occupied_listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("bind occupied address");
+        let occupied = occupied_listener.local_addr().expect("occupied address");
+        drop(available_listener);
+
+        let error = confirm_backend_endpoint_available_with_resolver(
+            "http://backend.invalid:6185/",
+            Duration::from_millis(200),
+            move |_, _| Ok(vec![available, occupied]),
+        )
+        .expect_err("one answering address must block a respawn");
+        assert!(error.contains("already answering"));
+    }
 
     #[test]
     fn is_complete_http_response_respects_content_length() {

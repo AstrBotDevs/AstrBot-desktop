@@ -27,8 +27,8 @@ use crate::bridge::updater_types::{
 };
 use crate::{
     append_desktop_log, restart_backend_flow, runtime_paths, shell_locale, tray, update_channel,
-    BackendBridgeResult, BackendBridgeState, BackendState, DesktopAuthBridgeResult,
-    DEFAULT_SHELL_LOCALE,
+    AtomicFlagGuard, BackendBridgeResult, BackendBridgeState, BackendState,
+    DesktopAuthBridgeResult, DEFAULT_SHELL_LOCALE,
 };
 
 fn resolve_update_channel(app_handle: &AppHandle) -> update_channel::UpdateChannel {
@@ -769,6 +769,9 @@ pub(crate) async fn desktop_bridge_install_app_update(
         AppUpdateProgress::stage("installing"),
     );
     let state = app_handle.state::<BackendState>();
+    let Some(_spawn_guard) = AtomicFlagGuard::try_set(&state.is_spawning) else {
+        return map_update_install_error("Backend action already in progress.");
+    };
     let stop_managed_backend = cfg!(target_os = "windows") && has_managed_backend_child(&state);
     let restart_backend_after_failed_install = if stop_managed_backend {
         match state.resolve_launch_plan(&app_handle) {

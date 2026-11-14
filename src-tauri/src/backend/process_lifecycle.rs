@@ -16,12 +16,7 @@ use crate::{
     BACKEND_LOG_ROTATION_CHECK_INTERVAL, GRACEFUL_STOP_TIMEOUT_MS, LOG_BACKUP_COUNT,
 };
 
-/// Confirmation that the process captured by an identity has really left the OS.
-///
-/// `Child::try_wait` is not enough on its own: a handle whose process already died (or
-/// whose PID was recycled) reaps immediately, so a stop that never touched the real
-/// backend would still look successful. The probe below asks the OS about the PID, which
-/// is the observable fact a restart is allowed to depend on.
+/// Confirm the recorded process identity independently without signalling a reused PID.
 fn confirm_process_identity_exit(identity: process_control::ProcessIdentity) -> Result<(), String> {
     let outcome = process_control::wait_for_process_identity_exit(
         identity,
@@ -30,7 +25,7 @@ fn confirm_process_identity_exit(identity: process_control::ProcessIdentity) -> 
     );
     if outcome == process_control::ProcessExitOutcome::StillRunning {
         return Err(format!(
-            "Backend process is still running after the stop request: pid={}, waited {}ms. Stop it manually before starting another backend.",
+            "Backend exit could not be confirmed after the stop request: pid={}, waited {}ms. The process may still be running or its identity may be unavailable. Wait and retry; stop it manually only after verifying it is the backend.",
             identity.pid, BACKEND_EXIT_CONFIRM_TIMEOUT_MS
         ));
     }
@@ -49,15 +44,25 @@ impl BackendState {
             .lock()
             .map_err(|_| "Backend process lock poisoned.".to_string())?;
 
-        // A `Child` whose process already exited still answers `try_wait` with `Some`
-        // forever, and its PID may already belong to an unrelated process. Sending
-        // `taskkill /pid` to that handle would kill the wrong process, so the stale handle
-        // is dropped here instead of being used as a stop target.
+        // A completed `Child` is not evidence that the backend endpoint is unused.
+        // Drop it without another stop request; callers verify the endpoint before
+        // reporting a bridge stop or spawning a replacement.
         let (pid, already_exited) = {
             let Some(child) = guard.as_mut() else {
+                if let Some(pid) = self.last_recorded_pid() {
+                    let _ = self.restart_stop_pid.compare_exchange(
+                        0,
+                        pid,
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                    );
+                }
                 return Ok(());
             };
             let pid = child.id();
+            // Keep the stop target even when this handle has already exited, so update
+            // recovery and retries run the same process confirmation as a restart.
+            self.restart_stop_pid.store(pid, Ordering::Release);
             match child.try_wait() {
                 Ok(Some(status)) => (pid, Some(status.to_string())),
                 Ok(None) => (pid, None),
@@ -80,12 +85,6 @@ impl BackendState {
         // Prefer the identity captured while the process was certainly alive. Re-reading it
         // here could describe a recycled PID instead of the backend this shell spawned.
         let identity = self.stop_identity(pid);
-        // Remember the target so any caller that respawns afterwards can confirm the PID is
-        // really gone. The restart flow sets this itself; recording it here as well covers
-        // the paths that stop the backend without going through a restart first, such as
-        // the update flow's failed-install recovery.
-        self.restart_stop_pid.store(pid, Ordering::Release);
-
         let graceful = {
             let Some(child) = guard.as_mut() else {
                 return Ok(());

@@ -516,6 +516,16 @@ impl BackendState {
             command.stderr(Stdio::null());
         }
 
+        // Keep the child-slot check and spawn in the same critical section, including
+        // callers that do not hold the high-level backend action reservation.
+        let mut child_guard = self
+            .child
+            .lock()
+            .map_err(|_| "Backend process lock poisoned.")?;
+        if child_guard.is_some() {
+            append_desktop_log("backend child already exists, skip re-spawn");
+            return Ok(());
+        }
         let child = command.spawn().map_err(|error| {
             format!(
                 "Failed to spawn backend process with command {:?}: {}",
@@ -529,13 +539,11 @@ impl BackendState {
             build_debug_command(plan),
             plan.cwd.display()
         ));
-        *self
-            .child
-            .lock()
-            .map_err(|_| "Backend process lock poisoned.")? = Some(child);
+        *child_guard = Some(child);
         // Record the identity while the process is certainly alive; a later restart uses
         // it to prove the process is gone instead of trusting the `Child` handle.
         self.record_spawned_identity(child_pid);
+        drop(child_guard);
         if let Some(log_path) = backend_log_path {
             self.start_backend_log_rotation_worker(app, log_path, child_pid);
         } else {
