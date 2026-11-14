@@ -46,6 +46,16 @@ impl BackendState {
         self.stop_backend_with_timeout(Duration::from_millis(GRACEFUL_STOP_TIMEOUT_MS))
     }
 
+    /// Stop and verify both the process and endpoint before a Windows installation.
+    pub(crate) fn stop_backend_before_update_install(&self) -> Result<(), String> {
+        self.stop_backend().map_err(|error| {
+            format!("Failed to stop backend before Windows update install: {error}")
+        })?;
+        self.confirm_previous_backend_exited().map_err(|error| {
+            format!("Failed to confirm backend exit before Windows update install: {error}")
+        })
+    }
+
     pub(crate) fn stop_backend_with_timeout(&self, timeout: Duration) -> Result<(), String> {
         self.stop_backend_log_rotation_worker();
         let mut guard = self

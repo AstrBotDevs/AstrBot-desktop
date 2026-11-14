@@ -1,6 +1,7 @@
 # AstrBot Desktop 环境变量清单
 
-更新时间：2026-03-13  
+更新时间：2026-11-15
+
 主要来源：桌面运行时 Rust 模块（如 `src-tauri/src/backend/config.rs`、`src-tauri/src/update_channel.rs`、`src-tauri/src/bridge/updater_messages.rs`、`src-tauri/src/runtime_paths.rs`、`src-tauri/src/launch_plan.rs`）、资源准备脚本（`scripts/prepare-resources*.mjs`）和发布工作流（`.github/workflows/build-desktop-tauri.yml`）。以下按主要解析/写入阶段分组。
 
 ## 1. 桌面运行时直接读取（`src-tauri`）
@@ -29,6 +30,14 @@
 | `ASTRBOT_DESKTOP_STARTUP_MODE` | 启动画面模式提示 | 未设置则自动判定 `loading/panel-update` |
 | `ASTRBOT_DESKTOP_UPDATER_STABLE_ENDPOINT` | stable 通道 manifest URL 覆盖 | 未设置则读 `plugins.updater.channelEndpoints.stable`，再回退 `plugins.updater.endpoints[0]` |
 | `ASTRBOT_DESKTOP_UPDATER_NIGHTLY_ENDPOINT` | nightly 通道 manifest URL 覆盖 | 未设置则读 `plugins.updater.channelEndpoints.nightly` |
+
+### 外部后端与托管后端的地址
+
+`ASTRBOT_BACKEND_URL` 设置桌面端连接的地址，不会改变后端子进程实际使用的 dashboard host/port；后者由 `DASHBOARD_HOST` / `ASTRBOT_DASHBOARD_HOST`、对应端口变量及 `cmd_config.json` 决定。由桌面端托管后端时，这两组配置应指向同一个后端监听端点。
+
+如果只需连接独立运行的本机或远端后端，请同时设置 `ASTRBOT_BACKEND_URL` 和 `ASTRBOT_BACKEND_AUTO_START=0`。首次连接时，地址可达就使用已有服务；地址不可达则报告错误，不自动创建替代后端。非托管后端通过后端 API 重启；重启超时后，桌面端不会自动启动一个托管进程来替代它。
+
+托管进程停止后的重启及 Windows 更新准备，会检查配置地址是否仍有 TCP listener。非回环地址可能是本机局域网地址或指向本机的域名，因此不会仅因地址不是 `localhost` 就跳过检查。如果配置地址指向独立远端服务或持续监听的反向代理，TCP listener 仍存在时会保守拒绝替代启动；该检查无法判断代理后的旧进程是否已经退出。
 
 ## 2. 源码与资源准备（开发态运行时 / `prepare-resources` / backend build）
 

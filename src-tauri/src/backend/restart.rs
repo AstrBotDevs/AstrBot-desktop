@@ -39,6 +39,8 @@ where
     P: Fn(u32) -> process_control::ProcessProbe,
     E: FnOnce() -> Result<(), String>,
 {
+    // A first managed start has no stopped PID. An uncertain unmanaged restart
+    // must be rejected by its strategy before it can reach this endpoint-only gate.
     if stopped_pid != 0 {
         let identity = identity.unwrap_or(process_control::ProcessIdentity {
             pid: stopped_pid,
@@ -218,19 +220,9 @@ impl BackendState {
     fn execute_graceful_restart_strategy(
         &self,
         strategy: backend::restart_strategy::RestartStrategy,
-        auth_token: Option<&str>,
-        previous_start_time: Option<i64>,
-        packaged_mode: bool,
+        outcome: backend::restart_strategy::GracefulRestartOutcome,
     ) -> Result<(), String> {
-        // Contract: this function interprets the pure (strategy, outcome) pair and either
-        // returns early on a completed graceful restart or performs the managed fallback path.
-        let outcome = match strategy {
-            backend::restart_strategy::RestartStrategy::ManagedSkipGraceful => {
-                backend::restart_strategy::GracefulRestartOutcome::RequestRejected
-            }
-            _ => self.try_graceful_restart_and_wait(auth_token, previous_start_time, packaged_mode),
-        };
-
+        // Interpret the strategy and observed API outcome before any managed fallback.
         match (strategy, outcome) {
             (
                 backend::restart_strategy::RestartStrategy::ManagedWithGracefulFallback,
@@ -271,10 +263,11 @@ impl BackendState {
                 backend::restart_strategy::RestartStrategy::UnmanagedWithGracefulProbe,
                 backend::restart_strategy::GracefulRestartOutcome::WaitFailed(error),
             ) => {
-                append_restart_log(&format!(
-                    "graceful restart did not complete for unmanaged backend, bootstrap managed restart: {error}"
-                ));
-                self.stop_backend_for_restart_flow()
+                let error = format!(
+                    "Graceful restart did not complete and backend is not desktop-managed; refusing to start a replacement because the old process may still be restarting: {error}"
+                );
+                append_restart_log(&error);
+                Err(error)
             }
             (
                 backend::restart_strategy::RestartStrategy::UnmanagedWithGracefulProbe,
@@ -349,7 +342,6 @@ impl BackendState {
         app: &AppHandle,
         plan: &LaunchPlan,
     ) -> Result<(), String> {
-        self.confirm_previous_backend_exited()?;
         self.start_backend_process(app, plan)?;
         self.wait_for_backend(plan)
     }
@@ -374,12 +366,17 @@ impl BackendState {
         }
         let restart_auth_token = normalized_param.or_else(|| self.get_restart_auth_token());
         let previous_start_time = self.fetch_backend_start_time();
-        match self.execute_graceful_restart_strategy(
-            strategy,
-            restart_auth_token.as_deref(),
-            previous_start_time,
-            plan.packaged_mode,
-        ) {
+        let outcome = match strategy {
+            backend::restart_strategy::RestartStrategy::ManagedSkipGraceful => {
+                backend::restart_strategy::GracefulRestartOutcome::RequestRejected
+            }
+            _ => self.try_graceful_restart_and_wait(
+                restart_auth_token.as_deref(),
+                previous_start_time,
+                plan.packaged_mode,
+            ),
+        };
+        match self.execute_graceful_restart_strategy(strategy, outcome) {
             Ok(())
                 if strategy != backend::restart_strategy::RestartStrategy::ManagedSkipGraceful =>
             {
@@ -432,6 +429,57 @@ mod tests {
         backend::restart_strategy::RestartStrategy, process_control::ProcessIdentity,
         process_control::ProcessProbe,
     };
+
+    #[test]
+    fn unmanaged_restart_timeout_never_authorizes_managed_fallback() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind backend endpoint");
+        let state = BackendState {
+            backend_url: format!("http://{}/", listener.local_addr().unwrap()),
+            ..BackendState::default()
+        };
+        // A listener disappearing during a restart is not proof its process exited.
+        drop(listener);
+        assert_eq!(state.confirm_backend_endpoint_available(200), Ok(()));
+
+        let result = state.execute_graceful_restart_strategy(
+            RestartStrategy::UnmanagedWithGracefulProbe,
+            crate::backend::restart_strategy::GracefulRestartOutcome::WaitFailed(
+                "restart timed out between listeners".to_string(),
+            ),
+        );
+
+        let error = result.expect_err("an untracked restart must not enter managed fallback");
+        assert!(error.contains("not desktop-managed"), "{error}");
+        assert!(
+            error.contains("restart timed out between listeners"),
+            "{error}"
+        );
+        assert_eq!(state.restart_stop_pid.load(Ordering::Acquire), 0);
+        assert!(state.child.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn unmanaged_restart_completion_and_rejection_do_not_touch_managed_state() {
+        use crate::backend::restart_strategy::GracefulRestartOutcome;
+
+        for outcome in [
+            GracefulRestartOutcome::Completed,
+            GracefulRestartOutcome::RequestRejected,
+        ] {
+            let state = BackendState::default();
+            state.restart_stop_pid.store(14360, Ordering::Release);
+            let completed = outcome == GracefulRestartOutcome::Completed;
+
+            let result = state.execute_graceful_restart_strategy(
+                RestartStrategy::UnmanagedWithGracefulProbe,
+                outcome,
+            );
+
+            assert_eq!(result.is_ok(), completed);
+            assert_eq!(state.restart_stop_pid.load(Ordering::Acquire), 14360);
+            assert!(state.child.lock().unwrap().is_none());
+        }
+    }
 
     #[test]
     fn bridge_stop_rejects_an_action_already_in_progress() {
@@ -702,7 +750,7 @@ mod tests {
     }
 
     #[test]
-    fn preflight_without_a_stopped_pid_only_checks_the_endpoint() {
+    fn preflight_for_a_first_managed_start_only_checks_the_endpoint() {
         let ok = preflight_before_respawn(
             0,
             None,

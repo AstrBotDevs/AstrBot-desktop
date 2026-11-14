@@ -406,6 +406,10 @@ impl BackendState {
             return Ok(());
         }
 
+        // Every replacement and initial managed start shares this gate. Do not hold
+        // the child mutex while waiting; the final spawn checks exit under that lock.
+        self.confirm_previous_backend_exited()?;
+
         if !plan.cwd.exists() {
             fs::create_dir_all(&plan.cwd).map_err(|error| {
                 format!(
@@ -516,7 +520,13 @@ impl BackendState {
             command.stderr(Stdio::null());
         }
 
-        let Some(child_pid) = self.spawn_backend_command(&mut command, plan)? else {
+        let Some(child_pid) = self.spawn_backend_command(
+            &mut command,
+            plan,
+            #[cfg(test)]
+            || {},
+        )?
+        else {
             return Ok(());
         };
         if let Some(log_path) = backend_log_path {
@@ -532,7 +542,16 @@ impl BackendState {
         &self,
         command: &mut Command,
         plan: &crate::LaunchPlan,
+        #[cfg(test)] after_quitting_check: impl FnOnce(),
     ) -> Result<Option<u32>, String> {
+        #[cfg(test)]
+        let check_quitting = || {
+            let quitting = self.is_quitting();
+            after_quitting_check();
+            quitting
+        };
+        #[cfg(not(test))]
+        let check_quitting = || self.is_quitting();
         // Keep the child-slot check and spawn in the same critical section, including
         // callers that do not hold the high-level backend action reservation.
         let mut child_guard = self
@@ -541,7 +560,7 @@ impl BackendState {
             .map_err(|_| "Backend process lock poisoned.")?;
         // Exit marks the state before taking this same child lock. If exit wins,
         // refuse the replacement; if spawn wins, cleanup sees and stops the child.
-        if self.is_quitting() {
+        if check_quitting() {
             return Err("Desktop is exiting; refusing to start the backend.".to_string());
         }
         if child_guard.is_some() {
@@ -633,6 +652,7 @@ mod tests {
                     .arg("--help")
                     .stdout(std::process::Stdio::null()),
                 &plan,
+                || {},
             )
             .expect("spawn before exit starts");
         assert_eq!(state.tracked_child_pid(), spawned);
@@ -655,6 +675,7 @@ mod tests {
                     .arg("--help")
                     .stdout(std::process::Stdio::null()),
                 &plan,
+                || {},
             );
             let mut child = state.child.lock().unwrap().take();
             if let Some(child) = child.as_mut() {
@@ -671,6 +692,94 @@ mod tests {
                 "shutdown must reject the spawn before running the command"
             );
         }
+    }
+
+    #[test]
+    fn spawn_backend_command_keeps_the_child_lock_from_exit_check_through_spawn() {
+        use std::{
+            sync::{mpsc, TryLockError},
+            time::Duration,
+        };
+
+        use crate::{lifecycle::cleanup, BackendState, LaunchPlan};
+
+        let executable = env::current_exe().expect("test executable");
+        let plan = LaunchPlan {
+            cmd: executable.to_string_lossy().into_owned(),
+            args: vec!["--help".to_string()],
+            cwd: env::current_dir().expect("current directory"),
+            root_dir: None,
+            webui_dir: None,
+            webui_cache_version: None,
+            packaged_core_version: None,
+            packaged_webui_index_sha256: None,
+            packaged_webui_entry_digests: None,
+            startup_heartbeat_path: None,
+            packaged_mode: false,
+        };
+        let state = BackendState::default();
+        let (checked_tx, checked_rx) = mpsc::channel();
+        let (resume_tx, resume_rx) = mpsc::channel();
+
+        std::thread::scope(|scope| {
+            let spawning_state = &state;
+            let spawning = scope.spawn(move || {
+                spawning_state.spawn_backend_command(
+                    Command::new(&executable)
+                        .arg("--help")
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null()),
+                    &plan,
+                    || {
+                        checked_tx.send(()).expect("announce exit-check barrier");
+                        resume_rx
+                            .recv_timeout(Duration::from_secs(5))
+                            .expect("resume after marking exit");
+                    },
+                )
+            });
+
+            checked_rx
+                .recv_timeout(Duration::from_secs(5))
+                .expect("spawn reaches the exit-check barrier");
+            assert!(state.try_begin_exit_cleanup());
+            let child_locked_during_check = match state.child.try_lock() {
+                Ok(guard) => {
+                    drop(guard);
+                    false
+                }
+                Err(TryLockError::WouldBlock) => true,
+                Err(TryLockError::Poisoned(_)) => panic!("child slot lock poisoned"),
+            };
+            if !child_locked_during_check {
+                cleanup::stop_backend_for_exit(&state, cleanup::ExitTrigger::ExitRequested, |_| {});
+                state.allow_next_exit_request();
+            }
+            resume_tx.send(()).expect("release spawn barrier");
+            if child_locked_during_check {
+                cleanup::stop_backend_for_exit(&state, cleanup::ExitTrigger::ExitRequested, |_| {});
+                state.allow_next_exit_request();
+            }
+            let result = spawning.join().expect("spawn worker finishes");
+            let mut unexpected_child = state.child.lock().unwrap().take();
+            if let Some(child) = unexpected_child.as_mut() {
+                let _ = child.kill();
+                child.wait().expect("reap unexpected replacement");
+            }
+
+            assert!(
+                unexpected_child.is_none(),
+                "exit cleanup must not leave a replacement child"
+            );
+            assert!(
+                child_locked_during_check,
+                "the exit-state query must run while holding the child lock"
+            );
+            assert!(
+                matches!(result, Ok(Some(_))),
+                "spawn that won the exit-state check must register a child for cleanup: {result:?}"
+            );
+        });
     }
 
     fn get_command_env_value(command: &Command, key: &str) -> Option<Option<String>> {
