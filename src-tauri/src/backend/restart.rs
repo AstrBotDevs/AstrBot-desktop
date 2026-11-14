@@ -163,13 +163,9 @@ impl BackendState {
     pub(crate) fn stop_backend_for_bridge(&self) -> Result<(), String> {
         let _spawn_guard = AtomicFlagGuard::try_set(&self.is_spawning)
             .ok_or_else(|| "Backend action already in progress.".to_string())?;
-        let has_managed_child = self
-            .child
-            .lock()
-            .map_err(|_| "Backend process lock poisoned.".to_string())?
-            .is_some();
-        if has_managed_child {
+        if self.has_managed_backend()? {
             self.stop_backend()?;
+            return self.confirm_previous_backend_exited();
         }
 
         self.confirm_backend_endpoint_available(backend::runtime::backend_ping_timeout_ms(
@@ -177,13 +173,29 @@ impl BackendState {
         ))
     }
 
-    fn has_managed_child(&self) -> Result<bool, String> {
-        self.child
+    /// Keep desktop ownership after an exited child is reaped or a stop is retried.
+    pub(crate) fn has_managed_backend(&self) -> Result<bool, String> {
+        let has_child = self
+            .child
+            .lock()
+            .map(|guard| guard.is_some())
+            .map_err(|error| {
+                let message =
+                    format!("backend child lock poisoned while resolving managed state: {error}");
+                append_desktop_log(&message);
+                message
+            })?;
+        if has_child || self.restart_stop_pid.load(Ordering::Acquire) != 0 {
+            return Ok(true);
+        }
+
+        // Reaping an exited child must not change who manages its replacement.
+        self.last_spawned_identity
             .lock()
             .map(|guard| guard.is_some())
             .map_err(|error| {
                 let message = format!(
-                    "backend child lock poisoned while resolving restart strategy: {error}"
+                    "backend spawn identity lock poisoned while resolving managed state: {error}"
                 );
                 append_desktop_log(&message);
                 message
@@ -193,12 +205,12 @@ impl BackendState {
     fn restart_strategy(
         &self,
         plan: &LaunchPlan,
-        has_managed_child: bool,
+        has_managed_backend: bool,
     ) -> backend::restart_strategy::RestartStrategy {
         backend::restart_strategy::compute_restart_strategy(
             cfg!(target_os = "windows"),
             plan.packaged_mode,
-            has_managed_child,
+            has_managed_backend,
         )
     }
 
@@ -221,7 +233,9 @@ impl BackendState {
         &self,
         strategy: backend::restart_strategy::RestartStrategy,
         outcome: backend::restart_strategy::GracefulRestartOutcome,
-    ) -> Result<(), String> {
+    ) -> Result<backend::restart_strategy::RestartAction, String> {
+        use backend::restart_strategy::RestartAction;
+
         // Interpret the strategy and observed API outcome before any managed fallback.
         match (strategy, outcome) {
             (
@@ -233,13 +247,14 @@ impl BackendState {
                 backend::restart_strategy::GracefulRestartOutcome::Completed,
             ) => {
                 append_restart_log("graceful restart completed via backend api");
-                Ok(())
+                Ok(RestartAction::GracefulCompleted)
             }
             (backend::restart_strategy::RestartStrategy::ManagedSkipGraceful, _) => {
                 append_restart_log(
                     "skip graceful restart for packaged windows managed backend; using managed restart",
                 );
-                self.stop_backend_for_restart_flow()
+                self.stop_backend_for_restart_flow()?;
+                Ok(RestartAction::LaunchManagedReplacement)
             }
             (
                 backend::restart_strategy::RestartStrategy::ManagedWithGracefulFallback,
@@ -248,7 +263,8 @@ impl BackendState {
                 append_restart_log(&format!(
                     "graceful restart did not complete, fallback to managed restart: {error}"
                 ));
-                self.stop_backend_for_restart_flow()
+                self.stop_backend_for_restart_flow()?;
+                Ok(RestartAction::LaunchManagedReplacement)
             }
             (
                 backend::restart_strategy::RestartStrategy::ManagedWithGracefulFallback,
@@ -257,7 +273,8 @@ impl BackendState {
                 append_restart_log(
                     "graceful restart request was rejected, fallback to managed restart",
                 );
-                self.stop_backend_for_restart_flow()
+                self.stop_backend_for_restart_flow()?;
+                Ok(RestartAction::LaunchManagedReplacement)
             }
             (
                 backend::restart_strategy::RestartStrategy::UnmanagedWithGracefulProbe,
@@ -358,8 +375,8 @@ impl BackendState {
         let _restart_guard = AtomicFlagGuard::try_set(&self.is_restarting)
             .ok_or_else(|| "Backend action already in progress.".to_string())?;
         let plan = self.resolve_launch_plan(app)?;
-        let has_managed_child = self.has_managed_child()?;
-        let strategy = self.restart_strategy(&plan, has_managed_child);
+        let has_managed_backend = self.has_managed_backend()?;
+        let strategy = self.restart_strategy(&plan, has_managed_backend);
         let normalized_param = Self::sanitize_auth_token(auth_token);
         if let Some(token) = normalized_param.as_deref() {
             self.set_restart_auth_token(Some(token));
@@ -376,21 +393,16 @@ impl BackendState {
                 plan.packaged_mode,
             ),
         };
-        match self.execute_graceful_restart_strategy(strategy, outcome) {
-            Ok(())
-                if strategy != backend::restart_strategy::RestartStrategy::ManagedSkipGraceful =>
-            {
-                self.verify_running_resource_identity(
+        match self.execute_graceful_restart_strategy(strategy, outcome)? {
+            backend::restart_strategy::RestartAction::GracefulCompleted => self
+                .verify_running_resource_identity(
                     &plan,
                     backend::runtime::backend_ping_timeout_ms(append_desktop_log).max(1_000),
-                )?;
-                return Ok(());
+                ),
+            backend::restart_strategy::RestartAction::LaunchManagedReplacement => {
+                self.launch_backend_after_restart(app, &plan)
             }
-            Ok(()) => {}
-            Err(error) => return Err(error),
         }
-
-        self.launch_backend_after_restart(app, &plan)
     }
 
     pub(crate) fn bridge_state(&self, app: &AppHandle) -> BackendBridgeState {
@@ -431,15 +443,119 @@ mod tests {
     };
 
     #[test]
-    fn unmanaged_restart_timeout_never_authorizes_managed_fallback() {
+    fn managed_backend_classification_survives_a_reaped_child() {
+        let mut child = Command::new(std::env::current_exe().expect("locate test executable"))
+            .arg("--list")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn a short-lived child");
+        let state = BackendState::default();
+        state.record_spawned_identity(child.id());
+        child.wait().expect("reap the child");
+
+        assert!(state.child.lock().unwrap().is_none());
+        assert_eq!(state.restart_stop_pid.load(Ordering::Acquire), 0);
+        assert!(
+            state.has_managed_backend().unwrap(),
+            "reaping the child must not discard desktop ownership of its backend"
+        );
+    }
+
+    #[test]
+    fn managed_backend_classification_recognizes_a_pending_stop() {
+        let state = BackendState::default();
+        state.restart_stop_pid.store(14360, Ordering::Release);
+
+        assert!(
+            state.has_managed_backend().unwrap(),
+            "a pending stop must retain desktop management even without a child handle"
+        );
+    }
+
+    #[test]
+    fn backend_without_a_managed_child_or_history_stays_unmanaged() {
+        assert!(!BackendState::default().has_managed_backend().unwrap());
+    }
+
+    #[test]
+    fn bridge_stop_retry_does_not_clear_a_live_pending_process() {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind backend endpoint");
         let state = BackendState {
             backend_url: format!("http://{}/", listener.local_addr().unwrap()),
             ..BackendState::default()
         };
-        // A listener disappearing during a restart is not proof its process exited.
         drop(listener);
-        assert_eq!(state.confirm_backend_endpoint_available(200), Ok(()));
+        let pid = std::process::id();
+        state.record_spawned_identity(pid);
+        state.restart_stop_pid.store(pid, Ordering::Release);
+
+        let error = state
+            .stop_backend_for_bridge()
+            .expect_err("a refused endpoint does not prove the pending process exited");
+
+        assert!(error.contains("could not be confirmed"), "{error}");
+        assert_eq!(state.restart_stop_pid.load(Ordering::Acquire), pid);
+        assert!(!state.is_spawning.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn managed_restart_fallback_requests_a_replacement_after_stopping() {
+        use crate::backend::restart_strategy::{GracefulRestartOutcome, RestartAction};
+
+        for outcome in [
+            GracefulRestartOutcome::WaitFailed("backend exited".to_string()),
+            GracefulRestartOutcome::RequestRejected,
+        ] {
+            let state = BackendState::default();
+            let result = state.execute_graceful_restart_strategy(
+                RestartStrategy::ManagedWithGracefulFallback,
+                outcome,
+            );
+
+            assert_eq!(result, Ok(RestartAction::LaunchManagedReplacement));
+        }
+    }
+
+    #[test]
+    fn completed_graceful_restart_does_not_request_a_replacement() {
+        use crate::backend::restart_strategy::{GracefulRestartOutcome, RestartAction};
+
+        for strategy in [
+            RestartStrategy::ManagedWithGracefulFallback,
+            RestartStrategy::UnmanagedWithGracefulProbe,
+        ] {
+            let state = BackendState::default();
+            state.restart_stop_pid.store(14360, Ordering::Release);
+
+            assert_eq!(
+                state
+                    .execute_graceful_restart_strategy(strategy, GracefulRestartOutcome::Completed),
+                Ok(RestartAction::GracefulCompleted)
+            );
+            assert_eq!(state.restart_stop_pid.load(Ordering::Acquire), 14360);
+        }
+    }
+
+    #[test]
+    fn packaged_windows_restart_requests_a_replacement_after_stopping() {
+        use crate::backend::restart_strategy::{GracefulRestartOutcome, RestartAction};
+
+        let state = BackendState::default();
+        assert_eq!(
+            state.execute_graceful_restart_strategy(
+                RestartStrategy::ManagedSkipGraceful,
+                GracefulRestartOutcome::RequestRejected,
+            ),
+            Ok(RestartAction::LaunchManagedReplacement)
+        );
+    }
+
+    #[test]
+    fn unmanaged_restart_timeout_never_authorizes_managed_fallback() {
+        let state = BackendState::default();
+        // A timed-out unmanaged restart must be rejected without consulting the
+        // endpoint: a transient refusal would not prove that its process exited.
 
         let result = state.execute_graceful_restart_strategy(
             RestartStrategy::UnmanagedWithGracefulProbe,

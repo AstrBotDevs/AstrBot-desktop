@@ -12,14 +12,20 @@ pub(crate) enum GracefulRestartOutcome {
     RequestRejected,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RestartAction {
+    GracefulCompleted,
+    LaunchManagedReplacement,
+}
+
 pub(crate) fn compute_restart_strategy(
     is_windows: bool,
     packaged_mode: bool,
-    has_managed_child: bool,
+    has_managed_backend: bool,
 ) -> RestartStrategy {
-    if is_windows && packaged_mode && has_managed_child {
+    if is_windows && packaged_mode && has_managed_backend {
         RestartStrategy::ManagedSkipGraceful
-    } else if has_managed_child {
+    } else if has_managed_backend {
         RestartStrategy::ManagedWithGracefulFallback
     } else {
         RestartStrategy::UnmanagedWithGracefulProbe
