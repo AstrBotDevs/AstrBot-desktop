@@ -111,6 +111,55 @@ test('Linux workflow publishes signed AppImage updater artifacts', async () => {
   assert.match(uploadStep.with?.path ?? '', /appimage\/\*\.AppImage\.sig/);
 });
 
+test('Linux amd64 releases use a stable runner and target-scoped CPU baseline', async () => {
+  const workflow = await readWorkflowObject(WORKFLOW_FILE);
+  const job = workflow.jobs[BUILD_LINUX_JOB];
+  const matrix = job.strategy.matrix.include;
+
+  assert.equal(matrix.find((entry) => entry.arch === 'amd64').runner, 'ubuntu-24.04');
+  assert.equal(matrix.find((entry) => entry.arch === 'arm64').runner, 'ubuntu-24.04-arm');
+  assert.equal(job.env?.CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS, '-C target-cpu=x86-64');
+  for (const variable of ['CFLAGS', 'CXXFLAGS']) {
+    assert.equal(job.env?.[`${variable}_x86_64_unknown_linux_gnu`], '-march=x86-64 -mtune=generic');
+  }
+  for (const variable of ['RUSTFLAGS', 'CFLAGS', 'CXXFLAGS']) {
+    assert.equal(job.env?.[variable], undefined, `${variable} must not change the ARM baseline`);
+  }
+});
+
+test('Linux amd64 native flags override an x86-64-v3 compiler baseline', {
+  skip: process.platform !== 'darwin' && !(process.platform === 'linux' && process.arch === 'x64'),
+}, async () => {
+  const workflow = await readWorkflowObject(WORKFLOW_FILE);
+  const env = workflow.jobs[BUILD_LINUX_JOB].env ?? {};
+  const targetArgs = process.platform === 'darwin' ? ['-target', 'x86_64-unknown-linux-gnu'] : [];
+  const v3Features = ['__AVX2__', '__BMI__', '__BMI2__', '__FMA__'];
+  const unsupportedFeatures = ['__AVX__', ...v3Features, '__SSE3__', '__SSSE3__', '__SSE4_1__', '__SSE4_2__', '__POPCNT__'];
+
+  for (const [compiler, language, variable] of [['cc', 'c', 'CFLAGS'], ['c++', 'c++', 'CXXFLAGS']]) {
+    const flags = env[`${variable}_x86_64_unknown_linux_gnu`] ?? '';
+    for (const applyBaseline of [false, true]) {
+      const result = spawnSync(compiler, [
+        ...targetArgs, '-march=x86-64-v3',
+        ...(applyBaseline ? flags.split(/\s+/).filter(Boolean) : []),
+        '-dM', '-E', '-x', language, '-',
+      ], { input: '', encoding: 'utf8' });
+      assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+      const macros = new Set(Array.from(result.stdout.matchAll(/^#define (\w+)/gm), (match) => match[1]));
+      assert.ok(macros.has('__SSE2__'), `${compiler} must retain the x86-64 baseline`);
+      if (applyBaseline) {
+        for (const feature of unsupportedFeatures) {
+          assert.ok(!macros.has(feature), `${compiler} still enables ${feature} after applying workflow flags`);
+        }
+      } else {
+        for (const feature of v3Features) {
+          assert.ok(macros.has(feature), `${compiler} must enable ${feature} in the v3 control`);
+        }
+      }
+    }
+  }
+});
+
 test('Linux package signing rejects missing, duplicate, unsigned, and failed outputs', async () => {
   const workflow = await readWorkflowObject(WORKFLOW_FILE);
   const steps = extractWorkflowJobSteps(workflow, BUILD_LINUX_JOB);

@@ -165,12 +165,19 @@ jobs:
     if: ${{ always() && needs.resolve_build_context.outputs.should_build == 'true' && (needs.sync_repo_version.result == 'success' || needs.sync_repo_version.result == 'skipped') }}
     name: linux-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
+    env:
+      # Keep both Rust and native dependencies compatible with pre-AVX CPUs.
+      # Target-scoped flags leave the arm64 build unchanged.
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: '-C target-cpu=x86-64'
+      CFLAGS_x86_64_unknown_linux_gnu: '-march=x86-64 -mtune=generic'
+      CXXFLAGS_x86_64_unknown_linux_gnu: '-march=x86-64 -mtune=generic'
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-latest
+            # Pin the system library and native compiler baseline as well.
+            runner: ubuntu-24.04
           - arch: arm64
             runner: ubuntu-24.04-arm
 
