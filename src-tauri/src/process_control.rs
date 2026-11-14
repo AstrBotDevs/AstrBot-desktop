@@ -301,21 +301,28 @@ fn process_creation_time(handle: HANDLE) -> Option<u64> {
 /// Probe a PID for liveness on Unix via the `/proc` filesystem, which also exposes the
 /// process start time needed for recycling detection.
 #[cfg(not(target_os = "windows"))]
-fn probe_pid_unix(pid: u32) -> ProcessProbe {
-    use std::{fs, path::Path};
+fn probe_pid_unix(pid: u32, proc_root: &std::path::Path) -> ProcessProbe {
+    use std::fs;
 
     if pid == 0 {
         return ProcessProbe::Missing;
     }
 
-    let proc_dir = Path::new("/proc").join(pid.to_string());
-    if !proc_dir.exists() {
-        return if Path::new("/proc/self").exists() {
-            ProcessProbe::Missing
-        } else {
-            // No procfs: honour POSIX signal 0 as the liveness test instead.
-            probe_pid_with_signal(pid)
-        };
+    let proc_dir = proc_root.join(pid.to_string());
+    match fs::metadata(&proc_dir) {
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return match fs::metadata(proc_root.join("self")) {
+                Ok(_) => ProcessProbe::Missing,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                    // No procfs: honour POSIX signal 0 as the liveness test instead.
+                    probe_pid_with_signal(pid)
+                }
+                Err(_) => ProcessProbe::Unknown,
+            };
+        }
+        // An unreadable entry does not prove that the process has exited.
+        Err(_) => return ProcessProbe::Unknown,
     }
 
     let stat = match fs::read_to_string(proc_dir.join("stat")) {
@@ -380,7 +387,7 @@ pub(crate) fn probe_process(pid: u32) -> ProcessProbe {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        probe_pid_unix(pid)
+        probe_pid_unix(pid, std::path::Path::new("/proc"))
     }
 }
 
@@ -847,5 +854,50 @@ mod tests {
         assert!(child.wait().expect("reap short-lived child").success());
 
         assert_eq!(probe_pid_with_signal(pid), ProcessProbe::Missing);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn proc_probe_keeps_metadata_errors_inconclusive() {
+        let proc_root = tempfile::tempdir().expect("create proc fixture");
+        std::fs::create_dir(proc_root.path().join("self")).expect("create self entry");
+        let pid_entry = proc_root.path().join("42");
+        std::os::unix::fs::symlink("42", &pid_entry).expect("create symlink loop");
+        assert!(std::fs::metadata(pid_entry).is_err());
+
+        assert_eq!(probe_pid_unix(42, proc_root.path()), ProcessProbe::Unknown);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn proc_probe_keeps_procfs_detection_errors_inconclusive() {
+        let proc_root = tempfile::tempdir().expect("create proc fixture");
+        std::os::unix::fs::symlink("self", proc_root.path().join("self"))
+            .expect("create self symlink loop");
+
+        assert_eq!(
+            probe_pid_unix(std::process::id(), proc_root.path()),
+            ProcessProbe::Unknown
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn proc_probe_reports_a_missing_entry_when_procfs_is_available() {
+        let proc_root = tempfile::tempdir().expect("create proc fixture");
+        std::fs::create_dir(proc_root.path().join("self")).expect("create self entry");
+
+        assert_eq!(probe_pid_unix(42, proc_root.path()), ProcessProbe::Missing);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn proc_probe_uses_signal_when_procfs_is_absent() {
+        let fixture = tempfile::tempdir().expect("create absent proc fixture");
+
+        assert_eq!(
+            probe_pid_unix(std::process::id(), &fixture.path().join("absent")),
+            ProcessProbe::Alive { created_at: None }
+        );
     }
 }
