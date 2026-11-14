@@ -4,13 +4,15 @@ use std::{
     path::PathBuf,
     process::Child,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
         Arc, Mutex,
     },
 };
 use tauri::menu::{CheckMenuItem, MenuItem};
 
-use crate::{backend, desktop_auth::DesktopSessionSecret, exit_state, DEFAULT_BACKEND_URL};
+use crate::{
+    backend, desktop_auth::DesktopSessionSecret, exit_state, process_control, DEFAULT_BACKEND_URL,
+};
 
 #[derive(Clone)]
 pub(crate) struct TrayMenuState {
@@ -67,7 +69,13 @@ pub(crate) struct LaunchPlan {
 #[derive(Debug)]
 pub(crate) struct BackendState {
     pub(crate) child: Mutex<Option<Child>>,
+    /// Identity of the last process this shell spawned, captured while it was still
+    /// running. Kept separately from `child` because the `Child` handle is consumed or
+    /// dropped while the OS may still be tearing the process down.
+    pub(crate) last_spawned_identity: Mutex<Option<process_control::ProcessIdentity>>,
     pub(crate) backend_url: String,
+    /// Keep a timed-out DNS worker reserved until it finishes, so retries stay bounded.
+    pub(crate) endpoint_resolver: Mutex<Option<std::thread::JoinHandle<()>>>,
     pub(crate) restart_auth_token: Mutex<Option<String>>,
     pub(crate) desktop_session_secret: DesktopSessionSecret,
     pub(crate) startup_loading_mode: Mutex<Option<&'static str>>,
@@ -75,6 +83,9 @@ pub(crate) struct BackendState {
     pub(crate) exit_state: Mutex<exit_state::ExitStateMachine>,
     pub(crate) is_spawning: AtomicBool,
     pub(crate) is_restarting: AtomicBool,
+    /// PID the current restart flow stopped, or 0 when nothing was stopped. Set before
+    /// the stop so the flow can confirm that exact process left the OS before respawning.
+    pub(crate) restart_stop_pid: AtomicU32,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -106,11 +117,6 @@ pub(crate) struct AtomicFlagGuard<'a> {
 }
 
 impl<'a> AtomicFlagGuard<'a> {
-    pub(crate) fn set(flag: &'a AtomicBool) -> Self {
-        flag.store(true, Ordering::Relaxed);
-        Self { flag }
-    }
-
     pub(crate) fn try_set(flag: &'a AtomicBool) -> Option<Self> {
         flag.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .ok()?;
@@ -128,11 +134,13 @@ impl Default for BackendState {
     fn default() -> Self {
         Self {
             child: Mutex::new(None),
+            last_spawned_identity: Mutex::new(None),
             backend_url: backend::config::normalize_backend_url(
                 &env::var("ASTRBOT_BACKEND_URL")
                     .unwrap_or_else(|_| DEFAULT_BACKEND_URL.to_string()),
                 DEFAULT_BACKEND_URL,
             ),
+            endpoint_resolver: Mutex::new(None),
             restart_auth_token: Mutex::new(None),
             desktop_session_secret: DesktopSessionSecret::generate()
                 .expect("failed to generate secure desktop session secret"),
@@ -141,6 +149,7 @@ impl Default for BackendState {
             exit_state: Mutex::new(exit_state::ExitStateMachine::default()),
             is_spawning: AtomicBool::new(false),
             is_restarting: AtomicBool::new(false),
+            restart_stop_pid: AtomicU32::new(0),
         }
     }
 }
@@ -150,16 +159,6 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     use super::AtomicFlagGuard;
-
-    #[test]
-    fn atomic_flag_guard_set_resets_flag_on_drop() {
-        let flag = AtomicBool::new(false);
-        {
-            let _guard = AtomicFlagGuard::set(&flag);
-            assert!(flag.load(Ordering::Relaxed));
-        }
-        assert!(!flag.load(Ordering::Relaxed));
-    }
 
     #[test]
     fn atomic_flag_guard_try_set_rejects_double_set_until_drop() {

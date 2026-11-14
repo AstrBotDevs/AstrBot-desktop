@@ -27,8 +27,8 @@ use crate::bridge::updater_types::{
 };
 use crate::{
     append_desktop_log, restart_backend_flow, runtime_paths, shell_locale, tray, update_channel,
-    BackendBridgeResult, BackendBridgeState, BackendState, DesktopAuthBridgeResult,
-    DEFAULT_SHELL_LOCALE,
+    AtomicFlagGuard, BackendBridgeResult, BackendBridgeState, BackendState,
+    DesktopAuthBridgeResult, DEFAULT_SHELL_LOCALE,
 };
 
 fn resolve_update_channel(app_handle: &AppHandle) -> update_channel::UpdateChannel {
@@ -107,16 +107,27 @@ fn short_circuit_update_install(
     }
 }
 
-fn has_managed_backend_child(state: &BackendState) -> bool {
-    match state.child.lock() {
-        Ok(guard) => guard.is_some(),
-        Err(_) => {
-            append_desktop_log(
-                "backend child lock poisoned while checking managed backend state; assuming no managed backend child",
-            );
-            false
-        }
+#[cfg(test)]
+fn update_backend_state(managed: bool) -> BackendState {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("reserve backend endpoint");
+    let state = BackendState {
+        backend_url: format!("http://{}/", listener.local_addr().unwrap()),
+        ..BackendState::default()
+    };
+    drop(listener);
+    if managed {
+        let mut child = Command::new(std::env::current_exe().expect("current test executable"))
+            .arg("--list")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn managed backend child");
+        state.record_spawned_identity(child.id());
+        child.wait().expect("reap managed backend child");
+        *state.child.lock().unwrap() = Some(child);
     }
+    state
 }
 
 #[cfg(test)]
@@ -129,11 +140,13 @@ where
     InstallUpdate: FnOnce() -> Result<(), String>,
     RestartBackend: FnOnce() -> Result<(), String>,
 {
+    let state = update_backend_state(backend_was_stopped);
     run_native_update_install_with_validation(
         install_update,
         || Ok(()),
         restart_backend_after_failed_install,
-        backend_was_stopped,
+        &state,
+        true,
     )
 }
 
@@ -141,13 +154,28 @@ fn run_native_update_install_with_validation<InstallUpdate, ValidateInstall, Res
     install_update: InstallUpdate,
     validate_install: ValidateInstall,
     restart_backend_after_failed_install: Option<RestartBackend>,
-    backend_was_stopped: bool,
+    state: &BackendState,
+    is_windows: bool,
 ) -> DesktopAppUpdateResult
 where
     InstallUpdate: FnOnce() -> Result<(), String>,
     ValidateInstall: FnOnce() -> Result<(), String>,
     RestartBackend: FnOnce() -> Result<(), String>,
 {
+    let backend_was_stopped = if is_windows {
+        match state.has_managed_backend() {
+            Ok(true) => {
+                if let Err(error) = state.stop_backend_before_update_install() {
+                    return map_update_install_error(error);
+                }
+                true
+            }
+            Ok(false) => false,
+            Err(error) => return map_update_install_error(error),
+        }
+    } else {
+        false
+    };
     let failure = match install_update() {
         Ok(()) => validate_install()
             .err()
@@ -181,6 +209,8 @@ fn build_restart_backend_after_failed_install(
             "update install failed before exit, revalidating resources before restarting managed backend",
         );
         let restart_plan = state.resolve_launch_plan(&app_handle)?;
+        // The shared launch path confirms process exit and endpoint availability again
+        // after the installation attempt, before creating any replacement.
         state.start_backend_process(&app_handle, &restart_plan)?;
         state.wait_for_backend(&restart_plan)
     }
@@ -766,7 +796,17 @@ pub(crate) async fn desktop_bridge_install_app_update(
         AppUpdateProgress::stage("installing"),
     );
     let state = app_handle.state::<BackendState>();
-    let stop_managed_backend = cfg!(target_os = "windows") && has_managed_backend_child(&state);
+    let Some(_spawn_guard) = AtomicFlagGuard::try_set(&state.is_spawning) else {
+        return map_update_install_error("Backend action already in progress.");
+    };
+    let stop_managed_backend = if cfg!(target_os = "windows") {
+        match state.has_managed_backend() {
+            Ok(managed) => managed,
+            Err(error) => return map_update_install_error(error),
+        }
+    } else {
+        false
+    };
     let restart_backend_after_failed_install = if stop_managed_backend {
         match state.resolve_launch_plan(&app_handle) {
             Ok(_) => {}
@@ -784,17 +824,6 @@ pub(crate) async fn desktop_bridge_install_app_update(
         None
     };
 
-    let backend_was_stopped = if stop_managed_backend {
-        if let Err(error) = state.stop_backend() {
-            return map_update_install_error(format!(
-                "Failed to stop backend before Windows update install: {error}"
-            ));
-        }
-        true
-    } else {
-        false
-    };
-
     let expected_version = update.version.clone();
     let validation_app_handle = app_handle.clone();
     let result = run_native_update_install_with_validation(
@@ -806,7 +835,8 @@ pub(crate) async fn desktop_bridge_install_app_update(
             )
         },
         restart_backend_after_failed_install,
-        backend_was_stopped,
+        &state,
+        cfg!(target_os = "windows"),
     );
     if result.ok {
         app_handle.request_restart();
@@ -939,6 +969,194 @@ mod tests {
     }
 
     #[test]
+    fn windows_update_install_does_not_proceed_while_an_untracked_endpoint_answers() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind surviving backend");
+        let state = BackendState {
+            backend_url: format!("http://{}/", listener.local_addr().unwrap()),
+            ..BackendState::default()
+        };
+        let mut child = Command::new(std::env::current_exe().expect("current test executable"))
+            .arg("--list")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn stale backend child");
+        state.record_spawned_identity(child.id());
+        child.wait().expect("wait for stale backend child");
+        *state.child.lock().unwrap() = Some(child);
+        let events = RefCell::new(Vec::new());
+
+        for _ in 0..2 {
+            let result = run_native_update_install_with_validation(
+                || {
+                    events.borrow_mut().push("install");
+                    Ok(())
+                },
+                || {
+                    events.borrow_mut().push("validate");
+                    Ok(())
+                },
+                Some(|| {
+                    events.borrow_mut().push("recover");
+                    Ok(())
+                }),
+                &state,
+                true,
+            );
+
+            assert!(
+                !result.ok,
+                "a surviving listener must block Windows installation"
+            );
+            assert!(result
+                .reason
+                .as_deref()
+                .unwrap()
+                .contains("already answering"));
+            assert!(
+                events.borrow().is_empty(),
+                "installer and recovery must not run"
+            );
+            assert!(state.child.lock().unwrap().is_none());
+            assert_ne!(
+                state
+                    .restart_stop_pid
+                    .load(std::sync::atomic::Ordering::Acquire),
+                0,
+                "a rejected preparation must retain the stop target"
+            );
+        }
+    }
+
+    #[test]
+    fn windows_update_install_keeps_ownership_after_the_child_slot_is_cleared() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind surviving backend");
+        let state = BackendState {
+            backend_url: format!("http://{}/", listener.local_addr().unwrap()),
+            ..BackendState::default()
+        };
+        let mut child = Command::new(std::env::current_exe().expect("current test executable"))
+            .arg("--list")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn previously managed backend child");
+        state.record_spawned_identity(child.id());
+        child.wait().expect("reap previously managed backend child");
+        drop(child);
+        assert!(state.child.lock().unwrap().is_none());
+        assert_eq!(
+            state
+                .restart_stop_pid
+                .load(std::sync::atomic::Ordering::Acquire),
+            0
+        );
+        let events = RefCell::new(Vec::new());
+
+        let result = run_native_update_install_with_validation(
+            || {
+                events.borrow_mut().push("install");
+                Ok(())
+            },
+            || {
+                events.borrow_mut().push("validate");
+                Ok(())
+            },
+            Some(|| {
+                events.borrow_mut().push("recover");
+                Ok(())
+            }),
+            &state,
+            true,
+        );
+
+        assert!(
+            !result.ok,
+            "a surviving endpoint of a previously managed backend must block installation"
+        );
+        assert!(result
+            .reason
+            .as_deref()
+            .unwrap()
+            .contains("already answering"));
+        assert!(
+            events.borrow().is_empty(),
+            "installer and recovery must not run"
+        );
+    }
+
+    #[test]
+    fn windows_update_install_does_not_manage_an_external_only_backend() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind external backend");
+        let state = BackendState {
+            backend_url: format!("http://{}/", listener.local_addr().unwrap()),
+            ..BackendState::default()
+        };
+        let events = RefCell::new(Vec::new());
+
+        let result = run_native_update_install_with_validation(
+            || {
+                events.borrow_mut().push("install");
+                Err("installer failed".to_string())
+            },
+            || {
+                events.borrow_mut().push("validate");
+                Ok(())
+            },
+            Some(|| {
+                events.borrow_mut().push("recover");
+                Ok(())
+            }),
+            &state,
+            true,
+        );
+
+        assert_eq!(
+            result,
+            map_update_install_error("Failed to install update: installer failed")
+        );
+        assert_eq!(*events.borrow(), vec!["install"]);
+        assert!(state.last_recorded_pid().is_none());
+    }
+
+    #[test]
+    fn run_native_update_install_prepares_before_installing_and_validating() {
+        let state = update_backend_state(true);
+        let events = RefCell::new(Vec::new());
+        let result = run_native_update_install_with_validation(
+            || {
+                assert!(
+                    state.child.lock().unwrap().is_none(),
+                    "the managed child must be cleared before installation"
+                );
+                assert_eq!(
+                    state
+                        .restart_stop_pid
+                        .load(std::sync::atomic::Ordering::Acquire),
+                    0,
+                    "the stop target must be confirmed before installation"
+                );
+                events.borrow_mut().push("install");
+                Ok(())
+            },
+            || {
+                events.borrow_mut().push("validate");
+                Ok(())
+            },
+            Some(|| {
+                events.borrow_mut().push("recover");
+                Ok(())
+            }),
+            &state,
+            true,
+        );
+        assert!(result.ok);
+        assert_eq!(*events.borrow(), vec!["install", "validate"]);
+    }
+
+    #[test]
     fn run_native_update_install_skips_restart_when_backend_was_not_stopped() {
         let mut restart_called = false;
 
@@ -1011,6 +1229,7 @@ mod tests {
 
     #[test]
     fn run_native_update_install_rejects_post_install_validation_failures() {
+        let state = update_backend_state(true);
         let events = Rc::new(RefCell::new(Vec::new()));
         let restart_events = Rc::clone(&events);
 
@@ -1021,6 +1240,7 @@ mod tests {
                 restart_events.borrow_mut().push("restart");
                 Ok(())
             }),
+            &state,
             true,
         );
 
@@ -1034,7 +1254,7 @@ mod tests {
     }
 
     #[test]
-    fn has_managed_backend_child_returns_false_when_lock_is_poisoned() {
+    fn windows_update_install_refuses_a_poisoned_backend_ownership_lock() {
         let state = BackendState::default();
         let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let _guard = state
@@ -1044,6 +1264,20 @@ mod tests {
             panic!("poison backend child lock");
         }));
 
-        assert!(!has_managed_backend_child(&state));
+        let installed = RefCell::new(false);
+        let result = run_native_update_install_with_validation(
+            || {
+                *installed.borrow_mut() = true;
+                Ok(())
+            },
+            || Ok(()),
+            None::<fn() -> Result<(), String>>,
+            &state,
+            true,
+        );
+
+        assert!(!result.ok);
+        assert!(result.reason.as_deref().unwrap().contains("lock poisoned"));
+        assert!(!*installed.borrow());
     }
 }

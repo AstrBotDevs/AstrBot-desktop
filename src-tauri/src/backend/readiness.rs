@@ -551,6 +551,28 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn readiness_does_not_equate_slow_http_with_an_available_endpoint() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind slow backend");
+        let state = BackendState {
+            backend_url: format!("http://{}/", listener.local_addr().unwrap()),
+            ..BackendState::default()
+        };
+        // The listener accepts TCP handshakes but never responds to HTTP requests.
+        let (http_status, tcp_reachable) = state.probe_backend_readiness("/", 50);
+        assert!(http_status.is_none());
+        assert!(tcp_reachable);
+        assert!(
+            state.ping_backend(50),
+            "the initial readiness branch must skip spawning"
+        );
+        let error = state
+            .confirm_previous_backend_exited()
+            .expect_err("the final spawn gate must reject a surviving TCP listener");
+        assert!(error.contains("already answering"));
+        assert!(state.child.lock().unwrap().is_none());
+    }
+
     fn sha256_hex(payload: &[u8]) -> String {
         format!("{:x}", Sha256::digest(payload))
     }
