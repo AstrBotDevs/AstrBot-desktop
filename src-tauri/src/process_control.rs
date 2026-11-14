@@ -837,9 +837,15 @@ mod tests {
     #[test]
     #[cfg(not(target_os = "windows"))]
     fn signal_probe_reports_a_missing_pid_as_exited() {
-        // The signal fallback only runs where procfs is unavailable. A PID that cannot
-        // exist must come back as Missing; reporting Unknown would make the restart
-        // preflight treat a dead process as alive and refuse a valid restart.
-        assert_eq!(probe_pid_with_signal(u32::MAX - 1), ProcessProbe::Missing);
+        // Reap a real child so the PID is valid but no longer exists. An out-of-range
+        // PID can be rejected as invalid input by kill rather than reported as missing.
+        let mut child = Command::new("sh")
+            .args(["-c", "exit 0"])
+            .spawn()
+            .expect("spawn short-lived child");
+        let pid = child.id();
+        assert!(child.wait().expect("reap short-lived child").success());
+
+        assert_eq!(probe_pid_with_signal(pid), ProcessProbe::Missing);
     }
 }
