@@ -127,7 +127,13 @@ fn sanitize_packaged_python_environment<F>(command: &mut Command, log: F)
 where
     F: Fn(&str),
 {
-    for key in ["PYTHONHOME", "PYTHONPATH"] {
+    for key in [
+        "PYTHONHOME",
+        "PYTHONPATH",
+        // Bundled Windows OpenSSL can abort when TLS key logging is inherited.
+        #[cfg(target_os = "windows")]
+        "SSLKEYLOGFILE",
+    ] {
         if env::var_os(key).is_some() {
             log(&format!(
                 "clearing inherited {} for packaged backend runtime",
@@ -638,6 +644,24 @@ mod tests {
 
         assert_eq!(get_command_env_value(&command, "PYTHONHOME"), Some(None));
         assert_eq!(get_command_env_value(&command, "PYTHONPATH"), Some(None));
+    }
+
+    #[test]
+    fn sanitize_packaged_python_environment_applies_platform_keylog_policy() {
+        let mut command = Command::new("sh");
+        command.env("SSLKEYLOGFILE", "sslkeys.log");
+
+        sanitize_packaged_python_environment(&mut command, |_| {});
+
+        let expected = if cfg!(target_os = "windows") {
+            None
+        } else {
+            Some("sslkeys.log".to_string())
+        };
+        assert_eq!(
+            get_command_env_value(&command, "SSLKEYLOGFILE"),
+            Some(expected)
+        );
     }
 
     #[test]
