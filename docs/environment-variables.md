@@ -69,6 +69,21 @@
 | `ASTRBOT_INSTALLATION_SOURCE` | 标记 AstrBot 匿名指标中的安装来源 | 打包态启动后端时写入 `desktop` |
 | `ASTRBOT_BACKEND_STARTUP_HEARTBEAT_PATH` | 桌面端写给后端启动器的 heartbeat 文件路径 | 打包态默认写到 `ASTRBOT_ROOT/data/backend-startup-heartbeat.json` |
 
+### Windows 内置后端的 SSL 密钥日志隔离
+
+Windows 打包模式启动内置 Python 后端时，会从后端子进程环境中移除继承的 `SSLKEYLOGFILE`。部分 Windows Python/OpenSSL 打包运行时在设置该变量后创建 SSL context 时可能退出；移除它会关闭该内置后端的 TLS 密钥日志功能。
+
+此处理只影响 Windows 内置后端子进程，不修改用户或系统的环境变量，也不清理自定义后端命令、Linux 或 macOS 后端的 `SSLKEYLOGFILE`。检测到继承值时，桌面日志会记录 `clearing inherited SSLKEYLOGFILE for packaged backend runtime`，只记录变量名，不记录变量值或密钥日志路径。
+
+如果旧版本的 `backend.log` 出现 `OPENSSL_Uplink(...,08): no OPENSSL_Applink`，且桌面端提示 `Backend process exited before becoming reachable: exit code: 1`，可以检查启动环境中是否设置了 `SSLKEYLOGFILE`。临时排查时，先完全退出已有的 AstrBot Desktop，再从 PowerShell 启动一个不继承该变量的实例；请将示例路径替换为实际安装路径：
+
+```powershell
+Remove-Item Env:SSLKEYLOGFILE -ErrorAction SilentlyContinue
+& "C:\Path\To\AstrBot.exe"
+```
+
+上述命令只修改当前 PowerShell 的进程环境，并影响之后从该终端启动的子进程，无需删除用户或系统环境变量。通过这种方式启动的后端不会使用该变量写入 TLS 密钥日志。
+
 ### 局域网访问 WebUI
 
 桌面端默认写入 `DASHBOARD_HOST=127.0.0.1`，因此 WebUI 默认仅允许本机访问。如果需要从同一局域网内的其他设备访问，推荐编辑 AstrBot 命令配置：
