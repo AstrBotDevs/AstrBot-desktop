@@ -11,23 +11,32 @@ use std::{
 use tauri::{AppHandle, Manager};
 
 use crate::{
-    append_desktop_log, logging, process_control, BackendState,
+    append_desktop_log, append_restart_log, logging, process_control, BackendState,
     BACKEND_EXIT_CONFIRM_POLL_INTERVAL_MS, BACKEND_EXIT_CONFIRM_TIMEOUT_MS, BACKEND_LOG_MAX_BYTES,
     BACKEND_LOG_ROTATION_CHECK_INTERVAL, GRACEFUL_STOP_TIMEOUT_MS, LOG_BACKUP_COUNT,
 };
 
 /// Confirm the recorded process identity independently without signalling a reused PID.
-fn confirm_process_identity_exit(identity: process_control::ProcessIdentity) -> Result<(), String> {
+fn confirm_process_identity_exit<F>(
+    identity: process_control::ProcessIdentity,
+    timeout: Duration,
+    log: F,
+) -> Result<(), String>
+where
+    F: FnOnce(&str),
+{
     let outcome = process_control::wait_for_process_identity_exit(
         identity,
-        Duration::from_millis(BACKEND_EXIT_CONFIRM_TIMEOUT_MS),
+        timeout,
         Duration::from_millis(BACKEND_EXIT_CONFIRM_POLL_INTERVAL_MS),
     );
     if outcome == process_control::ProcessExitOutcome::StillRunning {
-        return Err(format!(
+        let error = format!(
             "Backend exit could not be confirmed after the stop request: pid={}, waited {}ms. The process may still be running or its identity may be unavailable. Wait and retry; stop it manually only after verifying it is the backend.",
-            identity.pid, BACKEND_EXIT_CONFIRM_TIMEOUT_MS
-        ));
+            identity.pid, timeout.as_millis()
+        );
+        log(&error);
+        return Err(error);
     }
     Ok(())
 }
@@ -98,7 +107,11 @@ impl BackendState {
             // bridge and readiness probes are not blocked for the whole timeout.
             *guard = None;
             drop(guard);
-            confirm_process_identity_exit(identity)?;
+            confirm_process_identity_exit(
+                identity,
+                Duration::from_millis(BACKEND_EXIT_CONFIRM_TIMEOUT_MS),
+                append_restart_log,
+            )?;
             return Ok(());
         }
 
@@ -305,5 +318,42 @@ impl BackendState {
                 );
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::confirm_process_identity_exit;
+    use crate::process_control;
+    use std::time::Duration;
+
+    #[test]
+    fn failed_stop_confirmation_logs_the_returned_error() {
+        let identity = process_control::capture_process_identity(std::process::id());
+        let mut messages = Vec::new();
+
+        let error = confirm_process_identity_exit(identity, Duration::ZERO, |message| {
+            messages.push(message.to_string());
+        })
+        .expect_err("a live process must fail exit confirmation");
+
+        assert_eq!(messages, vec![error]);
+    }
+
+    #[test]
+    fn successful_stop_confirmation_does_not_log_an_error() {
+        let identity = process_control::ProcessIdentity {
+            pid: 0,
+            created_at: None,
+        };
+        let mut messages = Vec::new();
+
+        assert_eq!(
+            confirm_process_identity_exit(identity, Duration::ZERO, |message| {
+                messages.push(message.to_string());
+            }),
+            Ok(())
+        );
+        assert!(messages.is_empty());
     }
 }

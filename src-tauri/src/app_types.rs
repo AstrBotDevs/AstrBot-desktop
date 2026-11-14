@@ -74,6 +74,8 @@ pub(crate) struct BackendState {
     /// dropped while the OS may still be tearing the process down.
     pub(crate) last_spawned_identity: Mutex<Option<process_control::ProcessIdentity>>,
     pub(crate) backend_url: String,
+    /// Keep a timed-out DNS worker reserved until it finishes, so retries stay bounded.
+    pub(crate) endpoint_resolver: Mutex<Option<std::thread::JoinHandle<()>>>,
     pub(crate) restart_auth_token: Mutex<Option<String>>,
     pub(crate) desktop_session_secret: DesktopSessionSecret,
     pub(crate) startup_loading_mode: Mutex<Option<&'static str>>,
@@ -138,6 +140,7 @@ impl Default for BackendState {
                     .unwrap_or_else(|_| DEFAULT_BACKEND_URL.to_string()),
                 DEFAULT_BACKEND_URL,
             ),
+            endpoint_resolver: Mutex::new(None),
             restart_auth_token: Mutex::new(None),
             desktop_session_secret: DesktopSessionSecret::generate()
                 .expect("failed to generate secure desktop session secret"),

@@ -516,15 +516,37 @@ impl BackendState {
             command.stderr(Stdio::null());
         }
 
+        let Some(child_pid) = self.spawn_backend_command(&mut command, plan)? else {
+            return Ok(());
+        };
+        if let Some(log_path) = backend_log_path {
+            self.start_backend_log_rotation_worker(app, log_path, child_pid);
+        } else {
+            self.stop_backend_log_rotation_worker();
+        }
+        Ok(())
+    }
+
+    /// Spawn and register the child atomically with respect to exit cleanup.
+    fn spawn_backend_command(
+        &self,
+        command: &mut Command,
+        plan: &crate::LaunchPlan,
+    ) -> Result<Option<u32>, String> {
         // Keep the child-slot check and spawn in the same critical section, including
         // callers that do not hold the high-level backend action reservation.
         let mut child_guard = self
             .child
             .lock()
             .map_err(|_| "Backend process lock poisoned.")?;
+        // Exit marks the state before taking this same child lock. If exit wins,
+        // refuse the replacement; if spawn wins, cleanup sees and stops the child.
+        if self.is_quitting() {
+            return Err("Desktop is exiting; refusing to start the backend.".to_string());
+        }
         if child_guard.is_some() {
             append_desktop_log("backend child already exists, skip re-spawn");
-            return Ok(());
+            return Ok(None);
         }
         let child = command.spawn().map_err(|error| {
             format!(
@@ -544,12 +566,7 @@ impl BackendState {
         // it to prove the process is gone instead of trusting the `Child` handle.
         self.record_spawned_identity(child_pid);
         drop(child_guard);
-        if let Some(log_path) = backend_log_path {
-            self.start_backend_log_rotation_worker(app, log_path, child_pid);
-        } else {
-            self.stop_backend_log_rotation_worker();
-        }
-        Ok(())
+        Ok(Some(child_pid))
     }
 }
 
@@ -589,6 +606,72 @@ mod tests {
         DASHBOARD_PORT_ENV,
         ASTRBOT_DASHBOARD_PORT_ENV,
     ];
+
+    #[test]
+    fn spawn_backend_command_coordinates_with_exit_cleanup() {
+        use crate::{lifecycle::cleanup, BackendState, LaunchPlan};
+
+        let executable = env::current_exe().expect("test executable");
+        let plan = LaunchPlan {
+            cmd: executable.to_string_lossy().into_owned(),
+            args: vec!["--help".to_string()],
+            cwd: env::current_dir().expect("current directory"),
+            root_dir: None,
+            webui_dir: None,
+            webui_cache_version: None,
+            packaged_core_version: None,
+            packaged_webui_index_sha256: None,
+            packaged_webui_entry_digests: None,
+            startup_heartbeat_path: None,
+            packaged_mode: false,
+        };
+
+        let state = BackendState::default();
+        let spawned = state
+            .spawn_backend_command(
+                Command::new(&executable)
+                    .arg("--help")
+                    .stdout(std::process::Stdio::null()),
+                &plan,
+            )
+            .expect("spawn before exit starts");
+        assert_eq!(state.tracked_child_pid(), spawned);
+        assert!(spawned.is_some());
+        assert!(state.try_begin_exit_cleanup());
+        cleanup::stop_backend_for_exit(&state, cleanup::ExitTrigger::ExitRequested, |_| {});
+        assert!(state.child.lock().unwrap().is_none());
+
+        for cleanup_completed in [false, true] {
+            let state = BackendState::default();
+            if cleanup_completed {
+                assert!(state.try_begin_exit_cleanup());
+                cleanup::stop_backend_for_exit(&state, cleanup::ExitTrigger::ExitRequested, |_| {});
+                state.allow_next_exit_request();
+            } else {
+                state.mark_quitting();
+            }
+            let result = state.spawn_backend_command(
+                Command::new(&executable)
+                    .arg("--help")
+                    .stdout(std::process::Stdio::null()),
+                &plan,
+            );
+            let mut child = state.child.lock().unwrap().take();
+            if let Some(child) = child.as_mut() {
+                let _ = child.kill();
+                child.wait().expect("reap unexpected replacement");
+            }
+
+            assert!(
+                child.is_none(),
+                "shutdown must not leave a replacement child"
+            );
+            assert!(
+                result.is_err_and(|error| error.contains("exiting")),
+                "shutdown must reject the spawn before running the command"
+            );
+        }
+    }
 
     fn get_command_env_value(command: &Command, key: &str) -> Option<Option<String>> {
         command

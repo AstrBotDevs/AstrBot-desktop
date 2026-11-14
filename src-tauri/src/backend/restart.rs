@@ -649,9 +649,14 @@ mod tests {
         );
 
         assert!(result.is_err());
+        let elapsed = start.elapsed();
         assert!(
-            start.elapsed() >= std::time::Duration::from_millis(60),
+            elapsed >= std::time::Duration::from_millis(60),
             "the wait must honour the timeout before reporting failure"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_millis(310),
+            "the wait must stay within the timeout plus scheduling tolerance: {elapsed:?}"
         );
     }
 

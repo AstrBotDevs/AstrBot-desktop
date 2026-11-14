@@ -18,22 +18,29 @@ const MAX_BACKEND_HTTP_BODY_BYTES: usize = 32 * 1024 * 1024;
 /// Require refused connections on every resolved address before permitting a respawn.
 fn confirm_backend_endpoint_available_with_resolver<F>(
     backend_url: &str,
+    resolver_worker: &std::sync::Mutex<Option<std::thread::JoinHandle<()>>>,
     timeout: Duration,
     resolve: F,
 ) -> Result<(), String>
 where
     F: FnOnce(String, u16) -> std::io::Result<Vec<SocketAddr>> + Send + 'static,
 {
+    let parsed = Url::parse(backend_url);
+    // Diagnostics need only the network origin. Userinfo, paths, queries and fragments
+    // can contain credentials, and invalid input must never be echoed as a fallback.
+    let display_url = match &parsed {
+        Ok(url) if matches!(url.scheme(), "http" | "https") => url.origin().ascii_serialization(),
+        _ => "<invalid backend URL>".to_string(),
+    };
     let inconclusive = |reason: &str| {
         format!(
-            "Cannot confirm backend endpoint {backend_url} is available: {reason}. Refusing to start another backend."
+            "Cannot confirm backend endpoint {display_url} is available: {reason}. Refusing to start another backend."
         )
     };
     let deadline = Instant::now()
         .checked_add(timeout)
         .ok_or_else(|| inconclusive("invalid probe timeout"))?;
-    let parsed =
-        Url::parse(backend_url).map_err(|error| inconclusive(&format!("invalid URL: {error}")))?;
+    let parsed = parsed.map_err(|error| inconclusive(&format!("invalid URL: {error}")))?;
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err(inconclusive("unsupported backend URL scheme"));
     }
@@ -45,17 +52,33 @@ where
         Some(Host::Ipv6(ip)) => vec![SocketAddr::from((ip, port))],
         Some(Host::Domain(host)) => {
             let host = host.to_string();
+            let mut worker = resolver_worker
+                .lock()
+                .map_err(|_| inconclusive("name resolution worker lock poisoned"))?;
+            if worker.as_ref().is_some_and(|worker| !worker.is_finished()) {
+                return Err(inconclusive(
+                    "previous name resolution is still running; retry after it finishes",
+                ));
+            }
+            if let Some(finished) = worker.take() {
+                // A panicked resolver has finished too; joining releases its resources
+                // and leaves a fresh attempt possible without poisoning this mutex.
+                let _ = finished.join();
+            }
             let (sender, receiver) = std::sync::mpsc::sync_channel(1);
-            // The OS resolver cannot be cancelled. Bound the caller's wait and let a
-            // late worker discard its result after the receiver has been dropped.
-            std::thread::Builder::new()
-                .name("backend-endpoint-resolver".to_string())
-                .spawn(move || {
-                    let _ = sender.send(resolve(host, port));
-                })
-                .map_err(|error| {
-                    inconclusive(&format!("could not start name resolution: {error}"))
-                })?;
+            // The OS resolver cannot be cancelled. Retain its handle after a timeout
+            // so another probe cannot accumulate another outstanding resolver.
+            *worker = Some(
+                std::thread::Builder::new()
+                    .name("backend-endpoint-resolver".to_string())
+                    .spawn(move || {
+                        let _ = sender.send(resolve(host, port));
+                    })
+                    .map_err(|error| {
+                        inconclusive(&format!("could not start name resolution: {error}"))
+                    })?,
+            );
+            drop(worker);
             let remaining = deadline
                 .checked_duration_since(Instant::now())
                 .filter(|remaining| !remaining.is_zero())
@@ -79,7 +102,7 @@ where
         match TcpStream::connect_timeout(&address, remaining) {
             Ok(_) => {
                 return Err(format!(
-                    "Backend endpoint {backend_url} is already answering. Stop the existing backend before starting another."
+                    "Backend endpoint {display_url} is already answering. Stop the existing backend before starting another."
                 ));
             }
             Err(error) if error.kind() == ErrorKind::ConnectionRefused => {}
@@ -114,6 +137,7 @@ impl BackendState {
     pub(crate) fn confirm_backend_endpoint_available(&self, timeout_ms: u64) -> Result<(), String> {
         confirm_backend_endpoint_available_with_resolver(
             &self.backend_url,
+            &self.endpoint_resolver,
             Duration::from_millis(timeout_ms.max(1)),
             |host, port| {
                 (host.as_str(), port)
@@ -465,6 +489,191 @@ mod tests {
     use super::*;
 
     #[test]
+    fn restart_endpoint_probe_retries_do_not_accumulate_blocked_resolvers() {
+        let resolver_worker = std::sync::Mutex::new(None);
+        let starts = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut releases = Vec::new();
+        let mut completions = Vec::new();
+        for _ in 0..4 {
+            let (release, blocked) = std::sync::mpsc::channel();
+            let (started, started_receiver) = std::sync::mpsc::channel();
+            let (finished, completed) = std::sync::mpsc::channel();
+            let starts_for_worker = std::sync::Arc::clone(&starts);
+            let result = confirm_backend_endpoint_available_with_resolver(
+                "http://backend.invalid:6185/",
+                &resolver_worker,
+                Duration::from_millis(30),
+                move |_, _| {
+                    starts_for_worker.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let _ = started.send(());
+                    let _ = blocked.recv_timeout(Duration::from_secs(2));
+                    let _ = finished.send(());
+                    Err(std::io::Error::from(ErrorKind::TimedOut))
+                },
+            );
+            assert!(result.is_err());
+            let _ = started_receiver.recv_timeout(Duration::from_secs(1));
+            releases.push(release);
+            completions.push(completed);
+        }
+        for release in releases {
+            let _ = release.send(());
+        }
+        for completed in completions {
+            let _ = completed.recv_timeout(Duration::from_secs(1));
+        }
+        assert_eq!(
+            starts.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "a timed-out resolver must retain its reservation until it finishes"
+        );
+    }
+
+    #[test]
+    fn restart_endpoint_probe_can_retry_after_the_timed_out_resolver_finishes() {
+        let resolver_worker = std::sync::Mutex::new(None);
+        let (release, blocked) = std::sync::mpsc::channel();
+        assert!(confirm_backend_endpoint_available_with_resolver(
+            "http://backend.invalid:6185/",
+            &resolver_worker,
+            Duration::from_millis(30),
+            move |_, _| {
+                let _ = blocked.recv_timeout(Duration::from_secs(2));
+                Err(std::io::Error::from(ErrorKind::TimedOut))
+            },
+        )
+        .is_err());
+        release.send(()).expect("release blocked resolver");
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while !resolver_worker
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .is_finished()
+        {
+            assert!(
+                Instant::now() < deadline,
+                "resolver must finish after release"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        }
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let address = listener.local_addr().unwrap();
+        drop(listener);
+        let result = confirm_backend_endpoint_available_with_resolver(
+            "http://backend.invalid:6185/",
+            &resolver_worker,
+            Duration::from_millis(200),
+            move |_, _| Ok(vec![address]),
+        );
+        assert!(
+            result.is_ok(),
+            "finished resolver must allow retry: {result:?}"
+        );
+    }
+
+    #[test]
+    fn restart_endpoint_probe_can_retry_after_the_resolver_panics() {
+        let resolver_worker = std::sync::Mutex::new(None);
+        assert!(confirm_backend_endpoint_available_with_resolver(
+            "http://backend.invalid:6185/",
+            &resolver_worker,
+            Duration::from_millis(200),
+            |_, _| panic!("resolver panic for regression test"),
+        )
+        .is_err());
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while !resolver_worker
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .is_finished()
+        {
+            assert!(Instant::now() < deadline, "panicked resolver must finish");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+
+        let error = confirm_backend_endpoint_available_with_resolver(
+            "http://backend.invalid:6185/",
+            &resolver_worker,
+            Duration::from_millis(200),
+            |_, _| Err(std::io::Error::from(ErrorKind::PermissionDenied)),
+        )
+        .unwrap_err();
+        assert!(
+            error.contains("name resolution failed"),
+            "retry did not run: {error}"
+        );
+        assert!(!resolver_worker.is_poisoned());
+    }
+
+    #[test]
+    fn restart_endpoint_resolution_errors_redact_url_credentials() {
+        let error = confirm_backend_endpoint_available_with_resolver(
+            "http://sample-user:sample-password@backend.invalid:6185/?token=sample-token",
+            &std::sync::Mutex::new(None),
+            Duration::from_millis(200),
+            |_, _| Err(std::io::Error::from(ErrorKind::PermissionDenied)),
+        )
+        .unwrap_err();
+        assert!(error.contains("name resolution failed"));
+        assert!(error.contains("http://backend.invalid:6185"));
+        assert!(!error.contains("sample-user"));
+        assert!(!error.contains("sample-password"));
+        assert!(!error.contains("sample-token"));
+    }
+
+    #[test]
+    fn restart_endpoint_errors_redact_credentials_without_changing_the_url() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let backend_url = format!(
+            "http://sample-user:sample-password@{}/?token=sample-token#sample-fragment",
+            listener.local_addr().expect("listener address")
+        );
+        let state = BackendState {
+            backend_url: backend_url.clone(),
+            ..BackendState::default()
+        };
+        let error = state.confirm_backend_endpoint_available(200).unwrap_err();
+        assert!(!error.contains("sample-user"), "username leaked: {error}");
+        assert!(
+            !error.contains("sample-password"),
+            "password leaked: {error}"
+        );
+        assert!(!error.contains("sample-token"), "query leaked: {error}");
+        assert!(
+            !error.contains("sample-fragment"),
+            "fragment leaked: {error}"
+        );
+        assert!(error.contains(&listener.local_addr().unwrap().to_string()));
+        assert_eq!(state.backend_url, backend_url);
+    }
+
+    #[test]
+    fn restart_endpoint_errors_never_echo_unparseable_or_unsupported_input() {
+        for backend_url in [
+            "http://sample-user:sample-password@[invalid/",
+            "custom:sample-user:sample-password@backend",
+        ] {
+            let error = confirm_backend_endpoint_available_with_resolver(
+                backend_url,
+                &std::sync::Mutex::new(None),
+                Duration::from_millis(100),
+                |_, _| panic!("invalid endpoint must not resolve"),
+            )
+            .unwrap_err();
+            assert!(!error.contains("sample-user"), "username leaked: {error}");
+            assert!(
+                !error.contains("sample-password"),
+                "password leaked: {error}"
+            );
+        }
+    }
+
+    #[test]
     fn restart_endpoint_probe_rejects_invalid_urls() {
         let state = BackendState {
             backend_url: "not a backend URL".to_string(),
@@ -502,6 +711,7 @@ mod tests {
 
         let result = confirm_backend_endpoint_available_with_resolver(
             &format!("http://{address}/"),
+            &std::sync::Mutex::new(None),
             Duration::from_millis(200),
             |_, _| panic!("numeric addresses must not invoke DNS"),
         );
@@ -515,6 +725,7 @@ mod tests {
     fn restart_endpoint_probe_does_not_treat_resolution_errors_as_available() {
         let error = confirm_backend_endpoint_available_with_resolver(
             "http://backend.invalid:6185/",
+            &std::sync::Mutex::new(None),
             Duration::from_millis(200),
             |_, _| Err(std::io::Error::from(ErrorKind::PermissionDenied)),
         )
@@ -528,6 +739,7 @@ mod tests {
     fn restart_endpoint_probe_rejects_empty_resolution_results() {
         assert!(confirm_backend_endpoint_available_with_resolver(
             "http://backend.invalid:6185/",
+            &std::sync::Mutex::new(None),
             Duration::from_millis(200),
             |_, _| Ok(Vec::new()),
         )
@@ -541,6 +753,7 @@ mod tests {
         let start = Instant::now();
         let result = confirm_backend_endpoint_available_with_resolver(
             "http://backend.invalid:6185/",
+            &std::sync::Mutex::new(None),
             Duration::from_millis(100),
             move |_, _| {
                 let _ = blocked.recv_timeout(Duration::from_secs(2));
@@ -556,7 +769,7 @@ mod tests {
 
         assert!(result.is_err(), "a timed-out probe must block a respawn");
         assert!(
-            elapsed < Duration::from_secs(1),
+            elapsed >= Duration::from_millis(100) && elapsed < Duration::from_millis(350),
             "DNS must share the probe deadline instead of blocking for {elapsed:?}"
         );
     }
@@ -573,6 +786,7 @@ mod tests {
 
         let error = confirm_backend_endpoint_available_with_resolver(
             "http://backend.invalid:6185/",
+            &std::sync::Mutex::new(None),
             Duration::from_millis(200),
             move |_, _| Ok(vec![available, occupied]),
         )
