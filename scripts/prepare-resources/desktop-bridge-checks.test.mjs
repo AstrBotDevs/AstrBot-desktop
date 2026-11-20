@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -8,7 +8,10 @@ import {
   getDesktopBridgeExpectations,
   shouldEnforceDesktopBridgeExpectation,
 } from './desktop-bridge-expectations.mjs';
-import { patchDesktopReleaseUpdateIndicator } from './desktop-bridge-checks.mjs';
+import {
+  patchDesktopReleaseUpdateIndicator,
+  verifyDesktopBridgeArtifacts,
+} from './desktop-bridge-checks.mjs';
 
 test('getDesktopBridgeExpectations returns stable expectation metadata', () => {
   const expectations = getDesktopBridgeExpectations();
@@ -67,6 +70,88 @@ test('shouldEnforceDesktopBridgeExpectation enforces required expectations on no
       { isDesktopBridgeExpectationStrict: false, isTaggedRelease: false },
     ),
     true,
+  );
+});
+
+test('verifyDesktopBridgeArtifacts accepts both chat transport preference formats', async (t) => {
+  const dashboardDir = await mkdtemp(path.join(tmpdir(), 'astrbot-dashboard-'));
+  t.after(() => rm(dashboardDir, { recursive: true, force: true }));
+  const writeSource = async (relativePath, source) => {
+    const file = path.join(dashboardDir, ...relativePath.split('/'));
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, source, 'utf8');
+  };
+
+  await writeSource(
+    'src/App.vue',
+    `if (!desktopBridge?.onTrayRestartBackend) {
+  await globalWaitingRef.value?.check?.(prompt);
+}`,
+  );
+  await writeSource(
+    'src/utils/restartAstrBot.ts',
+    `import { getDesktopRuntimeInfo } from '@/utils/desktopRuntime';
+if (hasDesktopRestartCapability) {
+  await getDesktopRuntimeInfo();
+}`,
+  );
+  await writeSource(
+    'src/layouts/full/vertical-header/VerticalHeader.vue',
+    `const runtimeInfo = await getDesktopRuntimeInfo();
+isDesktopReleaseMode.value = runtimeInfo.isDesktopRuntime;`,
+  );
+  await writeSource(
+    'src/utils/desktopRuntime.ts',
+    `console.warn('Desktop runtime detection failed');`,
+  );
+  const chat = 'src/components/chat/Chat.vue';
+  const standaloneChat = 'src/components/chat/StandaloneChat.vue';
+  const chatPreferences = 'src/utils/chatPreferences.ts';
+  const options = {
+    dashboardDir,
+    projectRoot: dashboardDir,
+    sourceRepoRef: 'master',
+    isSourceRepoRefVersionTag: false,
+    isDesktopBridgeExpectationStrict: true,
+  };
+
+  const legacyRead = `const transportMode = localStorage.getItem('chat.transportMode') === 'websocket';`;
+  await writeSource(chat, `${legacyRead}\nlocalStorage.setItem('chat.transportMode', mode);`);
+  await writeSource(standaloneChat, legacyRead);
+  await verifyDesktopBridgeArtifacts(options);
+
+  await writeSource(
+    chat,
+    `import { chatPreferences } from '@/utils/chatPreferences';
+const transportMode = ref(
+  chatPreferences().global.transportMode === 'websocket' ? 'websocket' : 'sse',
+);
+watch(transportMode, (mode) => {
+  chatPreferences((preferences) => {
+    preferences.global.transportMode = mode;
+  });
+});`,
+  );
+  await writeSource(
+    standaloneChat,
+    `import { chatPreferences } from '@/utils/chatPreferences';
+const transportMode = ref(
+  chatPreferences().global.transportMode === 'websocket' ? 'websocket' : 'sse',
+);`,
+  );
+  const migrationSource = `const globalKeys = { 'chat.transportMode': 'transportMode' };
+for (const [key, field] of Object.entries(globalKeys)) {
+  const value = target.getItem(key);
+  if (value !== null) preferences.global[field] ??= value;
+}
+target.setItem(CHAT_PREFERENCES_KEY, JSON.stringify(root));`;
+  await writeSource(chatPreferences, migrationSource);
+  await verifyDesktopBridgeArtifacts(options);
+
+  await writeSource(chatPreferences, migrationSource.replace("'transportMode'", "'legacyTransportMode'"));
+  await assert.rejects(
+    verifyDesktopBridgeArtifacts(options),
+    /legacy desktop chat transport preference migration/,
   );
 });
 

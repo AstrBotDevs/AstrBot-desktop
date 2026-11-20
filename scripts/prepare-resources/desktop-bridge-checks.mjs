@@ -119,7 +119,8 @@ export const verifyDesktopBridgeArtifacts = async ({
     );
   }
 
-  for (const expectation of getDesktopBridgeExpectations()) {
+  const expectations = new Set(getDesktopBridgeExpectations());
+  for (const expectation of expectations) {
     const mustPass = shouldEnforceDesktopBridgeExpectation(expectation, {
       isDesktopBridgeExpectationStrict,
       isTaggedRelease,
@@ -139,13 +140,17 @@ export const verifyDesktopBridgeArtifacts = async ({
     }
 
     const source = await readFile(file, 'utf8');
-    if (!expectation.pattern.test(source)) {
-      const message = `[prepare-resources] Expected ${expectation.label} in ${path.relative(projectRoot, file)}. ${expectation.hint || ''} Please sync AstrBot dashboard sources.`;
-      if (mustPass) {
-        issues.push(message);
-      } else {
-        console.warn(`${message} (compatibility check skipped)`);
-      }
+    if (expectation.pattern.test(source)) continue;
+    if (expectation.fallbackPattern?.test(source)) {
+      expectations.add(expectation.fallbackRequirement);
+      continue;
+    }
+
+    const message = `[prepare-resources] Expected ${expectation.label} in ${path.relative(projectRoot, file)}. ${expectation.hint || ''} Please sync AstrBot dashboard sources.`;
+    if (mustPass) {
+      issues.push(message);
+    } else {
+      console.warn(`${message} (compatibility check skipped)`);
     }
   }
 
