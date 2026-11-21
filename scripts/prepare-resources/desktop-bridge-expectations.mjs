@@ -56,18 +56,31 @@ const DESKTOP_BRIDGE_PATTERNS = {
   chatTransportPreferenceWrite:
     /chatPreferences\(\s*\(\s*(\w+)\s*\)\s*=>\s*\{\s*\1\.global\.transportMode\s*=/,
   chatTransportPreferenceMigration: new RegExp(
-    String.raw`["']${CHAT_TRANSPORT_STORAGE_KEY_PATTERN}["']\s*:\s*["']transportMode["']` +
-      String.raw`[\s\S]*?target\.getItem\(key\)[\s\S]*?preferences\.global\[field\]\s*\?\?=\s*value` +
-      String.raw`[\s\S]*?target\.setItem\(CHAT_PREFERENCES_KEY,`,
+    String.raw`^(?<bodyIndent>[ \t]*)let preferences\b[^\r\n]*;?[ \t]*\r?\n` +
+      String.raw`^\k<bodyIndent>try\s*\{[ \t]*\r?\n` +
+      String.raw`^(?<indent>\k<bodyIndent>[ \t]+)const target\s*=.*?;[ \t]*\r?\n` +
+      String.raw`[\s\S]*?^\k<indent>const migrated(?::\s*string\[\])?\s*=\s*\[\];[ \t]*\r?\n` +
+      String.raw`^\k<indent>if\s*\(storedUsername\)\s*\{\s*const globalKeys\s*=\s*\{[^{}]*?` +
+      String.raw`["']${CHAT_TRANSPORT_STORAGE_KEY_PATTERN}["']\s*:\s*["']transportMode["'][^{}]*?\}\s*(?:as const)?;?\s*` +
+      String.raw`for\s*\(const\s+\[key,\s*field\]\s+of\s+Object\.entries\(globalKeys\)\)\s*\{\s*` +
+      String.raw`const value\s*=\s*target\.getItem\(key\);?\s*if\s*\(value\s*!==\s*null\)\s*\{\s*` +
+      String.raw`preferences\.global\[field\]\s*\?\?=\s*value;?\s*migrated\.push\(key\);?\s*\}\s*\}` +
+      String.raw`[\s\S]*?^\k<indent>\}[ \t]*\r?\n^\k<indent>update\?\.\(preferences\);?[ \t]*\r?\n` +
+      String.raw`^\k<indent>if\s*\(storedUsername\s*&&\s*\(update\s*\|\|\s*migrated\.length\)\)\s*\{\s*` +
+      String.raw`target\.setItem\(CHAT_PREFERENCES_KEY,\s*JSON\.stringify\(root\)\);?[\s\S]*?` +
+      String.raw`^\k<bodyIndent>\}\s*catch\s*\{[\s\S]*?^\k<bodyIndent>return\s+preferences\s*;`,
+    'm',
   ),
 };
 
 const CHAT_TRANSPORT_MIGRATION = {
   filePath: ['src', 'utils', 'chatPreferences.ts'],
   pattern: DESKTOP_BRIDGE_PATTERNS.chatTransportPreferenceMigration,
+  scopePattern: /^export function chatPreferences\([\s\S]*?^\}/m,
   label: 'legacy desktop chat transport preference migration',
   hint: CHAT_TRANSPORT_MIGRATION_HINT,
   required: true,
+  alwaysRequired: true,
 };
 
 const DESKTOP_BRIDGE_EXPECTATIONS = [
@@ -158,5 +171,5 @@ export const shouldEnforceDesktopBridgeExpectation = (
   if (isDesktopBridgeExpectationStrict) {
     return true;
   }
-  return expectation.required && !isTaggedRelease;
+  return expectation.required && (expectation.alwaysRequired === true || !isTaggedRelease);
 };

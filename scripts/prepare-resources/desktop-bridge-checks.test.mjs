@@ -63,6 +63,16 @@ test('shouldEnforceDesktopBridgeExpectation downgrades required expectations on 
   );
 });
 
+test('shouldEnforceDesktopBridgeExpectation enforces explicitly required tagged expectations', () => {
+  assert.equal(
+    shouldEnforceDesktopBridgeExpectation(
+      { required: true, alwaysRequired: true },
+      { isDesktopBridgeExpectationStrict: false, isTaggedRelease: true },
+    ),
+    true,
+  );
+});
+
 test('shouldEnforceDesktopBridgeExpectation enforces required expectations on non-tagged refs', () => {
   assert.equal(
     shouldEnforceDesktopBridgeExpectation(
@@ -73,7 +83,22 @@ test('shouldEnforceDesktopBridgeExpectation enforces required expectations on no
   );
 });
 
-test('verifyDesktopBridgeArtifacts accepts both chat transport preference formats', async (t) => {
+test('shouldEnforceDesktopBridgeExpectation keeps transport migration required on tagged releases', () => {
+  const componentExpectation = getDesktopBridgeExpectations().find(
+    (expectation) => expectation.label === 'chat transport preference read',
+  );
+
+  assert.ok(componentExpectation);
+  assert.equal(
+    shouldEnforceDesktopBridgeExpectation(componentExpectation.fallbackRequirement, {
+      isDesktopBridgeExpectationStrict: false,
+      isTaggedRelease: true,
+    }),
+    true,
+  );
+});
+
+test('verifyDesktopBridgeArtifacts validates chat transport preference compatibility', async (t) => {
   const dashboardDir = await mkdtemp(path.join(tmpdir(), 'astrbot-dashboard-'));
   t.after(() => rm(dashboardDir, { recursive: true, force: true }));
   const writeSource = async (relativePath, source) => {
@@ -84,26 +109,18 @@ test('verifyDesktopBridgeArtifacts accepts both chat transport preference format
 
   await writeSource(
     'src/App.vue',
-    `if (!desktopBridge?.onTrayRestartBackend) {
-  await globalWaitingRef.value?.check?.(prompt);
-}`,
+    'if (!desktopBridge?.onTrayRestartBackend) { await globalWaitingRef.value?.check?.(prompt); }',
   );
   await writeSource(
     'src/utils/restartAstrBot.ts',
-    `import { getDesktopRuntimeInfo } from '@/utils/desktopRuntime';
-if (hasDesktopRestartCapability) {
-  await getDesktopRuntimeInfo();
-}`,
+    'import { getDesktopRuntimeInfo } from "@/utils/desktopRuntime"; if (hasDesktopRestartCapability) await getDesktopRuntimeInfo();',
   );
   await writeSource(
     'src/layouts/full/vertical-header/VerticalHeader.vue',
-    `const runtimeInfo = await getDesktopRuntimeInfo();
-isDesktopReleaseMode.value = runtimeInfo.isDesktopRuntime;`,
+    'const runtimeInfo = await getDesktopRuntimeInfo(); isDesktopReleaseMode.value = runtimeInfo.isDesktopRuntime;',
   );
-  await writeSource(
-    'src/utils/desktopRuntime.ts',
-    `console.warn('Desktop runtime detection failed');`,
-  );
+  await writeSource('src/utils/desktopRuntime.ts', 'console.warn("Desktop runtime detection failed");');
+
   const chat = 'src/components/chat/Chat.vue';
   const standaloneChat = 'src/components/chat/StandaloneChat.vue';
   const chatPreferences = 'src/utils/chatPreferences.ts';
@@ -115,42 +132,138 @@ isDesktopReleaseMode.value = runtimeInfo.isDesktopRuntime;`,
     isDesktopBridgeExpectationStrict: true,
   };
 
-  const legacyRead = `const transportMode = localStorage.getItem('chat.transportMode') === 'websocket';`;
-  await writeSource(chat, `${legacyRead}\nlocalStorage.setItem('chat.transportMode', mode);`);
+  const legacyRead = 'const transportMode = localStorage.getItem("chat.transportMode") === "websocket";';
+  const legacyWrite = 'localStorage.setItem("chat.transportMode", mode);';
+  const modernChat = [
+    'import { chatPreferences } from "@/utils/chatPreferences";',
+    'const transportMode = ref(',
+    '  chatPreferences().global.transportMode === "websocket" ? "websocket" : "sse",',
+    ');',
+    'watch(transportMode, (mode) => {',
+    '  chatPreferences((preferences) => {',
+    '    preferences.global.transportMode = mode;',
+    '  });',
+    '});',
+  ].join('\n');
+  const modernStandaloneChat = [
+    'import { chatPreferences } from "@/utils/chatPreferences";',
+    'const transportMode = ref(',
+    '  chatPreferences().global.transportMode === "websocket" ? "websocket" : "sse",',
+    ');',
+  ].join('\n');
+  const migrationSource = [
+    'const CHAT_PREFERENCES_KEY = "astrbot.chat.preferences";',
+    'export function chatPreferences(update) {',
+    '  let preferences = { global: {}, sessions: {} };',
+    '  try {',
+    '    const target = globalThis.localStorage;',
+    '    const migrated = [];',
+    '    if (storedUsername) {',
+    '      const globalKeys = {',
+    '        "chat.transportMode": "transportMode",',
+    '      };',
+    '      for (const [key, field] of Object.entries(globalKeys)) {',
+    '        const value = target.getItem(key);',
+    '        if (value !== null) {',
+    '          preferences.global[field] ??= value;',
+    '          migrated.push(key);',
+    '        }',
+    '      }',
+    '    }',
+    '    update?.(preferences);',
+    '    if (storedUsername && (update || migrated.length)) {',
+    '      target.setItem(CHAT_PREFERENCES_KEY, JSON.stringify(root));',
+    '      for (const key of migrated) {',
+    '        target.removeItem(key);',
+    '      }',
+    '    }',
+    '  } catch {',
+    '  }',
+    '  return preferences;',
+    '}',
+  ].join('\n');
+
+  await writeSource(chat, [legacyRead, legacyWrite].join('\n'));
   await writeSource(standaloneChat, legacyRead);
   await verifyDesktopBridgeArtifacts(options);
 
-  await writeSource(
-    chat,
-    `import { chatPreferences } from '@/utils/chatPreferences';
-const transportMode = ref(
-  chatPreferences().global.transportMode === 'websocket' ? 'websocket' : 'sse',
-);
-watch(transportMode, (mode) => {
-  chatPreferences((preferences) => {
-    preferences.global.transportMode = mode;
-  });
-});`,
-  );
-  await writeSource(
-    standaloneChat,
-    `import { chatPreferences } from '@/utils/chatPreferences';
-const transportMode = ref(
-  chatPreferences().global.transportMode === 'websocket' ? 'websocket' : 'sse',
-);`,
-  );
-  const migrationSource = `const globalKeys = { 'chat.transportMode': 'transportMode' };
-for (const [key, field] of Object.entries(globalKeys)) {
-  const value = target.getItem(key);
-  if (value !== null) preferences.global[field] ??= value;
-}
-target.setItem(CHAT_PREFERENCES_KEY, JSON.stringify(root));`;
+  await writeSource(chat, modernChat);
+  await writeSource(standaloneChat, modernStandaloneChat);
   await writeSource(chatPreferences, migrationSource);
   await verifyDesktopBridgeArtifacts(options);
 
-  await writeSource(chatPreferences, migrationSource.replace("'transportMode'", "'legacyTransportMode'"));
+  await writeSource(standaloneChat, legacyRead);
   await assert.rejects(
     verifyDesktopBridgeArtifacts(options),
+    /chat transport preference formats must match/i,
+  );
+  await writeSource(chat, [legacyRead, legacyWrite].join('\n'));
+  await writeSource(standaloneChat, modernStandaloneChat);
+  await assert.rejects(
+    verifyDesktopBridgeArtifacts(options),
+    /chat transport preference formats must match/i,
+  );
+
+  const dualFormatChat = [
+    legacyRead,
+    legacyWrite,
+    'chatPreferences((preferences) => { preferences.global.transportMode = mode; });',
+  ].join('\n');
+  const invalidMigration = migrationSource.replace(
+    '"chat.transportMode": "transportMode"',
+    '"chat.transportMode": "legacyTransportMode"',
+  );
+  await writeSource(chat, dualFormatChat);
+  await writeSource(standaloneChat, legacyRead);
+  await writeSource(chatPreferences, invalidMigration);
+  await assert.rejects(
+    verifyDesktopBridgeArtifacts(options),
+    /legacy desktop chat transport preference migration/,
+  );
+
+  const unrelatedMigration = [
+    'const globalKeys = { "chat.transportMode": "transportMode" };',
+    'export function chatPreferences() {',
+    '  if (false) {',
+    '    const value = target.getItem(key);',
+    '    preferences.global[field] ??= value;',
+    '  }',
+    '}',
+    'function persistOtherPreferences() {',
+    '  target.setItem(CHAT_PREFERENCES_KEY, JSON.stringify(root));',
+    '}',
+  ].join('\n');
+  await writeSource(chat, modernChat);
+  await writeSource(standaloneChat, modernStandaloneChat);
+  await writeSource(chatPreferences, unrelatedMigration);
+  await assert.rejects(
+    verifyDesktopBridgeArtifacts(options),
+    /legacy desktop chat transport preference migration/,
+  );
+
+  const migrationSourceLines = migrationSource.split('\n');
+  const tryStart = migrationSourceLines.indexOf('  try {');
+  const catchStart = migrationSourceLines.indexOf('  } catch {');
+  const unreachableMigration = [
+    ...migrationSourceLines.slice(0, tryStart + 1),
+    '    if (false) {',
+    ...migrationSourceLines.slice(tryStart + 1, catchStart).map((line) => `  ${line}`),
+    '    }',
+    ...migrationSourceLines.slice(catchStart),
+  ].join('\n');
+  await writeSource(chatPreferences, unreachableMigration);
+  await assert.rejects(
+    verifyDesktopBridgeArtifacts(options),
+    /legacy desktop chat transport preference migration/,
+  );
+
+  await assert.rejects(
+    verifyDesktopBridgeArtifacts({
+      ...options,
+      sourceRepoRef: 'v4.30.0',
+      isSourceRepoRefVersionTag: true,
+      isDesktopBridgeExpectationStrict: false,
+    }),
     /legacy desktop chat transport preference migration/,
   );
 });
