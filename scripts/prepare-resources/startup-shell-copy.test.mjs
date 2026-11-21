@@ -1,9 +1,37 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { runInNewContext } from 'node:vm';
 
 const startupShellPath = new URL('../../ui/index.html', import.meta.url);
 const startupCopyConfigPath = new URL('../../ui/startup-copy.js', import.meta.url);
+
+test('startup shell applies an explicit theme before styles and follows system without a preference', async () => {
+  const source = await readFile(startupShellPath, 'utf8');
+  const beforeStyles = source.split('<style>')[0];
+  const themeScript = [...beforeStyles.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+    .map((match) => match[1]).join('\n');
+
+  for (const [hash, prefersDark, expected] of [
+    ['#startup-theme=dark', false, 'dark'],
+    ['#startup-theme=light', true, 'light'],
+    ['#startup-theme=unknown', true, 'dark'],
+    ['', false, 'light'],
+  ]) {
+    const dataset = {};
+    let onChange;
+    runInNewContext(themeScript, {
+      location: { hash },
+      document: { documentElement: { dataset } },
+      matchMedia: () => ({ matches: prefersDark, addEventListener: (_, listener) => { onChange = listener; } }),
+    });
+    assert.equal(dataset.startupTheme, expected, hash);
+    if (hash === '') {
+      onChange({ matches: true });
+      assert.equal(dataset.startupTheme, 'dark');
+    }
+  }
+});
 
 test('startup shell loads shared copy config, reuses applyStartupMode, and exposes a focused live region', async () => {
   const source = await readFile(startupShellPath, 'utf8');

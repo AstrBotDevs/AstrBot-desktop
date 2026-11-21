@@ -35,6 +35,7 @@
     OPEN_REPAIR_INSTALL: 'desktop_bridge_open_repair_install',
     CHECK_APP_UPDATE: 'desktop_bridge_check_app_update',
     INSTALL_APP_UPDATE: 'desktop_bridge_install_app_update',
+    SET_STARTUP_THEME: 'desktop_bridge_set_startup_theme',
     SET_WINDOW_THEME: 'desktop_bridge_set_window_theme',
     MINIMIZE_WINDOW: 'desktop_bridge_minimize_window',
     TOGGLE_MAXIMIZE_WINDOW: 'desktop_bridge_toggle_maximize_window',
@@ -1112,6 +1113,43 @@
     }
   };
 
+  const installStartupThemeSync = () => {
+    const target = window.Storage?.prototype;
+    if (!target || window.__astrbotStartupThemeSyncInstalled) return;
+
+    try {
+      const storage = window.localStorage;
+      let requestedTheme;
+      const sync = async () => {
+        const mode = storage.getItem('themeMode');
+        const legacy = storage.getItem('uiTheme');
+        let theme = mode;
+        if (mode !== 'dark' && mode !== 'light' && mode !== 'system') {
+          if (legacy === 'PurpleThemeDark') theme = 'dark';
+          else if (legacy === 'PurpleTheme') theme = 'light';
+          else theme = 'system';
+        }
+        if (requestedTheme === theme) return;
+        requestedTheme = theme;
+        const result = await invokeBridge(BRIDGE_COMMANDS.SET_STARTUP_THEME, { theme });
+        if (result?.ok === false && requestedTheme === theme) requestedTheme = undefined;
+      };
+
+      // Storage methods live on the prototype. Keep sessionStorage and other keys untouched.
+      for (const method of ['setItem', 'removeItem', 'clear']) {
+        const original = target[method];
+        target[method] = function (...args) {
+          original.apply(this, args);
+          if (this === storage && (method === 'clear' || args[0] === 'themeMode' || args[0] === 'uiTheme')) {
+            void sync().catch(() => {});
+          }
+        };
+      }
+      window.__astrbotStartupThemeSyncInstalled = true;
+      void sync().catch(() => {});
+    } catch {}
+  };
+
   window.astrbotDesktop = {
     __tauriBridge: true,
     isDesktop: true,
@@ -1189,6 +1227,7 @@
   installNavigationBridges();
   void listenToTrayRestartBackendEvent();
   patchLocalStorageBridgeSync();
+  installStartupThemeSync();
   ensureDefaultChatTransportMode();
   void syncAuthToken();
   void syncShellLocale();

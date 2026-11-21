@@ -307,13 +307,23 @@ pub(crate) fn run() {
     let builder = configure_page_load_events(builder);
     let builder = configure_setup(builder);
 
+    let settings = desktop_settings::read_desktop_settings(
+        runtime_paths::default_packaged_root_dir().as_deref(),
+    );
+    let mut context = tauri::generate_context!();
+    if let Some(main) = context
+        .config_mut()
+        .app
+        .windows
+        .iter_mut()
+        .find(|window| window.label == "main")
+    {
+        window::startup_loading::configure_startup_theme(main, settings.startup_theme());
+    }
+
     builder
         .manage(BackendState::default())
-        .manage(DesktopSettingsCache::new(
-            desktop_settings::read_desktop_settings(
-                runtime_paths::default_packaged_root_dir().as_deref(),
-            ),
-        ))
+        .manage(DesktopSettingsCache::new(settings))
         .manage(bridge::plugin_ui_extensions::PluginUiExtensionRuntimeState::default())
         .invoke_handler(tauri::generate_handler![
             crate::bridge::commands::desktop_bridge_is_desktop_runtime,
@@ -330,6 +340,7 @@ pub(crate) fn run() {
             crate::bridge::commands::desktop_bridge_request_plugin_ui_extension,
             crate::bridge::commands::desktop_bridge_open_external_url,
             crate::bridge::commands::desktop_bridge_open_repair_install,
+            crate::bridge::commands::desktop_bridge_set_startup_theme,
             crate::bridge::commands::desktop_bridge_set_window_theme,
             crate::bridge::commands::desktop_bridge_minimize_window,
             crate::bridge::commands::desktop_bridge_toggle_maximize_window,
@@ -337,7 +348,7 @@ pub(crate) fn run() {
             crate::bridge::commands::desktop_bridge_check_app_update,
             crate::bridge::commands::desktop_bridge_install_app_update
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application")
         .run(handle_run_event);
 }
