@@ -37,8 +37,21 @@ function runBootstrap(source, authResults, sharedState = {}) {
   sharedState.navigation = navigation;
   const invocations = [];
   const intervals = [];
-  const localStorage = createStorage(localValues);
-  const sessionStorage = createStorage(sessionValues);
+  // Native Storage objects do not accept instance-level method overrides.
+  class Storage {}
+  if (sharedState.nativeStorage) {
+    Object.assign(Storage.prototype, {
+      getItem(key) { return this.values.get(key) ?? null; },
+      setItem(key, value) { this.values.set(String(key), String(value)); },
+      removeItem(key) { this.values.delete(String(key)); },
+      clear() { this.values.clear(); },
+    });
+  }
+  const makeStorage = (values) => sharedState.nativeStorage
+    ? Object.preventExtensions(Object.assign(new Storage(), { values }))
+    : createStorage(values);
+  const localStorage = makeStorage(localValues);
+  const sessionStorage = makeStorage(sessionValues);
   const location = {
     href: 'http://127.0.0.1:6185/#/auth/login',
     origin: 'http://127.0.0.1:6185',
@@ -53,6 +66,7 @@ function runBootstrap(source, authResults, sharedState = {}) {
     },
   };
   const window = {
+    Storage: sharedState.nativeStorage ? Storage : undefined,
     __TAURI_INTERNALS__: {
       event: sharedState.event,
       async invoke(command, payload = {}) {
@@ -125,6 +139,26 @@ function runBootstrap(source, authResults, sharedState = {}) {
     navigation,
   };
 }
+
+test('bridge saves the Dashboard theme even when switching to system keeps the same palette', async () => {
+  const source = await readFile(bootstrapPath, 'utf8');
+  const { localStorage, sessionStorage, invocations } = runBootstrap(source, [], {
+    nativeStorage: true,
+    localValues: new Map([['uiTheme', 'PurpleThemeDark']]),
+  });
+  const savedModes = () => invocations
+    .filter(({ command }) => command === 'desktop_bridge_set_startup_theme')
+    .map(({ payload }) => payload.theme);
+
+  assert.deepEqual(savedModes(), ['dark']);
+  sessionStorage.setItem('themeMode', 'light');
+  localStorage.setItem('themeMode', 'system');
+  localStorage.setItem('uiTheme', 'PurpleThemeDark');
+  localStorage.setItem('themeMode', 'light');
+  localStorage.clear();
+
+  assert.deepEqual(savedModes(), ['dark', 'system', 'light', 'system']);
+});
 
 test('bridge bootstrap defines astrbotAppUpdater methods', async () => {
   const source = await readFile(bootstrapPath, 'utf8');

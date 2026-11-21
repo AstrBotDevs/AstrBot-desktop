@@ -7,14 +7,46 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <title>AstrBot</title>
+    <script>
+      (() => {
+        const root = document.documentElement;
+        const hash = location.hash;
+        if (hash === "#startup-theme=light" || hash === "#startup-theme=dark") {
+          root.dataset.startupTheme = hash.split("=")[1];
+          return;
+        }
+        const scheme = matchMedia("(prefers-color-scheme: dark)");
+        const apply = ({ matches }) => {
+          root.dataset.startupTheme = matches ? "dark" : "light";
+        };
+        apply(scheme);
+        scheme.addEventListener("change", apply);
+      })();
+    </script>
     <style>
       :root {
+        color-scheme: light;
         --bg: #f4f7fb;
         --text: #1b1c1d;
         --muted: #6b7280;
         --card: #ffffff;
         --border: #e5e7eb;
         --accent: #3c96ca;
+        --track: #edf2f7;
+        --error-border: #f3b6b2;
+        --error-text: #b42318;
+      }
+
+      :root[data-startup-theme="dark"] {
+        color-scheme: dark;
+        --bg: #1a1a1a;
+        --text: #f4f4f5;
+        --muted: #b1b5be;
+        --card: #242424;
+        --border: #424242;
+        --track: #333333;
+        --error-border: #75433f;
+        --error-text: #ffb4ab;
       }
 
       * {
@@ -79,7 +111,7 @@
         width: 100%;
         height: 6px;
         border-radius: 999px;
-        background: #edf2f7;
+        background: var(--track);
         overflow: hidden;
       }
 
@@ -110,7 +142,7 @@
       }
 
       .panel.error {
-        border-color: #f3b6b2;
+        border-color: var(--error-border);
       }
 
       .panel.error .bar-wrap {
@@ -118,7 +150,7 @@
       }
 
       .panel.error .status {
-        color: #b42318;
+        color: var(--error-text);
         align-items: flex-start;
       }
 

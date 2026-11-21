@@ -1,9 +1,20 @@
 use std::env;
 
-use tauri::{AppHandle, Manager};
+use tauri::{utils::config::WindowConfig, webview::Color, AppHandle, Manager, WebviewUrl};
 use url::Url;
 
-use crate::{startup_mode, BackendState};
+use crate::{desktop_settings::StartupTheme, startup_mode, BackendState};
+
+pub(crate) fn configure_startup_theme(config: &mut WindowConfig, theme: StartupTheme) {
+    let (fragment, color) = match theme {
+        StartupTheme::Light => ("#startup-theme=light", Color(244, 247, 251, 255)),
+        StartupTheme::Dark => ("#startup-theme=dark", Color(26, 26, 26, 255)),
+        StartupTheme::System => return,
+    };
+    // Pass the theme to the page before paint and cover the native background before HTML loads.
+    config.url = WebviewUrl::App(fragment.into());
+    config.background_color = Some(color);
+}
 
 pub fn should_apply_startup_loading_mode(webview_label: &str, page_url: &Url) -> bool {
     if webview_label != "main" {
