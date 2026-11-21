@@ -111,15 +111,17 @@ export const verifyDesktopBridgeArtifacts = async ({
   isDesktopBridgeExpectationStrict,
 }) => {
   const issues = [];
+  const chatTransportFormats = new Set();
   const isTaggedRelease = isSourceRepoRefVersionTag;
   if (!isDesktopBridgeExpectationStrict && isTaggedRelease) {
     console.warn(
-      `[prepare-resources] Desktop bridge required checks downgraded to warnings for source ref ${sourceRepoRef}. ` +
+      `[prepare-resources] Desktop bridge best-effort checks downgraded to warnings for source ref ${sourceRepoRef}. ` +
         'Set ASTRBOT_DESKTOP_STRICT_BRIDGE_EXPECTATIONS=1 to enforce.',
     );
   }
 
-  for (const expectation of getDesktopBridgeExpectations()) {
+  const expectations = new Set(getDesktopBridgeExpectations());
+  for (const expectation of expectations) {
     const mustPass = shouldEnforceDesktopBridgeExpectation(expectation, {
       isDesktopBridgeExpectationStrict,
       isTaggedRelease,
@@ -139,14 +141,28 @@ export const verifyDesktopBridgeArtifacts = async ({
     }
 
     const source = await readFile(file, 'utf8');
-    if (!expectation.pattern.test(source)) {
-      const message = `[prepare-resources] Expected ${expectation.label} in ${path.relative(projectRoot, file)}. ${expectation.hint || ''} Please sync AstrBot dashboard sources.`;
-      if (mustPass) {
-        issues.push(message);
-      } else {
-        console.warn(`${message} (compatibility check skipped)`);
-      }
+    const scopedSource = expectation.scopePattern
+      ? source.match(expectation.scopePattern)?.[0] || ''
+      : source;
+    const primaryMatch = expectation.pattern.test(scopedSource);
+    const fallbackMatch = expectation.fallbackPattern?.test(source) || false;
+    if (fallbackMatch) {
+      expectations.add(expectation.fallbackRequirement);
+      chatTransportFormats.add('consolidated');
     }
+    if (primaryMatch && expectation.fallbackPattern) chatTransportFormats.add('legacy');
+    if (primaryMatch || fallbackMatch) continue;
+
+    const message = `[prepare-resources] Expected ${expectation.label} in ${path.relative(projectRoot, file)}. ${expectation.hint || ''} Please sync AstrBot dashboard sources.`;
+    if (mustPass) {
+      issues.push(message);
+    } else {
+      console.warn(`${message} (compatibility check skipped)`);
+    }
+  }
+
+  if (chatTransportFormats.size > 1) {
+    issues.push('[prepare-resources] Chat transport preference formats must match across Chat.vue and StandaloneChat.vue.');
   }
 
   if (issues.length > 0) {

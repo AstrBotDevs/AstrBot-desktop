@@ -24,10 +24,13 @@ if (
 const CHAT_TRANSPORT_STORAGE_KEY_PATTERN = escapeRegex(CHAT_TRANSPORT_MODE_STORAGE_KEY);
 const CHAT_TRANSPORT_WEBSOCKET_PATTERN = escapeRegex(CHAT_TRANSPORT_MODE_WEBSOCKET);
 const CHAT_TRANSPORT_READ_HINT =
-  `Expected chat UI to read localStorage["${CHAT_TRANSPORT_MODE_STORAGE_KEY}"] ` +
+  `Expected chat UI to read "${CHAT_TRANSPORT_MODE_STORAGE_KEY}" directly or through chatPreferences() ` +
   `and recognize "${CHAT_TRANSPORT_MODE_WEBSOCKET}".`;
 const CHAT_TRANSPORT_WRITE_HINT =
-  `Expected chat UI to persist transport mode via localStorage.setItem("${CHAT_TRANSPORT_MODE_STORAGE_KEY}", ...).`;
+  'Expected chat UI to persist transport mode directly in localStorage or through chatPreferences().';
+const CHAT_TRANSPORT_MIGRATION_HINT =
+  `Expected chatPreferences to migrate the legacy "${CHAT_TRANSPORT_MODE_STORAGE_KEY}" key ` +
+  'into the current global transportMode preference.';
 
 const DESKTOP_BRIDGE_PATTERNS = {
   trayRestartGuard: /if\s*\(\s*!desktopBridge\s*\?\.\s*onTrayRestartBackend\s*\)\s*\{/,
@@ -41,12 +44,43 @@ const DESKTOP_BRIDGE_PATTERNS = {
     /const\s+runtimeInfo\s*=\s*await\s+getDesktopRuntimeInfo\s*\(\s*\)\s*;?[\s\S]*?isDesktopReleaseMode\.value\s*=\s*runtimeInfo\.isDesktopRuntime/,
   desktopReleaseModeFlag: /\bisDesktopReleaseMode\b/,
   desktopRuntimeProbeWarn: /console\.warn\([\s\S]*desktop runtime/i,
-  chatTransportPreferenceRead: new RegExp(
+  legacyChatTransportPreferenceRead: new RegExp(
     `localStorage\\.getItem\\(["']${CHAT_TRANSPORT_STORAGE_KEY_PATTERN}["']\\)[\\s\\S]*?["']${CHAT_TRANSPORT_WEBSOCKET_PATTERN}["']`,
   ),
-  chatTransportPreferenceWrite: new RegExp(
+  legacyChatTransportPreferenceWrite: new RegExp(
     `localStorage\\.setItem\\(["']${CHAT_TRANSPORT_STORAGE_KEY_PATTERN}["']\\s*,`,
   ),
+  chatTransportPreferenceRead: new RegExp(
+    `chatPreferences\\(\\)\\.global\\.transportMode\\s*===\\s*["']${CHAT_TRANSPORT_WEBSOCKET_PATTERN}["']`,
+  ),
+  chatTransportPreferenceWrite:
+    /chatPreferences\(\s*\(\s*(\w+)\s*\)\s*=>\s*\{\s*\1\.global\.transportMode\s*=/,
+  chatTransportPreferenceMigration: new RegExp(
+    String.raw`^(?<bodyIndent>[ \t]*)let preferences\b[^\r\n]*;?[ \t]*\r?\n` +
+      String.raw`^\k<bodyIndent>try\s*\{[ \t]*\r?\n` +
+      String.raw`^(?<indent>\k<bodyIndent>[ \t]+)const target\s*=.*?;[ \t]*\r?\n` +
+      String.raw`[\s\S]*?^\k<indent>const migrated(?::\s*string\[\])?\s*=\s*\[\];[ \t]*\r?\n` +
+      String.raw`^\k<indent>if\s*\(storedUsername\)\s*\{\s*const globalKeys\s*=\s*\{[^{}]*?` +
+      String.raw`["']${CHAT_TRANSPORT_STORAGE_KEY_PATTERN}["']\s*:\s*["']transportMode["'][^{}]*?\}\s*(?:as const)?;?\s*` +
+      String.raw`for\s*\(const\s+\[key,\s*field\]\s+of\s+Object\.entries\(globalKeys\)\)\s*\{\s*` +
+      String.raw`const value\s*=\s*target\.getItem\(key\);?\s*if\s*\(value\s*!==\s*null\)\s*\{\s*` +
+      String.raw`preferences\.global\[field\]\s*\?\?=\s*value;?\s*migrated\.push\(key\);?\s*\}\s*\}` +
+      String.raw`[\s\S]*?^\k<indent>\}[ \t]*\r?\n^\k<indent>update\?\.\(preferences\);?[ \t]*\r?\n` +
+      String.raw`^\k<indent>if\s*\(storedUsername\s*&&\s*\(update\s*\|\|\s*migrated\.length\)\)\s*\{\s*` +
+      String.raw`target\.setItem\(CHAT_PREFERENCES_KEY,\s*JSON\.stringify\(root\)\);?[\s\S]*?` +
+      String.raw`^\k<bodyIndent>\}\s*catch\s*\{[\s\S]*?^\k<bodyIndent>return\s+preferences\s*;`,
+    'm',
+  ),
+};
+
+const CHAT_TRANSPORT_MIGRATION = {
+  filePath: ['src', 'utils', 'chatPreferences.ts'],
+  pattern: DESKTOP_BRIDGE_PATTERNS.chatTransportPreferenceMigration,
+  scopePattern: /^export function chatPreferences\([\s\S]*?^\}/m,
+  label: 'legacy desktop chat transport preference migration',
+  hint: CHAT_TRANSPORT_MIGRATION_HINT,
+  required: true,
+  alwaysRequired: true,
 };
 
 const DESKTOP_BRIDGE_EXPECTATIONS = [
@@ -101,21 +135,27 @@ const DESKTOP_BRIDGE_EXPECTATIONS = [
   },
   {
     filePath: ['src', 'components', 'chat', 'Chat.vue'],
-    pattern: DESKTOP_BRIDGE_PATTERNS.chatTransportPreferenceRead,
+    pattern: DESKTOP_BRIDGE_PATTERNS.legacyChatTransportPreferenceRead,
+    fallbackPattern: DESKTOP_BRIDGE_PATTERNS.chatTransportPreferenceRead,
+    fallbackRequirement: CHAT_TRANSPORT_MIGRATION,
     label: 'chat transport preference read',
     hint: CHAT_TRANSPORT_READ_HINT,
     required: true,
   },
   {
     filePath: ['src', 'components', 'chat', 'Chat.vue'],
-    pattern: DESKTOP_BRIDGE_PATTERNS.chatTransportPreferenceWrite,
+    pattern: DESKTOP_BRIDGE_PATTERNS.legacyChatTransportPreferenceWrite,
+    fallbackPattern: DESKTOP_BRIDGE_PATTERNS.chatTransportPreferenceWrite,
+    fallbackRequirement: CHAT_TRANSPORT_MIGRATION,
     label: 'chat transport preference write',
     hint: CHAT_TRANSPORT_WRITE_HINT,
     required: true,
   },
   {
     filePath: ['src', 'components', 'chat', 'StandaloneChat.vue'],
-    pattern: DESKTOP_BRIDGE_PATTERNS.chatTransportPreferenceRead,
+    pattern: DESKTOP_BRIDGE_PATTERNS.legacyChatTransportPreferenceRead,
+    fallbackPattern: DESKTOP_BRIDGE_PATTERNS.chatTransportPreferenceRead,
+    fallbackRequirement: CHAT_TRANSPORT_MIGRATION,
     label: 'standalone chat transport preference read',
     hint: CHAT_TRANSPORT_READ_HINT,
     required: true,
@@ -131,5 +171,5 @@ export const shouldEnforceDesktopBridgeExpectation = (
   if (isDesktopBridgeExpectationStrict) {
     return true;
   }
-  return expectation.required && !isTaggedRelease;
+  return expectation.required && (expectation.alwaysRequired === true || !isTaggedRelease);
 };
