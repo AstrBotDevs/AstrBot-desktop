@@ -20,7 +20,7 @@ pub struct ShellTexts {
     pub tray_restart_backend: &'static str,
     pub tray_launch_at_login: &'static str,
     pub tray_silent_launch: &'static str,
-    pub tray_close_to_tray: &'static str,
+    pub tray_close_behavior: &'static str,
     pub tray_plugin_ui_extensions: &'static str,
     pub tray_clear_plugin_ui_extension_grants: &'static str,
     pub tray_quit: &'static str,
@@ -42,7 +42,11 @@ pub fn shell_texts_for_locale(locale: &str) -> ShellTexts {
             tray_restart_backend: "Restart Backend",
             tray_launch_at_login: "Launch at Login",
             tray_silent_launch: "Silent Launch",
-            tray_close_to_tray: "Close to Tray",
+            tray_close_behavior: if cfg!(windows) {
+                "Reset Close Choice"
+            } else {
+                "Close to Tray"
+            },
             tray_plugin_ui_extensions: "Allow Plugin UI Extensions",
             tray_clear_plugin_ui_extension_grants: "Clear Plugin UI Authorizations",
             tray_quit: "Quit",
@@ -56,7 +60,11 @@ pub fn shell_texts_for_locale(locale: &str) -> ShellTexts {
         tray_restart_backend: "重启后端",
         tray_launch_at_login: "开机自启",
         tray_silent_launch: "静默启动",
-        tray_close_to_tray: "关闭到托盘",
+        tray_close_behavior: if cfg!(windows) {
+            "恢复关闭时询问"
+        } else {
+            "关闭到托盘"
+        },
         tray_plugin_ui_extensions: "允许插件界面扩展",
         tray_clear_plugin_ui_extension_grants: "清除插件界面授权",
         tray_quit: "退出",
@@ -261,7 +269,14 @@ mod tests {
         assert_eq!(texts.tray_hide, "Hide AstrBot");
         assert_eq!(texts.tray_launch_at_login, "Launch at Login");
         assert_eq!(texts.tray_silent_launch, "Silent Launch");
-        assert_eq!(texts.tray_close_to_tray, "Close to Tray");
+        assert_eq!(
+            texts.tray_close_behavior,
+            if cfg!(windows) {
+                "Reset Close Choice"
+            } else {
+                "Close to Tray"
+            }
+        );
         assert_eq!(
             texts.tray_plugin_ui_extensions,
             "Allow Plugin UI Extensions"
@@ -279,7 +294,14 @@ mod tests {
         assert_eq!(texts.tray_hide, "隐藏 AstrBot");
         assert_eq!(texts.tray_launch_at_login, "开机自启");
         assert_eq!(texts.tray_silent_launch, "静默启动");
-        assert_eq!(texts.tray_close_to_tray, "关闭到托盘");
+        assert_eq!(
+            texts.tray_close_behavior,
+            if cfg!(windows) {
+                "恢复关闭时询问"
+            } else {
+                "关闭到托盘"
+            }
+        );
         assert_eq!(texts.tray_plugin_ui_extensions, "允许插件界面扩展");
         assert_eq!(
             texts.tray_clear_plugin_ui_extension_grants,

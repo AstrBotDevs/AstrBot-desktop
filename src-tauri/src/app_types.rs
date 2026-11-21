@@ -21,7 +21,10 @@ pub(crate) struct TrayMenuState {
     pub(crate) restart_backend_item: MenuItem<tauri::Wry>,
     pub(crate) launch_at_login_item: CheckMenuItem<tauri::Wry>,
     pub(crate) silent_launch_item: CheckMenuItem<tauri::Wry>,
-    pub(crate) close_to_tray_item: CheckMenuItem<tauri::Wry>,
+    #[cfg(not(windows))]
+    pub(crate) close_behavior_item: CheckMenuItem<tauri::Wry>,
+    #[cfg(windows)]
+    pub(crate) close_behavior_item: MenuItem<tauri::Wry>,
     pub(crate) plugin_ui_extensions_item: CheckMenuItem<tauri::Wry>,
     pub(crate) clear_plugin_ui_extension_grants_item: MenuItem<tauri::Wry>,
     pub(crate) quit_item: MenuItem<tauri::Wry>,
