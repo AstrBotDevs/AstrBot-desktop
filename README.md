@@ -90,6 +90,11 @@ If you need to migrate data between the desktop app and a source-based deploymen
 <!-- section: faq -->
 ## FAQ
 
+<!-- faq: windows-window-controls -->
+### What is the difference between minimizing and closing on Windows?
+
+Minimizing keeps the window on the taskbar. Closing lets you choose **Minimize to Tray** or **Quit**. If you remember your choice, select **Reset Close Choice** in the tray menu to restore the prompt.
+
 <!-- faq: server-deployment -->
 ### Is it suitable for server deployment?
 

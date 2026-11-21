@@ -128,7 +128,8 @@ fn handle_silent_launch_toggle(app_handle: &AppHandle) {
     );
 }
 
-fn handle_close_to_tray_toggle(app_handle: &AppHandle) {
+#[cfg(not(windows))]
+fn handle_close_behavior_menu_item(app_handle: &AppHandle) {
     let Some(tray_state) = app_handle.try_state::<TrayMenuState>() else {
         return;
     };
@@ -136,9 +137,14 @@ fn handle_close_to_tray_toggle(app_handle: &AppHandle) {
         app_handle,
         desktop_settings::DesktopSettingKey::CloseToTray,
         |settings| (settings.close_to_tray, !settings.close_to_tray),
-        &tray_state.close_to_tray_item,
+        &tray_state.close_behavior_item,
         actions::TRAY_MENU_CLOSE_TO_TRAY,
     );
+}
+
+#[cfg(windows)]
+fn handle_close_behavior_menu_item(app_handle: &AppHandle) {
+    window::close_prompt::reset_choice(app_handle);
 }
 
 fn handle_plugin_ui_extensions_toggle(app_handle: &AppHandle) {
@@ -231,7 +237,7 @@ pub fn handle_tray_menu_event(app_handle: &AppHandle, menu_id: &str) {
         }
         Some(actions::TrayMenuAction::LaunchAtLogin) => handle_launch_at_login_toggle(app_handle),
         Some(actions::TrayMenuAction::SilentLaunch) => handle_silent_launch_toggle(app_handle),
-        Some(actions::TrayMenuAction::CloseToTray) => handle_close_to_tray_toggle(app_handle),
+        Some(actions::TrayMenuAction::CloseToTray) => handle_close_behavior_menu_item(app_handle),
         Some(actions::TrayMenuAction::PluginUiExtensions) => {
             handle_plugin_ui_extensions_toggle(app_handle)
         }

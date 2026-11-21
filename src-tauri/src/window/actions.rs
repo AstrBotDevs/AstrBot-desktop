@@ -1,6 +1,18 @@
 use tauri::{AppHandle, Manager};
 
-use crate::{tray, window::main_window};
+use crate::{
+    append_desktop_log, desktop_settings::CloseAction, lifecycle, tray, window::main_window,
+    DEFAULT_SHELL_LOCALE,
+};
+
+pub(crate) fn apply_close_action(app_handle: &AppHandle, choice: CloseAction) {
+    match choice {
+        CloseAction::HideToTray => {
+            hide_main_window(app_handle, DEFAULT_SHELL_LOCALE, append_desktop_log);
+        }
+        CloseAction::Exit => lifecycle::events::handle_tray_quit(app_handle),
+    }
+}
 
 pub fn show_main_window<F>(app_handle: &AppHandle, default_shell_locale: &'static str, log: F)
 where

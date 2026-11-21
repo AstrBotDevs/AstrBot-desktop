@@ -90,6 +90,11 @@ AstrBot Desktop 是面向本地桌面使用的 AstrBot 打包发行版。它内�
 <!-- section: faq -->
 ## 常见问题
 
+<!-- faq: windows-window-controls -->
+### Windows 上最小化和关闭有什么区别？
+
+最小化后仍可从任务栏恢复。点关闭可选择「最小化到托盘」或「退出」；勾选「记住我的选择」后，可以在托盘菜单点「恢复关闭时询问」。
+
 <!-- faq: server-deployment -->
 ### 适合部署在服务器上吗？
 
