@@ -1,11 +1,19 @@
 use tauri::{webview::PageLoadEvent, RunEvent};
 
+use crate::desktop_settings::CloseAction;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MainWindowAction {
     None,
-    PreventCloseAndHide,
-    PreventCloseAndExit,
+    PreventClose(CloseAction),
+    ShowClosePrompt,
     HideIfMinimized,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum MainWindowEvent {
+    CloseRequested(Option<CloseAction>),
+    FocusLost { minimized: bool },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,30 +35,21 @@ pub(crate) enum RunEventAction {
 pub(crate) fn main_window_action(
     window_label: &str,
     is_quitting: bool,
-    minimized_on_focus_lost: bool,
-    is_close_requested: bool,
-    is_focus_lost: bool,
-    close_to_tray: bool,
+    is_windows: bool,
+    event: MainWindowEvent,
 ) -> MainWindowAction {
-    if window_label != "main" {
+    if window_label != "main" || is_quitting {
         return MainWindowAction::None;
     }
 
-    if is_close_requested {
-        return if is_quitting {
-            MainWindowAction::None
-        } else if close_to_tray {
-            MainWindowAction::PreventCloseAndHide
-        } else {
-            MainWindowAction::PreventCloseAndExit
-        };
+    match event {
+        MainWindowEvent::CloseRequested(Some(choice)) => MainWindowAction::PreventClose(choice),
+        MainWindowEvent::CloseRequested(None) => MainWindowAction::ShowClosePrompt,
+        MainWindowEvent::FocusLost { minimized: true } if !is_windows => {
+            MainWindowAction::HideIfMinimized
+        }
+        _ => MainWindowAction::None,
     }
-
-    if is_focus_lost && minimized_on_focus_lost && !is_quitting {
-        return MainWindowAction::HideIfMinimized;
-    }
-
-    MainWindowAction::None
 }
 
 pub(crate) fn page_load_action(
@@ -94,10 +93,12 @@ pub(crate) fn run_event_action(event: &RunEvent) -> RunEventAction {
 #[cfg(test)]
 mod tests {
     use super::{
-        main_window_action, page_load_action, run_event_action, MainWindowAction, PageLoadAction,
-        RunEventAction,
+        main_window_action, page_load_action, run_event_action, MainWindowAction, MainWindowEvent,
+        PageLoadAction, RunEventAction,
     };
     use tauri::{webview::PageLoadEvent, RunEvent};
+
+    use crate::desktop_settings::CloseAction;
 
     #[cfg(target_os = "macos")]
     use super::reopen_event_action;
@@ -105,31 +106,81 @@ mod tests {
     #[test]
     fn main_window_action_ignores_non_main_windows() {
         assert_eq!(
-            main_window_action("settings", false, false, true, false, true),
+            main_window_action(
+                "settings",
+                false,
+                false,
+                MainWindowEvent::CloseRequested(Some(CloseAction::HideToTray)),
+            ),
             MainWindowAction::None
         );
     }
 
     #[test]
     fn main_window_action_hides_on_close_when_not_quitting() {
+        for is_windows in [false, true] {
+            assert_eq!(
+                main_window_action(
+                    "main",
+                    false,
+                    is_windows,
+                    MainWindowEvent::CloseRequested(Some(CloseAction::HideToTray)),
+                ),
+                MainWindowAction::PreventClose(CloseAction::HideToTray)
+            );
+        }
+    }
+
+    #[test]
+    fn main_window_action_exits_when_exit_is_configured() {
+        for is_windows in [false, true] {
+            assert_eq!(
+                main_window_action(
+                    "main",
+                    false,
+                    is_windows,
+                    MainWindowEvent::CloseRequested(Some(CloseAction::Exit)),
+                ),
+                MainWindowAction::PreventClose(CloseAction::Exit)
+            );
+        }
+    }
+
+    #[test]
+    fn windows_minimized_focus_loss_keeps_the_window_on_the_taskbar() {
         assert_eq!(
-            main_window_action("main", false, false, true, false, true),
-            MainWindowAction::PreventCloseAndHide
+            main_window_action(
+                "main",
+                false,
+                true,
+                MainWindowEvent::FocusLost { minimized: true }
+            ),
+            MainWindowAction::None
         );
     }
 
     #[test]
-    fn main_window_action_allows_close_when_close_to_tray_is_disabled() {
+    fn close_without_a_saved_choice_prompts_unless_already_quitting() {
+        let event = MainWindowEvent::CloseRequested(None);
         assert_eq!(
-            main_window_action("main", false, false, true, false, false),
-            MainWindowAction::PreventCloseAndExit
+            main_window_action("main", false, true, event),
+            MainWindowAction::ShowClosePrompt
+        );
+        assert_eq!(
+            main_window_action("main", true, true, event),
+            MainWindowAction::None
         );
     }
 
     #[test]
-    fn main_window_action_hides_on_minimized_focus_loss() {
+    fn non_windows_minimized_focus_loss_still_hides_the_window() {
         assert_eq!(
-            main_window_action("main", false, true, false, true, true),
+            main_window_action(
+                "main",
+                false,
+                false,
+                MainWindowEvent::FocusLost { minimized: true }
+            ),
             MainWindowAction::HideIfMinimized
         );
     }

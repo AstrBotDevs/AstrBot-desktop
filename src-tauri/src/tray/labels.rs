@@ -105,9 +105,17 @@ pub fn update_tray_menu_labels_with_visibility<F>(
         actions::TRAY_MENU_SILENT_LAUNCH,
         &log,
     );
+    #[cfg(windows)]
+    set_menu_text_safe(
+        &tray_state.close_behavior_item,
+        shell_texts.tray_close_behavior,
+        actions::TRAY_MENU_CLOSE_TO_TRAY,
+        &log,
+    );
+    #[cfg(not(windows))]
     set_check_menu_text_safe(
-        &tray_state.close_to_tray_item,
-        shell_texts.tray_close_to_tray,
+        &tray_state.close_behavior_item,
+        shell_texts.tray_close_behavior,
         actions::TRAY_MENU_CLOSE_TO_TRAY,
         &log,
     );

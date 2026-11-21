@@ -140,54 +140,53 @@ fn configure_plugins(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
 }
 
 fn configure_window_events(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
+    use app_runtime_events::{MainWindowAction, MainWindowEvent};
+
     builder.on_window_event(|window, event| {
-        let is_quitting = window.app_handle().state::<BackendState>().is_quitting();
-        let desktop_settings = window.app_handle().state::<DesktopSettingsCache>().get();
-        let action = match &event {
-            WindowEvent::CloseRequested { .. } => app_runtime_events::main_window_action(
-                window.label(),
-                is_quitting,
-                false,
-                true,
-                false,
-                desktop_settings.close_to_tray,
+        let app_handle = window.app_handle();
+        let is_windows = cfg!(windows);
+        let window_event = match event {
+            WindowEvent::CloseRequested { .. } => MainWindowEvent::CloseRequested(
+                app_handle
+                    .state::<DesktopSettingsCache>()
+                    .get()
+                    .close_action(is_windows),
             ),
-            WindowEvent::Focused(false) => app_runtime_events::main_window_action(
-                window.label(),
-                is_quitting,
-                matches!(window.is_minimized(), Ok(true)),
-                false,
-                true,
-                desktop_settings.close_to_tray,
-            ),
-            _ => app_runtime_events::MainWindowAction::None,
+            // Do not turn Windows taskbar minimization into tray hiding.
+            WindowEvent::Focused(false) if !is_windows => MainWindowEvent::FocusLost {
+                minimized: window.is_minimized().unwrap_or(false),
+            },
+            _ => return,
         };
+        let action = app_runtime_events::main_window_action(
+            window.label(),
+            app_handle.state::<BackendState>().is_quitting(),
+            is_windows,
+            window_event,
+        );
 
         match action {
-            app_runtime_events::MainWindowAction::PreventCloseAndHide => {
+            MainWindowAction::PreventClose(choice) => {
                 if let WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
+                    window::actions::apply_close_action(app_handle, choice);
                 }
+            }
+            MainWindowAction::ShowClosePrompt => {
+                #[cfg(windows)]
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    window::close_prompt::show(window);
+                }
+            }
+            MainWindowAction::HideIfMinimized => {
                 window::actions::hide_main_window(
                     window.app_handle(),
                     DEFAULT_SHELL_LOCALE,
                     append_desktop_log,
                 );
             }
-            app_runtime_events::MainWindowAction::PreventCloseAndExit => {
-                if let WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                }
-                lifecycle::events::handle_tray_quit(window.app_handle());
-            }
-            app_runtime_events::MainWindowAction::HideIfMinimized => {
-                window::actions::hide_main_window(
-                    window.app_handle(),
-                    DEFAULT_SHELL_LOCALE,
-                    append_desktop_log,
-                );
-            }
-            app_runtime_events::MainWindowAction::None => {}
+            MainWindowAction::None => {}
         }
     })
 }
