@@ -148,7 +148,7 @@ Before enabling LAN access, make sure your system firewall allows port `6185`, a
 <!-- faq: macos-install -->
 ### macOS says the app is damaged or cannot be opened
 
-Download a fresh copy of the `.dmg` for your Mac from the [official Releases page](https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest) and reinstall AstrBot. If macOS still blocks the app, report the exact warning on the [issue tracker](https://github.com/AstrBotDevs/AstrBot-desktop/issues).
+Download a fresh copy of the `.dmg` for your Mac from the same channel you already use: [Stable](https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest) or [Nightly](https://github.com/AstrBotDevs/AstrBot-desktop/releases/tag/nightly). Reinstall AstrBot. If macOS still blocks the app, report the exact warning on the [issue tracker](https://github.com/AstrBotDevs/AstrBot-desktop/issues).
 
 <!-- faq: missing-runtime-tools -->
 ### Why do some MCP tools say `node`, `npx`, or `uvx` is missing?

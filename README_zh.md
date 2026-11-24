@@ -148,7 +148,7 @@ ASTRBOT_DASHBOARD_PORT=6185
 <!-- faq: macos-install -->
 ### macOS 提示“应用已损坏”或无法打开
 
-请从[官方发布页](https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest)重新下载适合你的 Mac 的 `.dmg` 并安装。如果 macOS 仍阻止打开应用，请在[问题反馈页](https://github.com/AstrBotDevs/AstrBot-desktop/issues)附上完整的系统提示。
+请从当前安装版本所属的通道（[Stable](https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest) 或 [Nightly](https://github.com/AstrBotDevs/AstrBot-desktop/releases/tag/nightly)）重新下载适合你的 Mac 的 `.dmg` 并安装。如果 macOS 仍阻止打开应用，请在[问题反馈页](https://github.com/AstrBotDevs/AstrBot-desktop/issues)附上完整的系统提示。
 
 <!-- faq: missing-runtime-tools -->
 ### 为什么某些 MCP 工具提示缺少 `node`、`npx` 或 `uvx`？
