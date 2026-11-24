@@ -1121,6 +1121,9 @@
       if (!storage) return;
       let savedTheme;
       let saving = false;
+      let pendingRetry;
+      const initialRetryDelay = 1_000;
+      let retryDelay = initialRetryDelay;
       const readTheme = () => {
         const mode = storage.getItem('themeMode');
         if (mode === 'dark' || mode === 'light' || mode === 'system') return mode;
@@ -1132,11 +1135,16 @@
       const sync = async () => {
         if (saving) return;
         saving = true;
-        const initialRetryDelay = 1_000;
-        let retryDelay = initialRetryDelay;
         try {
+          const latestTheme = readTheme();
+          if (pendingRetry) {
+            if (latestTheme === pendingRetry.theme) return;
+            window.clearTimeout(pendingRetry.timer);
+            pendingRetry = undefined;
+            retryDelay = initialRetryDelay;
+          }
           // Read the latest choice after each write so changes during IPC are coalesced.
-          for (let theme = readTheme(); theme !== savedTheme; theme = readTheme()) {
+          for (let theme = latestTheme; theme !== savedTheme; theme = readTheme()) {
             const result = await invokeBridge(BRIDGE_COMMANDS.SET_STARTUP_THEME, { theme });
             if (result?.ok !== false) {
               savedTheme = theme;
@@ -1145,8 +1153,13 @@
               if (retryDelay === initialRetryDelay) {
                 console.warn('[astrbotDesktop] Retrying startup theme save', result.reason);
               }
-              await new Promise((resolve) => window.setTimeout(resolve, retryDelay));
+              const timer = window.setTimeout(() => {
+                pendingRetry = undefined;
+                void sync();
+              }, retryDelay);
+              pendingRetry = { theme, timer };
               retryDelay = Math.min(retryDelay * 2, 30_000);
+              return;
             }
           }
         } catch (error) {

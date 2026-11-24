@@ -100,6 +100,7 @@ function runBootstrap(source, authResults, sharedState = {}) {
     location,
     open: () => null,
     setTimeout: sharedState.setTimeout,
+    clearTimeout: sharedState.clearTimeout,
     setInterval(handler, delay) {
       intervals.push({ handler, delay });
       return intervals.length;
@@ -221,26 +222,33 @@ test('bridge retries repeated startup theme save failures until the save succeed
   assert.equal(timers.length, 0);
 });
 
-test('bridge retries the latest Dashboard theme after a save failure', async () => {
+test('bridge interrupts retry backoff when the Dashboard theme changes', async () => {
   const source = await readFile(bootstrapPath, 'utf8');
-  const timers = [];
+  const timers = new Map();
+  let nextTimerId = 0;
   const { invocations, localStorage } = runBootstrap(source, [], {
     nativeStorage: true,
     localValues: new Map([['themeMode', 'dark']]),
     saveTheme(theme) {
       if (theme === 'dark') throw new Error('temporary IPC failure');
     },
-    setTimeout: (run) => timers.push(run),
+    setTimeout(run) {
+      const id = ++nextTimerId;
+      timers.set(id, run);
+      return id;
+    },
+    clearTimeout: (id) => timers.delete(id),
   });
   await flushAsyncWork();
-  localStorage.setItem('themeMode', 'light');
+  localStorage.setItem('uiTheme', 'PurpleThemeDark');
+  await flushAsyncWork();
   assert.deepEqual(startupThemeRequests(invocations), ['dark']);
-  assert.equal(timers.length, 1);
+  assert.deepEqual([...timers.keys()], [1]);
 
-  timers.shift()();
+  localStorage.setItem('themeMode', 'light');
   await flushAsyncWork();
   assert.deepEqual(startupThemeRequests(invocations), ['dark', 'light']);
-  assert.equal(timers.length, 0);
+  assert.equal(timers.size, 0);
 });
 
 test('bridge bootstrap defines astrbotAppUpdater methods', async () => {
