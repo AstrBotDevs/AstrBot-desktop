@@ -40,7 +40,7 @@
   - `window/actions.rs`
     - 主窗口动作与 tray 文案刷新联动封装。
   - `window/startup_loading.rs`
-    - 启动页 loading mode 判定与注入逻辑。
+    - 启动主题与原生背景配置，以及 loading mode 判定与注入。
 - `lifecycle/`
   - 生命周期子系统目录。
   - `lifecycle/cleanup.rs`
@@ -117,7 +117,7 @@
 - `launch_plan.rs`
   - custom/packaged/dev 启动计划构建；打包态完整资源候选选择、manifest 绑定和 WebUI 摘要校验。
 - `startup_task.rs`
-  - 启动阶段后端就绪等待与主线程导航分发。
+  - 后端就绪等待、主线程导航分发及 Dashboard 加载超时处理。
 - `app_runtime.rs`
   - Tauri builder/run 编排与窗口/页面事件挂载。
 - `app_types.rs`

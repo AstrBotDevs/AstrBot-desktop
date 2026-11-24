@@ -56,7 +56,7 @@ make prune
 
 - `make lint`
   - 执行 `cargo fmt --check`
-  - 执行 `cargo clippy -- -D warnings`
+  - 执行 `cargo clippy --locked --all-targets -- -D warnings`
 - `make test`
   - 执行 Rust 全量单元测试（`cargo test --locked`）
   - 若本机有 `pnpm`，执行资源准备脚本行为测试（`pnpm run test:prepare-resources`）
@@ -76,6 +76,7 @@ make prune
 
 - `package.json`
 - `src-tauri/Cargo.toml`
+- `src-tauri/Cargo.lock`（桌面 crate 的版本条目）
 - `src-tauri/tauri.conf.json`
 
 ## 5. 常用环境变量
@@ -135,12 +136,13 @@ beforeBuildCommand = pnpm run prepare:resources
 
 - stable（`tag-poll`）只选择 `vMAJOR.MINOR.PATCH` 格式的正式版本标签，忽略 beta、alpha、rc、dev、nightly 等预发布标签及其他非正式标签；没有正式标签时任务明确失败，不回退到预发布版本。
 - 手动 `tag-poll` 的 `source_git_ref` 也只接受正式版本标签。需要打包预发布标签、分支或 commit 时使用 `custom`，不会更新 stable 通道。
-- 定时构建（`schedule`）检测到上游新 tag 时，会先自动同步版本文件并提交，再继续构建。
-- 手动触发（`workflow_dispatch`）默认只构建，不自动回写版本文件。
+- 定时 `tag-poll` 检测到未发布的上游正式标签时，会先尝试同步版本文件并提交，再继续构建。
+- 手动触发（`workflow_dispatch`）不会回写版本文件，默认运行 `nightly` 并在构建通过后更新 GitHub Nightly Release。Nightly 模式始终发布；`publish_release` 只控制手动 `tag-poll` 和 `custom` 是否发布。
 - Desktop 使用独立 updater manifest，不复用 AstrBot Core 的 `api.soulter.top/releases` 更新索引。
 - stable/nightly 的更新入口分别为 `https://releases.astrbot.app/desktop/channels/stable/latest.json` 和 `https://github.com/AstrBotDevs/AstrBot-desktop/releases/download/nightly/latest-nightly.json`。
 - GitHub Actions 会把完整安装包继续发布到 GitHub Releases，仅 stable（`tag-poll`）将 updater 产物上传到 Cloudflare R2：先上传并校验不可变的版本目录，再更新 GitHub Release，最后原子提升通道 manifest。
 - nightly 的更新清单与更新包仅发布到 GitHub Releases，不上传 R2。
+- macOS 发布产物包括手动安装用的 `.dmg`，以及应用内更新用的 `.app.tar.gz` 和对应签名文件。Stable 和 Nightly 使用同一套 macOS 签名与公证流程。
 - R2 bucket、repository variables/secrets 和对象目录约定见 [`docs/environment-variables.md`](./environment-variables.md#4-发布ci-github-actions)。
 - 发布与 updater 相关行为依赖 `src-tauri/tauri.conf.json`、GitHub Actions workflow 以及 `scripts/ci/generate_tauri_latest_json.py`、`scripts/ci/publish_r2_release.py` 共同完成。
 
