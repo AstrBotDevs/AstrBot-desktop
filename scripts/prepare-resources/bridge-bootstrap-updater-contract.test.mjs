@@ -129,7 +129,8 @@ function runBootstrap(source, authResults, sharedState = {}) {
     source
       .replace('{TRAY_RESTART_BACKEND_EVENT}', 'astrbot://tray-restart-backend')
       .replace('{CHAT_TRANSPORT_MODE_STORAGE_KEY}', 'chat_transport_mode')
-      .replace('{CHAT_TRANSPORT_MODE_WEBSOCKET}', 'websocket'),
+      .replace('{CHAT_TRANSPORT_MODE_WEBSOCKET}', 'websocket')
+      .replace('{STARTUP_THEME_REVISION}', String(sharedState.themeRevision ?? 1)),
     {
       window,
       document,
@@ -156,6 +157,16 @@ function startupThemeRequests(invocations) {
     .filter(({ command }) => command === 'desktop_bridge_set_startup_theme')
     .map(({ payload }) => payload.theme);
 }
+
+test('startup theme requests carry the native revision of their Dashboard document', async () => {
+  const source = await readFile(bootstrapPath, 'utf8');
+  for (const themeRevision of [1, 2]) {
+    const { invocations } = runBootstrap(source, [], { themeRevision });
+    await flushAsyncWork();
+    const request = invocations.find(({ command }) => command === 'desktop_bridge_set_startup_theme');
+    assert.equal(request?.payload.revision, themeRevision);
+  }
+});
 
 for (const allowStorageOverrides of [false, true]) {
   test(`bridge saves theme changes with ${allowStorageOverrides ? 'own' : 'prototype'} storage methods`, async () => {

@@ -1,5 +1,10 @@
 use tauri::{AppHandle, Manager};
-use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+
+use crate::bridge::commands::desktop_bridge_open_repair_install;
+
+const STARTUP_ERROR_TITLE: &str = "AstrBot - 启动失败 / Startup failed";
+const REPAIR_INSTALL_LABEL: &str = "下载完整安装包 / Download full installer";
 
 const PACKAGED_RESOURCE_ERROR_PREFIX: &str =
     "Packaged resources are unavailable for AstrBot Desktop ";
@@ -44,22 +49,44 @@ pub fn show_startup_error<F>(
 {
     log(&format!("startup error: {message}"));
     eprintln!("AstrBot startup failed: {message}");
+    let repairable = startup_error_is_repairable(message);
     if !startup_page_loaded {
-        app_handle
+        let dialog = app_handle
             .dialog()
             .message(message)
-            .title("AstrBot - 启动失败 / Startup failed")
-            .kind(MessageDialogKind::Error)
-            .show(|_| {});
+            .title(STARTUP_ERROR_TITLE)
+            .kind(MessageDialogKind::Error);
+        if repairable {
+            let app_handle = app_handle.clone();
+            dialog
+                .buttons(MessageDialogButtons::OkCancelCustom(
+                    REPAIR_INSTALL_LABEL.into(),
+                    "关闭 / Close".into(),
+                ))
+                .show(move |download| {
+                    if download {
+                        let result = desktop_bridge_open_repair_install();
+                        if let Some(reason) = result.reason {
+                            app_handle
+                                .dialog()
+                                .message(reason)
+                                .title(STARTUP_ERROR_TITLE)
+                                .kind(MessageDialogKind::Error)
+                                .show(|_| {});
+                        }
+                    }
+                });
+        } else {
+            dialog.show(|_| {});
+        }
         return;
     }
-    let repairable = startup_error_is_repairable(message);
     let Some(window) = app_handle.get_webview_window("main") else {
         log("failed to display startup error: main window not found");
         app_handle.exit(1);
         return;
     };
-    if let Err(error) = window.set_title("AstrBot - 启动失败 / Startup failed") {
+    if let Err(error) = window.set_title(STARTUP_ERROR_TITLE) {
         log(&format!(
             "failed to set startup error window title: {error}"
         ));

@@ -543,6 +543,7 @@ pub(crate) fn desktop_bridge_open_repair_install() -> BackendBridgeResult {
 pub(crate) fn desktop_bridge_set_startup_theme(
     webview: tauri::Webview,
     theme: StartupTheme,
+    revision: u64,
 ) -> Result<(), String> {
     let app = webview.app_handle();
     let backend = app.state::<BackendState>();
@@ -556,8 +557,12 @@ pub(crate) fn desktop_bridge_set_startup_theme(
 
     let settings = app.state::<crate::DesktopSettingsCache>();
     let packaged_root_dir = runtime_paths::default_packaged_root_dir();
-    settings
-        .update(|_| desktop_settings::write_startup_theme(packaged_root_dir.as_deref(), theme))
+    app.state::<crate::bridge::desktop::StartupThemeWrites>()
+        .save_current(revision, || {
+            settings.update(|_| {
+                desktop_settings::write_startup_theme(packaged_root_dir.as_deref(), theme)
+            })
+        })
         .map_err(|error| {
             append_desktop_log(&format!("failed to persist startup theme: {error}"));
             "Failed to save startup theme.".into()

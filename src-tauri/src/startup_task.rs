@@ -1,8 +1,59 @@
+use std::sync::Mutex;
+
 use tauri::{AppHandle, Manager};
 
 use crate::{navigate_main_window_to_backend, ui_dispatch, BackendState};
 
-pub fn spawn_startup_task<F>(app_handle: AppHandle, startup_page_loaded: bool, log: F)
+#[derive(Default)]
+pub(crate) enum StartupPage {
+    #[default]
+    Waiting,
+    WaitingForDashboard {
+        committed: bool,
+    },
+    Loaded,
+    NativeError,
+}
+
+impl StartupPage {
+    pub(crate) fn dashboard_committed(&mut self) {
+        if let Self::WaitingForDashboard { committed } = self {
+            *committed = true;
+        }
+    }
+
+    pub(crate) fn finish(&mut self, is_dashboard: bool) -> bool {
+        if matches!(self, Self::Waiting)
+            || (matches!(self, Self::WaitingForDashboard { committed: true }) && is_dashboard)
+        {
+            *self = Self::Loaded;
+            return true;
+        }
+        false
+    }
+
+    fn is_loaded(&self) -> bool {
+        matches!(self, Self::Loaded)
+    }
+
+    fn navigate_from_shell(&mut self) -> bool {
+        if self.is_loaded() {
+            return true;
+        }
+        *self = Self::WaitingForDashboard { committed: false };
+        false
+    }
+
+    fn error_in_shell(&mut self) -> bool {
+        if self.is_loaded() {
+            return true;
+        }
+        *self = Self::NativeError;
+        false
+    }
+}
+
+pub fn spawn_startup_task<F>(app_handle: AppHandle, log: F)
 where
     F: Fn(&str) + Copy + Send + 'static,
 {
@@ -21,7 +72,12 @@ where
             &startup_app_handle,
             "present backend startup result",
             move |app| {
+                if app.state::<BackendState>().is_quitting() {
+                    return;
+                }
+                let page = app.state::<Mutex<StartupPage>>();
                 let result = startup_result.and_then(|cache_version| {
+                    let startup_page_loaded = page.lock().unwrap().navigate_from_shell();
                     navigate_main_window_to_backend(
                         app,
                         cache_version.as_deref(),
@@ -29,11 +85,44 @@ where
                     )
                 });
                 if let Err(error) = result {
-                    ui_dispatch::show_startup_error(app, &error, startup_page_loaded, log);
+                    let use_shell = page.lock().unwrap().error_in_shell();
+                    ui_dispatch::show_startup_error(app, &error, use_shell, log);
                 }
             },
         ) {
             log(&error);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::StartupPage;
+
+    #[test]
+    fn a_late_startup_page_can_handle_backend_navigation_and_errors() {
+        let mut page = StartupPage::default();
+        assert!(!page.is_loaded());
+        assert!(page.finish(false));
+        assert!(page.navigate_from_shell());
+        assert!(page.error_in_shell());
+        assert!(!page.finish(true));
+    }
+
+    #[test]
+    fn direct_navigation_keeps_window_hidden_until_dashboard_finishes() {
+        let mut page = StartupPage::default();
+        assert!(!page.navigate_from_shell());
+        assert!(!page.finish(false));
+        assert!(!page.finish(true));
+        page.dashboard_committed();
+        assert!(page.finish(true));
+    }
+
+    #[test]
+    fn native_error_keeps_an_unfinished_window_hidden() {
+        let mut page = StartupPage::default();
+        assert!(!page.error_in_shell());
+        assert!(!page.finish(false));
+    }
 }

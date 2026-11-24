@@ -1122,6 +1122,7 @@
       let savedTheme;
       let saving = false;
       let pendingRetry;
+      const revision = Number('{STARTUP_THEME_REVISION}');
       const initialRetryDelay = 1_000;
       let retryDelay = initialRetryDelay;
       const readTheme = () => {
@@ -1145,7 +1146,7 @@
           }
           // Read the latest choice after each write so changes during IPC are coalesced.
           for (let theme = latestTheme; theme !== savedTheme; theme = readTheme()) {
-            const result = await invokeBridge(BRIDGE_COMMANDS.SET_STARTUP_THEME, { theme });
+            const result = await invokeBridge(BRIDGE_COMMANDS.SET_STARTUP_THEME, { theme, revision });
             if (result?.ok !== false) {
               savedTheme = theme;
               retryDelay = initialRetryDelay;

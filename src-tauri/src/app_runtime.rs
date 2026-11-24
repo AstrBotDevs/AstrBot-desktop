@@ -1,5 +1,8 @@
 use std::{
-    sync::mpsc::{self, Receiver, SyncSender},
+    sync::{
+        mpsc::{self, Receiver, SyncSender},
+        Mutex,
+    },
     time::Duration,
 };
 
@@ -198,6 +201,12 @@ fn configure_window_events(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> 
 
 fn handle_page_load_started(webview: &tauri::Webview<tauri::Wry>, payload: &PageLoadPayload<'_>) {
     append_desktop_log(&format!("page-load started: {}", payload.url()));
+    if webview.label() == "main" {
+        webview
+            .app_handle()
+            .state::<bridge::desktop::StartupThemeWrites>()
+            .advance();
+    }
     let state = webview.app_handle().state::<BackendState>();
     let action = app_runtime_events::page_load_action(
         PageLoadEvent::Started,
@@ -206,6 +215,15 @@ fn handle_page_load_started(webview: &tauri::Webview<tauri::Wry>, payload: &Page
     );
 
     if action == app_runtime_events::PageLoadAction::InjectDesktopBridge {
+        if webview.label() == "main" {
+            // A canceled startup load can report Finished with the Dashboard URL before commit.
+            webview
+                .app_handle()
+                .state::<Mutex<startup_task::StartupPage>>()
+                .lock()
+                .unwrap()
+                .dashboard_committed();
+        }
         crate::inject_desktop_bridge(webview);
     }
 }
@@ -247,6 +265,21 @@ fn configure_page_load_events(
         PageLoadEvent::Finished => {
             handle_page_load_finished(webview, payload);
             if webview.label() == "main" {
+                let app = webview.app_handle();
+                let backend = app.state::<BackendState>();
+                let is_dashboard = bridge::desktop::should_inject_desktop_bridge(
+                    &backend.backend_url,
+                    payload.url(),
+                );
+                let show = app
+                    .state::<Mutex<startup_task::StartupPage>>()
+                    .lock()
+                    .unwrap()
+                    .finish(is_dashboard);
+                if show && !backend.is_quitting() {
+                    let settings = app.state::<DesktopSettingsCache>().get();
+                    apply_startup_window_visibility(app, settings.silent_launch);
+                }
                 let _ = startup_page.try_send(());
             }
         }
@@ -299,12 +332,7 @@ fn configure_setup(
                     if app.state::<BackendState>().is_quitting() {
                         return;
                     }
-                    apply_startup_window_visibility(app, desktop_settings.silent_launch);
-                    startup_task::spawn_startup_task(
-                        app.clone(),
-                        startup_page_loaded,
-                        append_startup_log,
-                    );
+                    startup_task::spawn_startup_task(app.clone(), append_startup_log);
                 },
             ) {
                 append_startup_log(&error);
@@ -371,6 +399,8 @@ pub(crate) fn run() {
 
     builder
         .manage(BackendState::default())
+        .manage(Mutex::new(startup_task::StartupPage::default()))
+        .manage(bridge::desktop::StartupThemeWrites::default())
         .manage(DesktopSettingsCache::new(settings))
         .manage(bridge::plugin_ui_extensions::PluginUiExtensionRuntimeState::default())
         .invoke_handler(tauri::generate_handler![
