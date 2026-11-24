@@ -1132,18 +1132,21 @@
       const sync = async () => {
         if (saving) return;
         saving = true;
+        const initialRetryDelay = 1_000;
+        let retryDelay = initialRetryDelay;
         try {
           // Read the latest choice after each write so changes during IPC are coalesced.
           for (let theme = readTheme(); theme !== savedTheme; theme = readTheme()) {
-            let result = await invokeBridge(BRIDGE_COMMANDS.SET_STARTUP_THEME, { theme });
-            if (result?.ok === false && readTheme() === theme) {
-              result = await invokeBridge(BRIDGE_COMMANDS.SET_STARTUP_THEME, { theme });
-            }
+            const result = await invokeBridge(BRIDGE_COMMANDS.SET_STARTUP_THEME, { theme });
             if (result?.ok !== false) {
               savedTheme = theme;
+              retryDelay = initialRetryDelay;
             } else if (readTheme() === theme) {
-              console.warn('[astrbotDesktop] Failed to save startup theme', result.reason);
-              break;
+              if (retryDelay === initialRetryDelay) {
+                console.warn('[astrbotDesktop] Retrying startup theme save', result.reason);
+              }
+              await new Promise((resolve) => window.setTimeout(resolve, retryDelay));
+              retryDelay = Math.min(retryDelay * 2, 30_000);
             }
           }
         } catch (error) {

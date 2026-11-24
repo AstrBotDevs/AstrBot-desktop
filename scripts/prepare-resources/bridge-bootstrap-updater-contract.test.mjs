@@ -99,6 +99,7 @@ function runBootstrap(source, authResults, sharedState = {}) {
     sessionStorage,
     location,
     open: () => null,
+    setTimeout: sharedState.setTimeout,
     setInterval(handler, delay) {
       intervals.push({ handler, delay });
       return intervals.length;
@@ -196,18 +197,50 @@ test('bridge waits for an in-flight theme save before sending the latest choice'
   assert.deepEqual(startupThemeRequests(invocations), ['dark', 'light']);
 });
 
-test('bridge retries a failed startup theme save without another storage change', async () => {
+test('bridge retries repeated startup theme save failures until the save succeeds', async () => {
   const source = await readFile(bootstrapPath, 'utf8');
-  let failuresRemaining = 1;
+  const retryDelays = [1000, 2000, 4000, 8000, 16000, 30000, 30000];
+  let failuresRemaining = retryDelays.length;
+  const timers = [];
   const { invocations } = runBootstrap(source, [], {
     nativeStorage: true,
     localValues: new Map([['themeMode', 'dark']]),
     saveTheme() {
       if (failuresRemaining-- > 0) throw new Error('temporary IPC failure');
     },
+    setTimeout: (run, delay) => timers.push({ run, delay }),
   });
   await flushAsyncWork();
-  assert.deepEqual(startupThemeRequests(invocations), ['dark', 'dark']);
+  for (const [attempt, delay] of retryDelays.entries()) {
+    assert.deepEqual(startupThemeRequests(invocations), Array(attempt + 1).fill('dark'));
+    assert.deepEqual(timers.map((timer) => timer.delay), [delay]);
+    timers.shift().run();
+    await flushAsyncWork();
+  }
+  assert.deepEqual(startupThemeRequests(invocations), Array(retryDelays.length + 1).fill('dark'));
+  assert.equal(timers.length, 0);
+});
+
+test('bridge retries the latest Dashboard theme after a save failure', async () => {
+  const source = await readFile(bootstrapPath, 'utf8');
+  const timers = [];
+  const { invocations, localStorage } = runBootstrap(source, [], {
+    nativeStorage: true,
+    localValues: new Map([['themeMode', 'dark']]),
+    saveTheme(theme) {
+      if (theme === 'dark') throw new Error('temporary IPC failure');
+    },
+    setTimeout: (run) => timers.push(run),
+  });
+  await flushAsyncWork();
+  localStorage.setItem('themeMode', 'light');
+  assert.deepEqual(startupThemeRequests(invocations), ['dark']);
+  assert.equal(timers.length, 1);
+
+  timers.shift()();
+  await flushAsyncWork();
+  assert.deepEqual(startupThemeRequests(invocations), ['dark', 'light']);
+  assert.equal(timers.length, 0);
 });
 
 test('bridge bootstrap defines astrbotAppUpdater methods', async () => {
