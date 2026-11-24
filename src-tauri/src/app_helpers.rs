@@ -27,8 +27,8 @@ pub(crate) fn navigate_main_window_to_backend(
     )
 }
 
-pub(crate) fn inject_desktop_bridge(webview: &tauri::Webview<tauri::Wry>) {
-    bridge::desktop::inject_desktop_bridge(webview, append_desktop_log);
+pub(crate) fn inject_desktop_bridge(webview: &tauri::Webview<tauri::Wry>, page_url: &url::Url) {
+    bridge::desktop::inject_desktop_bridge(webview, page_url, append_desktop_log);
 }
 
 pub(crate) fn backend_path_override() -> Option<OsString> {

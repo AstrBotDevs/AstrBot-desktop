@@ -539,22 +539,39 @@ pub(crate) fn desktop_bridge_open_repair_install() -> BackendBridgeResult {
     }
 }
 
+fn is_main_dashboard(webview: &tauri::Webview) -> bool {
+    let app = webview.app_handle();
+    let backend = app.state::<BackendState>();
+    webview.label() == "main"
+        && webview.url().is_ok_and(|url| {
+            crate::bridge::desktop::should_inject_desktop_bridge(&backend.backend_url, &url)
+        })
+}
+
+#[tauri::command]
+pub(crate) fn desktop_bridge_dashboard_loaded(
+    webview: tauri::Webview,
+    revision: u64,
+) -> Result<(), String> {
+    let app = webview.app_handle().clone();
+    crate::ui_dispatch::run_on_main_thread_dispatch(&app, "finish Dashboard load", move |app| {
+        if is_main_dashboard(&webview) {
+            crate::app_runtime::dashboard_loaded(app, revision);
+        }
+    })
+}
+
 #[tauri::command]
 pub(crate) fn desktop_bridge_set_startup_theme(
     webview: tauri::Webview,
     theme: StartupTheme,
     revision: u64,
 ) -> Result<(), String> {
-    let app = webview.app_handle();
-    let backend = app.state::<BackendState>();
-    if webview.label() != "main"
-        || !webview.url().is_ok_and(|url| {
-            crate::bridge::desktop::should_inject_desktop_bridge(&backend.backend_url, &url)
-        })
-    {
+    if !is_main_dashboard(&webview) {
         return Err("Startup theme can only be set by the desktop Dashboard.".into());
     }
 
+    let app = webview.app_handle();
     let settings = app.state::<crate::DesktopSettingsCache>();
     let packaged_root_dir = runtime_paths::default_packaged_root_dir();
     app.state::<crate::bridge::desktop::StartupThemeWrites>()

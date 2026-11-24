@@ -106,6 +106,7 @@ function runBootstrap(source, authResults, sharedState = {}) {
     sessionStorage,
     location,
     open: () => null,
+    addEventListener: sharedState.addEventListener ?? (() => {}),
     setTimeout: sharedState.setTimeout,
     clearTimeout: sharedState.clearTimeout,
     setInterval(handler, delay) {
@@ -116,6 +117,7 @@ function runBootstrap(source, authResults, sharedState = {}) {
   class MockElement {}
   class MockAnchor extends MockElement {}
   const document = {
+    get readyState() { return sharedState.readyState; },
     addEventListener() {},
     getElementById(id) {
       if (id !== 'app') return null;
@@ -133,6 +135,7 @@ function runBootstrap(source, authResults, sharedState = {}) {
       .replace('{TRAY_RESTART_BACKEND_EVENT}', 'astrbot://tray-restart-backend')
       .replace('{CHAT_TRANSPORT_MODE_STORAGE_KEY}', 'chat_transport_mode')
       .replace('{CHAT_TRANSPORT_MODE_WEBSOCKET}', 'websocket')
+      .replace('{DASHBOARD_ORIGIN}', sharedState.dashboardOrigin ?? location.origin)
       .replace('{STARTUP_THEME_REVISION}', String(sharedState.themeRevision ?? 1)),
     {
       window,
@@ -160,6 +163,31 @@ function startupThemeRequests(invocations) {
     .filter(({ command }) => command === 'desktop_bridge_set_startup_theme')
     .map(({ payload }) => payload.theme);
 }
+
+test('Dashboard reports its document revision only when its own load completes', async () => {
+  const source = await readFile(bootstrapPath, 'utf8');
+  const listeners = new Map();
+  const state = {
+    themeRevision: 7,
+    readyState: 'loading',
+    addEventListener: (event, handler) => listeners.set(event, handler),
+  };
+  const { invocations } = runBootstrap(source, [], state);
+  const readyRevisions = () => invocations
+    .filter(({ command }) => command === 'desktop_bridge_dashboard_loaded')
+    .map(({ payload }) => payload.revision);
+  assert.deepEqual(readyRevisions(), []);
+  state.readyState = 'complete';
+  listeners.get('load')?.();
+  assert.deepEqual(readyRevisions(), [7]);
+
+  const completed = runBootstrap(source, [], { themeRevision: 8, readyState: 'complete' });
+  assert.equal(completed.invocations.find(({ command }) => command === 'desktop_bridge_dashboard_loaded')
+    ?.payload.revision, 8);
+
+  const other = runBootstrap(source, [], { dashboardOrigin: 'http://localhost:1420', readyState: 'complete' });
+  assert.equal(other.invocations.some(({ command }) => command === 'desktop_bridge_dashboard_loaded'), false);
+});
 
 test('startup theme requests carry the native revision of their Dashboard document', async () => {
   const source = await readFile(bootstrapPath, 'utf8');

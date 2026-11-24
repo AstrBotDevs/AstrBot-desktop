@@ -18,6 +18,20 @@
   const tauriEvent = window.__TAURI_INTERNALS__?.event ?? window.__TAURI__?.event;
   if (typeof invoke !== 'function') return;
 
+  const revision = Number('{STARTUP_THEME_REVISION}');
+  if (window.location.origin === '{DASHBOARD_ORIGIN}' && window.__astrbotDashboardLoadRevision !== revision) {
+    window.__astrbotDashboardLoadRevision = revision;
+    const reportLoaded = () => {
+      if (document.readyState === 'complete' && window.__astrbotDashboardLoadRevision === revision) {
+        void invoke('desktop_bridge_dashboard_loaded', { revision }).catch((error) => {
+          console.warn('[astrbotDesktop] Failed to report Dashboard load', error);
+        });
+      }
+    };
+    if (document.readyState === 'complete') reportLoaded();
+    else window.addEventListener('load', reportLoaded, { once: true });
+  }
+
   const BRIDGE_COMMANDS = Object.freeze({
     IS_DESKTOP_RUNTIME: 'desktop_bridge_is_desktop_runtime',
     GET_BACKEND_STATE: 'desktop_bridge_get_backend_state',
@@ -1122,7 +1136,6 @@
       let savedTheme;
       let saving = false;
       let pendingRetry;
-      const revision = Number('{STARTUP_THEME_REVISION}');
       const initialRetryDelay = 1_000;
       let retryDelay = initialRetryDelay;
       const scheduleRetry = (theme, message, reason) => {

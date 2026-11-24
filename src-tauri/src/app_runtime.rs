@@ -216,16 +216,7 @@ fn handle_page_load_started(webview: &tauri::Webview<tauri::Wry>, payload: &Page
     );
 
     if action == app_runtime_events::PageLoadAction::InjectDesktopBridge {
-        if webview.label() == "main" {
-            // A canceled startup load can report Finished with the Dashboard URL before commit.
-            webview
-                .app_handle()
-                .state::<Mutex<startup_task::StartupPage>>()
-                .lock()
-                .unwrap()
-                .dashboard_committed();
-        }
-        crate::inject_desktop_bridge(webview);
+        crate::inject_desktop_bridge(webview, payload.url());
     }
 }
 
@@ -243,7 +234,7 @@ fn handle_page_load_finished(webview: &tauri::Webview<tauri::Wry>, payload: &Pag
 
     match action {
         app_runtime_events::PageLoadAction::InjectDesktopBridge => {
-            crate::inject_desktop_bridge(webview);
+            crate::inject_desktop_bridge(webview, payload.url());
         }
         app_runtime_events::PageLoadAction::ApplyStartupLoadingMode => {
             window::startup_loading::apply_startup_loading_mode(
@@ -272,19 +263,37 @@ fn configure_page_load_events(
                     &backend.backend_url,
                     payload.url(),
                 );
-                let show = app
-                    .state::<Mutex<startup_task::StartupPage>>()
-                    .lock()
-                    .unwrap()
-                    .finish(is_dashboard);
-                if show && !backend.is_quitting() {
-                    let settings = app.state::<DesktopSettingsCache>().get();
-                    apply_startup_window_visibility(app, settings.silent_launch);
+                if !is_dashboard {
+                    let show = app
+                        .state::<Mutex<startup_task::StartupPage>>()
+                        .lock()
+                        .unwrap()
+                        .finish_shell();
+                    if show && !backend.is_quitting() {
+                        let settings = app.state::<DesktopSettingsCache>().get();
+                        apply_startup_window_visibility(app, settings.silent_launch);
+                    }
+                    let _ = startup_page.try_send(());
                 }
-                let _ = startup_page.try_send(());
             }
         }
     })
+}
+
+pub(crate) fn dashboard_loaded(app: &tauri::AppHandle, revision: u64) {
+    if app.state::<BackendState>().is_quitting() {
+        return;
+    }
+    let current_revision = app.state::<bridge::desktop::StartupThemeWrites>().current();
+    let show = app
+        .state::<Mutex<startup_task::StartupPage>>()
+        .lock()
+        .unwrap()
+        .finish_dashboard(revision, current_revision);
+    if show {
+        let settings = app.state::<DesktopSettingsCache>().get();
+        apply_startup_window_visibility(app, settings.silent_launch);
+    }
 }
 
 fn apply_startup_window_visibility(app_handle: &tauri::AppHandle, silent_launch: bool) {
@@ -419,6 +428,7 @@ pub(crate) fn run() {
             crate::bridge::commands::desktop_bridge_request_plugin_ui_extension,
             crate::bridge::commands::desktop_bridge_open_external_url,
             crate::bridge::commands::desktop_bridge_open_repair_install,
+            crate::bridge::commands::desktop_bridge_dashboard_loaded,
             crate::bridge::commands::desktop_bridge_set_startup_theme,
             crate::bridge::commands::desktop_bridge_set_window_theme,
             crate::bridge::commands::desktop_bridge_minimize_window,

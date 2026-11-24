@@ -21,7 +21,7 @@ impl StartupThemeWrites {
         *self.0.lock().unwrap() += 1;
     }
 
-    fn current(&self) -> u64 {
+    pub(crate) fn current(&self) -> u64 {
         *self.0.lock().unwrap()
     }
 
@@ -65,7 +65,9 @@ fn desktop_bridge_chat_transport_contract() -> &'static DesktopBridgeChatTranspo
     })
 }
 
-fn desktop_bridge_bootstrap_script(revision: u64) -> String {
+fn desktop_bridge_bootstrap_script(revision: u64, page_url: &Url) -> String {
+    let origin = serde_json::to_string(&page_url.origin().ascii_serialization())
+        .expect("serialize Dashboard origin");
     DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT
         .get_or_init(|| {
             let contract = desktop_bridge_chat_transport_contract();
@@ -75,14 +77,15 @@ fn desktop_bridge_bootstrap_script(revision: u64) -> String {
                 .replace("{CHAT_TRANSPORT_MODE_WEBSOCKET}", &contract.websocket_value)
         })
         .replace("{STARTUP_THEME_REVISION}", &revision.to_string())
+        .replace("'{DASHBOARD_ORIGIN}'", &origin)
 }
 
-pub fn inject_desktop_bridge<F>(webview: &tauri::Webview<tauri::Wry>, log: F)
+pub fn inject_desktop_bridge<F>(webview: &tauri::Webview<tauri::Wry>, page_url: &Url, log: F)
 where
     F: Fn(&str),
 {
     let revision = webview.app_handle().state::<StartupThemeWrites>().current();
-    let script = desktop_bridge_bootstrap_script(revision);
+    let script = desktop_bridge_bootstrap_script(revision, page_url);
     if let Err(error) = webview.eval(script) {
         log(&format!("failed to inject desktop bridge script: {error}"));
     }
@@ -101,10 +104,12 @@ mod tests {
 
     #[test]
     fn bootstrap_script_injects_the_revision_for_each_dashboard_document() {
+        let page_url = Url::parse("http://localhost:6185/dashboard").unwrap();
         for revision in [17, 18] {
-            let script = desktop_bridge_bootstrap_script(revision);
+            let script = desktop_bridge_bootstrap_script(revision, &page_url);
             assert!(!script.contains("{STARTUP_THEME_REVISION}"));
             assert!(script.contains(&format!("const revision = Number('{revision}');")));
+            assert!(script.contains("window.location.origin === \"http://localhost:6185\""));
         }
     }
 

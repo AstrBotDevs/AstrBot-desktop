@@ -17,7 +17,7 @@ pub(crate) enum StartupPage {
     #[default]
     Waiting,
     WaitingForDashboard {
-        committed: bool,
+        shell_loaded: bool,
         finished: SyncSender<()>,
     },
     Loaded,
@@ -25,49 +25,57 @@ pub(crate) enum StartupPage {
 }
 
 impl StartupPage {
-    pub(crate) fn dashboard_committed(&mut self) {
-        if let Self::WaitingForDashboard { committed, .. } = self {
-            *committed = true;
+    pub(crate) fn finish_shell(&mut self) -> bool {
+        if matches!(self, Self::Waiting) {
+            *self = Self::Loaded;
+            return true;
         }
+        false
     }
 
-    pub(crate) fn finish(&mut self, is_dashboard: bool) -> bool {
-        match self {
-            Self::Waiting => {}
+    pub(crate) fn finish_dashboard(&mut self, revision: u64, current_revision: u64) -> bool {
+        if revision != current_revision {
+            return false;
+        }
+        let show = match self {
             Self::WaitingForDashboard {
-                committed: true,
+                shell_loaded,
                 finished,
-            } if is_dashboard => {
+            } => {
                 let _ = finished.try_send(());
+                !*shell_loaded
             }
             _ => return false,
-        }
+        };
         *self = Self::Loaded;
-        true
+        show
     }
 
     fn is_loaded(&self) -> bool {
         matches!(self, Self::Loaded)
     }
 
-    fn begin_dashboard_fallback(&mut self) -> Option<Receiver<()>> {
-        if self.is_loaded() {
-            return None;
-        }
+    fn begin_dashboard_load(&mut self) -> (bool, Receiver<()>) {
+        let shell_loaded = self.is_loaded();
         let (finished, completion) = mpsc::sync_channel(1);
         *self = Self::WaitingForDashboard {
-            committed: false,
+            shell_loaded,
             finished,
         };
-        Some(completion)
+        (shell_loaded, completion)
     }
 
     fn error_in_shell(&mut self) -> bool {
-        if self.is_loaded() {
-            return true;
-        }
+        let use_shell = self.is_loaded()
+            || matches!(
+                self,
+                Self::WaitingForDashboard {
+                    shell_loaded: true,
+                    ..
+                }
+            );
         *self = Self::NativeError;
-        false
+        use_shell
     }
 }
 
@@ -129,15 +137,9 @@ where
                 }
                 let page = app.state::<Mutex<StartupPage>>();
                 let result = startup_result.and_then(|cache_version| {
-                    let completion = page.lock().unwrap().begin_dashboard_fallback();
-                    navigate_main_window_to_backend(
-                        app,
-                        cache_version.as_deref(),
-                        completion.is_none(),
-                    )?;
-                    if let Some(completion) = completion {
-                        watch_dashboard_load(app.clone(), completion, log);
-                    }
+                    let (shell_loaded, completion) = page.lock().unwrap().begin_dashboard_load();
+                    navigate_main_window_to_backend(app, cache_version.as_deref(), shell_loaded)?;
+                    watch_dashboard_load(app.clone(), completion, log);
                     Ok(())
                 });
                 if let Err(error) = result {
@@ -159,21 +161,35 @@ mod tests {
     fn a_late_startup_page_can_handle_backend_navigation_and_errors() {
         let mut page = StartupPage::default();
         assert!(!page.is_loaded());
-        assert!(page.finish(false));
-        assert!(page.begin_dashboard_fallback().is_none());
+        assert!(page.finish_shell());
+        let (shell_loaded, _) = page.begin_dashboard_load();
+        assert!(shell_loaded);
         assert!(page.error_in_shell());
-        assert!(!page.finish(true));
+        assert!(!page.finish_dashboard(1, 1));
+    }
+
+    #[test]
+    fn dashboard_completion_cancels_timeout_without_reshowing_the_shell_window() {
+        let mut page = StartupPage::default();
+        assert!(page.finish_shell());
+        let (shell_loaded, completion) = page.begin_dashboard_load();
+        assert!(shell_loaded);
+        assert!(!page.finish_dashboard(1, 1));
+        assert_eq!(completion.try_recv(), Ok(()));
     }
 
     #[test]
     fn direct_navigation_keeps_window_hidden_until_dashboard_finishes() {
         let mut page = StartupPage::default();
-        let completion = page.begin_dashboard_fallback().unwrap();
-        assert!(!page.finish(false));
-        assert!(!page.finish(true));
-        assert!(completion.try_recv().is_err());
-        page.dashboard_committed();
-        assert!(page.finish(true));
+        let (shell_loaded, completion) = page.begin_dashboard_load();
+        assert!(!shell_loaded);
+        assert!(!page.finish_shell());
+        assert!(!page.finish_dashboard(1, 2));
+        assert_eq!(
+            completion.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Empty)
+        );
+        assert!(page.finish_dashboard(2, 2));
         assert_eq!(completion.try_recv(), Ok(()));
     }
 
@@ -181,6 +197,6 @@ mod tests {
     fn native_error_keeps_an_unfinished_window_hidden() {
         let mut page = StartupPage::default();
         assert!(!page.error_in_shell());
-        assert!(!page.finish(false));
+        assert!(!page.finish_shell());
     }
 }
