@@ -1,19 +1,35 @@
 use std::env;
 
-use tauri::{utils::config::WindowConfig, webview::Color, AppHandle, Manager, WebviewUrl};
+use tauri::{utils::config::WindowConfig, webview::Color, AppHandle, Manager, Theme, WebviewUrl};
 use url::Url;
 
 use crate::{desktop_settings::StartupTheme, startup_mode, BackendState};
 
 pub(crate) fn configure_startup_theme(config: &mut WindowConfig, theme: StartupTheme) {
-    let (fragment, color) = match theme {
-        StartupTheme::Light => ("#startup-theme=light", Color(244, 247, 251, 255)),
-        StartupTheme::Dark => ("#startup-theme=dark", Color(26, 26, 26, 255)),
+    let (fragment, native_theme) = match theme {
+        StartupTheme::Light => ("#startup-theme=light", Theme::Light),
+        StartupTheme::Dark => ("#startup-theme=dark", Theme::Dark),
         StartupTheme::System => return,
     };
     // Pass the theme to the page before paint and cover the native background before HTML loads.
     config.url = WebviewUrl::App(fragment.into());
-    config.background_color = Some(color);
+    config.background_color = Some(startup_background(native_theme));
+}
+
+fn startup_background(theme: Theme) -> Color {
+    if theme == Theme::Dark {
+        Color(26, 26, 26, 255)
+    } else {
+        Color(244, 247, 251, 255)
+    }
+}
+
+pub(crate) fn apply_system_startup_background(app: &AppHandle) -> tauri::Result<()> {
+    if let Some(window) = app.get_webview_window("main") {
+        // The window starts hidden, so set both layers before setup shows it.
+        window.set_background_color(Some(startup_background(window.theme()?)))?;
+    }
+    Ok(())
 }
 
 pub fn should_apply_startup_loading_mode(webview_label: &str, page_url: &Url) -> bool {
@@ -121,6 +137,18 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn startup_background_matches_native_dark_and_light_themes() {
+        assert_eq!(
+            startup_background(tauri::Theme::Dark),
+            Color(26, 26, 26, 255)
+        );
+        assert_eq!(
+            startup_background(tauri::Theme::Light),
+            Color(244, 247, 251, 255)
+        );
+    }
 
     #[test]
     fn should_apply_startup_loading_mode_requires_main_window_and_local_index() {

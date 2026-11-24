@@ -555,9 +555,6 @@ pub(crate) fn desktop_bridge_set_startup_theme(
     }
 
     let settings = app.state::<crate::DesktopSettingsCache>();
-    if settings.get().startup_theme() == theme {
-        return Ok(());
-    }
     let packaged_root_dir = runtime_paths::default_packaged_root_dir();
     settings
         .update(|_| desktop_settings::write_startup_theme(packaged_root_dir.as_deref(), theme))

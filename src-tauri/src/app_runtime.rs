@@ -260,6 +260,13 @@ fn configure_setup(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
         crate::windows_shutdown::install(&app_handle);
 
         let desktop_settings = app_handle.state::<DesktopSettingsCache>().get();
+        if desktop_settings.startup_theme() == desktop_settings::StartupTheme::System {
+            if let Err(error) =
+                window::startup_loading::apply_system_startup_background(&app_handle)
+            {
+                append_startup_log(&format!("failed to set system startup background: {error}"));
+            }
+        }
         apply_startup_window_visibility(&app_handle, desktop_settings.silent_launch);
 
         startup_task::spawn_startup_task(app_handle.clone(), append_startup_log);

@@ -1114,39 +1114,60 @@
   };
 
   const installStartupThemeSync = () => {
-    const target = window.Storage?.prototype;
-    if (!target || window.__astrbotStartupThemeSyncInstalled) return;
+    if (window.__astrbotStartupThemeSyncInstalled) return;
 
     try {
       const storage = window.localStorage;
-      let requestedTheme;
-      const sync = async () => {
+      if (!storage) return;
+      let savedTheme;
+      let saving = false;
+      const readTheme = () => {
         const mode = storage.getItem('themeMode');
+        if (mode === 'dark' || mode === 'light' || mode === 'system') return mode;
         const legacy = storage.getItem('uiTheme');
-        let theme = mode;
-        if (mode !== 'dark' && mode !== 'light' && mode !== 'system') {
-          if (legacy === 'PurpleThemeDark') theme = 'dark';
-          else if (legacy === 'PurpleTheme') theme = 'light';
-          else theme = 'system';
+        if (legacy === 'PurpleThemeDark') return 'dark';
+        if (legacy === 'PurpleTheme') return 'light';
+        return 'system';
+      };
+      const sync = async () => {
+        if (saving) return;
+        saving = true;
+        try {
+          // Read the latest choice after each write so changes during IPC are coalesced.
+          for (let theme = readTheme(); theme !== savedTheme; theme = readTheme()) {
+            let result = await invokeBridge(BRIDGE_COMMANDS.SET_STARTUP_THEME, { theme });
+            if (result?.ok === false && readTheme() === theme) {
+              result = await invokeBridge(BRIDGE_COMMANDS.SET_STARTUP_THEME, { theme });
+            }
+            if (result?.ok !== false) {
+              savedTheme = theme;
+            } else if (readTheme() === theme) {
+              console.warn('[astrbotDesktop] Failed to save startup theme', result.reason);
+              break;
+            }
+          }
+        } catch (error) {
+          console.warn('[astrbotDesktop] Failed to read Dashboard theme', error);
+        } finally {
+          saving = false;
         }
-        if (requestedTheme === theme) return;
-        requestedTheme = theme;
-        const result = await invokeBridge(BRIDGE_COMMANDS.SET_STARTUP_THEME, { theme });
-        if (result?.ok === false && requestedTheme === theme) requestedTheme = undefined;
       };
 
-      // Storage methods live on the prototype. Keep sessionStorage and other keys untouched.
+      // The auth bridge can shadow native methods with own methods on localStorage.
       for (const method of ['setItem', 'removeItem', 'clear']) {
+        const target = Object.hasOwn(storage, method) ? storage : window.Storage?.prototype;
+        if (!target) continue;
         const original = target[method];
         target[method] = function (...args) {
-          original.apply(this, args);
+          const result = original.apply(this, args);
           if (this === storage && (method === 'clear' || args[0] === 'themeMode' || args[0] === 'uiTheme')) {
-            void sync().catch(() => {});
+            void sync();
           }
+          return result;
         };
       }
       window.__astrbotStartupThemeSyncInstalled = true;
-      void sync().catch(() => {});
+      void sync();
     } catch {}
   };
 

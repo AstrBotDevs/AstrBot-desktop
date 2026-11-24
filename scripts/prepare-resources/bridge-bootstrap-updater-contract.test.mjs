@@ -48,7 +48,9 @@ function runBootstrap(source, authResults, sharedState = {}) {
     });
   }
   const makeStorage = (values) => sharedState.nativeStorage
-    ? Object.preventExtensions(Object.assign(new Storage(), { values }))
+    ? (sharedState.allowStorageOverrides
+      ? Object.assign(new Storage(), { values })
+      : Object.preventExtensions(Object.assign(new Storage(), { values })))
     : createStorage(values);
   const localStorage = makeStorage(localValues);
   const sessionStorage = makeStorage(sessionValues);
@@ -71,6 +73,9 @@ function runBootstrap(source, authResults, sharedState = {}) {
       event: sharedState.event,
       async invoke(command, payload = {}) {
         invocations.push({ command, payload });
+        if (command === 'desktop_bridge_set_startup_theme') {
+          return sharedState.saveTheme?.(payload.theme);
+        }
         if (command === 'desktop_bridge_install_app_update' && sharedState.install) {
           return sharedState.install();
         }
@@ -140,24 +145,69 @@ function runBootstrap(source, authResults, sharedState = {}) {
   };
 }
 
-test('bridge saves the Dashboard theme even when switching to system keeps the same palette', async () => {
-  const source = await readFile(bootstrapPath, 'utf8');
-  const { localStorage, sessionStorage, invocations } = runBootstrap(source, [], {
-    nativeStorage: true,
-    localValues: new Map([['uiTheme', 'PurpleThemeDark']]),
-  });
-  const savedModes = () => invocations
+function startupThemeRequests(invocations) {
+  return invocations
     .filter(({ command }) => command === 'desktop_bridge_set_startup_theme')
     .map(({ payload }) => payload.theme);
+}
 
-  assert.deepEqual(savedModes(), ['dark']);
-  sessionStorage.setItem('themeMode', 'light');
+for (const allowStorageOverrides of [false, true]) {
+  test(`bridge saves theme changes with ${allowStorageOverrides ? 'own' : 'prototype'} storage methods`, async () => {
+    const source = await readFile(bootstrapPath, 'utf8');
+    const { localStorage, sessionStorage, invocations } = runBootstrap(source, [], {
+      nativeStorage: true,
+      allowStorageOverrides,
+      localValues: new Map([['uiTheme', 'PurpleThemeDark']]),
+    });
+    await flushAsyncWork();
+    assert.deepEqual(startupThemeRequests(invocations), ['dark']);
+
+    sessionStorage.setItem('themeMode', 'light');
+    localStorage.setItem('themeMode', 'system');
+    localStorage.setItem('uiTheme', 'PurpleThemeDark');
+    await flushAsyncWork();
+    assert.deepEqual(startupThemeRequests(invocations), ['dark', 'system']);
+
+    localStorage.setItem('themeMode', 'light');
+    await flushAsyncWork();
+    localStorage.clear();
+    await flushAsyncWork();
+    assert.deepEqual(startupThemeRequests(invocations), ['dark', 'system', 'light', 'system']);
+  });
+}
+
+test('bridge waits for an in-flight theme save before sending the latest choice', async () => {
+  const source = await readFile(bootstrapPath, 'utf8');
+  let finishDarkSave;
+  const darkSave = new Promise((resolve) => { finishDarkSave = resolve; });
+  const { localStorage, invocations } = runBootstrap(source, [], {
+    nativeStorage: true,
+    localValues: new Map([['themeMode', 'dark']]),
+    saveTheme: (theme) => theme === 'dark' ? darkSave : undefined,
+  });
+  await flushAsyncWork();
   localStorage.setItem('themeMode', 'system');
-  localStorage.setItem('uiTheme', 'PurpleThemeDark');
   localStorage.setItem('themeMode', 'light');
-  localStorage.clear();
+  await flushAsyncWork();
+  assert.deepEqual(startupThemeRequests(invocations), ['dark']);
 
-  assert.deepEqual(savedModes(), ['dark', 'system', 'light', 'system']);
+  finishDarkSave();
+  await flushAsyncWork();
+  assert.deepEqual(startupThemeRequests(invocations), ['dark', 'light']);
+});
+
+test('bridge retries a failed startup theme save without another storage change', async () => {
+  const source = await readFile(bootstrapPath, 'utf8');
+  let failuresRemaining = 1;
+  const { invocations } = runBootstrap(source, [], {
+    nativeStorage: true,
+    localValues: new Map([['themeMode', 'dark']]),
+    saveTheme() {
+      if (failuresRemaining-- > 0) throw new Error('temporary IPC failure');
+    },
+  });
+  await flushAsyncWork();
+  assert.deepEqual(startupThemeRequests(invocations), ['dark', 'dark']);
 });
 
 test('bridge bootstrap defines astrbotAppUpdater methods', async () => {
