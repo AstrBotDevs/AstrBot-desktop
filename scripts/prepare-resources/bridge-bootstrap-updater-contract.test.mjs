@@ -37,7 +37,6 @@ function runBootstrap(source, authResults, sharedState = {}) {
   sharedState.navigation = navigation;
   const invocations = [];
   const intervals = [];
-  // Native Storage objects do not accept instance-level method overrides.
   class Storage {}
   if (sharedState.nativeStorage) {
     Object.assign(Storage.prototype, {
@@ -47,11 +46,16 @@ function runBootstrap(source, authResults, sharedState = {}) {
       clear() { this.values.clear(); },
     });
   }
-  const makeStorage = (values) => sharedState.nativeStorage
-    ? (sharedState.allowStorageOverrides
-      ? Object.assign(new Storage(), { values })
-      : Object.preventExtensions(Object.assign(new Storage(), { values })))
-    : createStorage(values);
+  const makeStorage = (values) => {
+    if (!sharedState.nativeStorage) return createStorage(values);
+    const storage = Object.assign(new Storage(), { values });
+    if (sharedState.allowStorageOverrides) {
+      const { setItem, removeItem, clear } = Storage.prototype;
+      return Object.assign(storage, { setItem, removeItem, clear });
+    }
+    // Native Storage can reject instance-level method overrides.
+    return Object.preventExtensions(storage);
+  };
   const localStorage = makeStorage(localValues);
   const sessionStorage = makeStorage(sessionValues);
   const location = {
@@ -161,6 +165,9 @@ for (const allowStorageOverrides of [false, true]) {
       allowStorageOverrides,
       localValues: new Map([['uiTheme', 'PurpleThemeDark']]),
     });
+    for (const method of ['setItem', 'removeItem', 'clear']) {
+      assert.equal(Object.hasOwn(localStorage, method), allowStorageOverrides, method);
+    }
     await flushAsyncWork();
     assert.deepEqual(startupThemeRequests(invocations), ['dark']);
 
@@ -172,9 +179,11 @@ for (const allowStorageOverrides of [false, true]) {
 
     localStorage.setItem('themeMode', 'light');
     await flushAsyncWork();
+    localStorage.removeItem('themeMode');
+    await flushAsyncWork();
     localStorage.clear();
     await flushAsyncWork();
-    assert.deepEqual(startupThemeRequests(invocations), ['dark', 'system', 'light', 'system']);
+    assert.deepEqual(startupThemeRequests(invocations), ['dark', 'system', 'light', 'dark', 'system']);
   });
 }
 

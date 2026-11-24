@@ -16,6 +16,7 @@ test('startup shell applies an explicit theme before styles and follows system w
     ['#startup-theme=dark', false, 'dark'],
     ['#startup-theme=light', true, 'light'],
     ['#startup-theme=unknown', true, 'dark'],
+    ['#startup-theme=unknown', false, 'light'],
     ['', false, 'light'],
   ]) {
     const dataset = {};
@@ -25,7 +26,7 @@ test('startup shell applies an explicit theme before styles and follows system w
       document: { documentElement: { dataset } },
       matchMedia: () => ({ matches: prefersDark, addEventListener: (_, listener) => { onChange = listener; } }),
     });
-    assert.equal(dataset.startupTheme, expected, hash);
+    assert.equal(dataset.startupTheme, expected, `${hash} with a ${prefersDark ? 'dark' : 'light'} system theme`);
     if (hash === '') {
       onChange({ matches: true });
       assert.equal(dataset.startupTheme, 'dark');
