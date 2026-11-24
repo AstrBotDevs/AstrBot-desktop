@@ -65,7 +65,7 @@ fn desktop_bridge_chat_transport_contract() -> &'static DesktopBridgeChatTranspo
     })
 }
 
-fn desktop_bridge_bootstrap_script() -> &'static str {
+fn desktop_bridge_bootstrap_script(revision: u64) -> String {
     DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT
         .get_or_init(|| {
             let contract = desktop_bridge_chat_transport_contract();
@@ -74,7 +74,7 @@ fn desktop_bridge_bootstrap_script() -> &'static str {
                 .replace("{CHAT_TRANSPORT_MODE_STORAGE_KEY}", &contract.storage_key)
                 .replace("{CHAT_TRANSPORT_MODE_WEBSOCKET}", &contract.websocket_value)
         })
-        .as_str()
+        .replace("{STARTUP_THEME_REVISION}", &revision.to_string())
 }
 
 pub fn inject_desktop_bridge<F>(webview: &tauri::Webview<tauri::Wry>, log: F)
@@ -82,8 +82,7 @@ where
     F: Fn(&str),
 {
     let revision = webview.app_handle().state::<StartupThemeWrites>().current();
-    let script = desktop_bridge_bootstrap_script()
-        .replace("{STARTUP_THEME_REVISION}", &revision.to_string());
+    let script = desktop_bridge_bootstrap_script(revision);
     if let Err(error) = webview.eval(script) {
         log(&format!("failed to inject desktop bridge script: {error}"));
     }
@@ -99,6 +98,15 @@ pub fn should_inject_desktop_bridge(backend_url: &str, page_url: &Url) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bootstrap_script_injects_the_revision_for_each_dashboard_document() {
+        for revision in [17, 18] {
+            let script = desktop_bridge_bootstrap_script(revision);
+            assert!(!script.contains("{STARTUP_THEME_REVISION}"));
+            assert!(script.contains(&format!("const revision = Number('{revision}');")));
+        }
+    }
 
     #[test]
     fn older_dashboard_cannot_save_after_a_reload() {
