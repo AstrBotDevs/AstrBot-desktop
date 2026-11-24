@@ -663,9 +663,8 @@ jobs:
         with:
           name: astrbot-desktop-tauri-${{ needs.resolve_build_context.outputs.astrbot_version }}-windows-${{ matrix.arch }}
           if-no-files-found: error
-          # Only upload Windows installer executables.
-          # Keep explicit globs here so we only publish the installer plus the
-          # portable zip, not bundled helper executables from the embedded runtime.
+          # Upload NSIS installers, their updater signatures, and portable ZIPs,
+          # not bundled helper executables from the embedded runtime.
           path: |
             ${{ env.WINDOWS_RELEASE_ASSET_GLOBS }}
             src-tauri/target/release/bundle/nsis/*.exe.sig

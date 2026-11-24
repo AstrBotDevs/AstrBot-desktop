@@ -116,7 +116,7 @@ backend 子系统对上提供统一的“后端可否管理、如何启动、何
 - 路径优先级：`ASTRBOT_ROOT/data/desktop_state.json` -> 打包根目录下的 `data/desktop_state.json`。
 - `shell_locale.rs` 维护 `locale` 字段。
 - `update_channel.rs` 维护 `updateChannel` 字段，并保留其他 JSON 字段。
-- `desktop_settings.rs` 维护启动与窗口设置，以及插件界面扩展字段：`pluginUiExtensionsEnabled` 默认 `true`，`pluginUiExtensionGrants` 默认空数组；总开关只决定是否允许使用扩展，实际加载仍需逐个插件授权。
+- `desktop_settings.rs` 维护启动与窗口设置。`startupTheme` 记录 Dashboard 的浅色、深色或跟随系统偏好；未保存时启动页跟随系统。插件界面扩展字段中，`pluginUiExtensionsEnabled` 默认 `true`，`pluginUiExtensionGrants` 默认空数组；总开关只决定是否允许使用扩展，实际加载仍需逐个插件授权。
 
 当前维护约定是：各模块共用同一个状态文件，但只管理自己的字段；共享锁覆盖完整的读改写，避免并发更新互相覆盖，读取和损坏文件修复也使用同一把锁。Desktop 设置缓存把持久化与缓存更新串行化；未知字段保留避免丢弃其他模块的配置。
 
@@ -149,11 +149,11 @@ backend 子系统对上提供统一的“后端可否管理、如何启动、何
 
 ### 4.2 启动流程
 
-1. `app_runtime.rs` 初始化 Tauri 插件、窗口事件、页面加载事件和托盘。
-2. `startup_task.rs` 异步解析启动计划；打包态从 direct / `_up_/resources` 中选取与可执行文件绑定的完整资源根，开发态仍使用独立的 dev/custom 计划。
+1. `app_runtime.rs` 初始化 Tauri 插件、窗口事件、页面加载事件和托盘，并在显示主窗口前应用启动主题。
+2. 启动页加载完成或等待 2 秒后开始后端启动流程。`startup_task.rs` 异步解析启动计划；打包态从 direct / `_up_/resources` 中选取与可执行文件绑定的完整资源根，开发态仍使用独立的 dev/custom 计划。
 3. backend readiness 在接受已运行或刚拉起的打包 backend 前，校验 `/api/v1/stats/versions`，并核对实际送出的 index 和 manifest 声明的入口摘要。
 4. backend ready 后用 manifest 摘要生成的 `astrbot_bundle` 查询参数导航主窗口；失败时进入可见的 startup error 路径。
-5. 页面加载过程中按来源策略注入 desktop bridge，并在需要时注入 startup loading mode。
+5. 页面加载过程中按来源策略注入 desktop bridge，并在需要时注入 startup loading mode。Dashboard 未在 10 秒内报告加载完成时，桌面端用原生对话框提示。
 
 ### 4.3 bridge 注入与桌面交互流程
 

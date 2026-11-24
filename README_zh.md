@@ -145,16 +145,10 @@ ASTRBOT_DASHBOARD_PORT=6185
 
 开启局域网访问前，请确认系统防火墙允许端口 `6185`，并不要在不可信网络或公网环境暴露该端口。
 
-<!-- faq: macos-quarantine -->
+<!-- faq: macos-install -->
 ### macOS 提示“应用已损坏”或无法打开
 
-如果你是从网络下载的安装包，macOS 可能会给应用打上 quarantine 标记。可执行：
-
-```bash
-xattr -dr com.apple.quarantine /Applications/AstrBot.app
-```
-
-然后重新启动应用。如果应用不在 `/Applications`，请替换为实际路径。
+请从[官方发布页](https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest)重新下载适合你的 Mac 的 `.dmg` 并安装。如果 macOS 仍阻止打开应用，请在[问题反馈页](https://github.com/AstrBotDevs/AstrBot-desktop/issues)附上完整的系统提示。
 
 <!-- faq: missing-runtime-tools -->
 ### 为什么某些 MCP 工具提示缺少 `node`、`npx` 或 `uvx`？

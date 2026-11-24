@@ -26,7 +26,7 @@ fn startup_background(theme: Theme) -> Color {
 
 pub(crate) fn apply_system_startup_background(app: &AppHandle) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("main") {
-        // The window starts hidden, so set both layers before setup shows it.
+        // Set both background layers while the startup window is still hidden.
         window.set_background_color(Some(startup_background(window.theme()?)))?;
     }
     Ok(())

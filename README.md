@@ -145,16 +145,10 @@ ASTRBOT_DASHBOARD_PORT=6185
 
 Before enabling LAN access, make sure your system firewall allows port `6185`, and do not expose the port on untrusted networks or the public internet.
 
-<!-- faq: macos-quarantine -->
+<!-- faq: macos-install -->
 ### macOS says the app is damaged or cannot be opened
 
-If you downloaded the installer from the internet, macOS may attach a quarantine flag to the app. Run:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/AstrBot.app
-```
-
-Then restart the app. If the app is not located in `/Applications`, replace the path with the actual one.
+Download a fresh copy of the `.dmg` for your Mac from the [official Releases page](https://github.com/AstrBotDevs/AstrBot-desktop/releases/latest) and reinstall AstrBot. If macOS still blocks the app, report the exact warning on the [issue tracker](https://github.com/AstrBotDevs/AstrBot-desktop/issues).
 
 <!-- faq: missing-runtime-tools -->
 ### Why do some MCP tools say `node`, `npx`, or `uvx` is missing?
