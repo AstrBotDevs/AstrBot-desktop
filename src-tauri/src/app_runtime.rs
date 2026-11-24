@@ -201,6 +201,7 @@ fn configure_window_events(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> 
 
 fn handle_page_load_started(webview: &tauri::Webview<tauri::Wry>, payload: &PageLoadPayload<'_>) {
     append_desktop_log(&format!("page-load started: {}", payload.url()));
+    // Wry emits Started on commit (GTK/macOS) or ContentLoading (WebView2).
     if webview.label() == "main" {
         webview
             .app_handle()

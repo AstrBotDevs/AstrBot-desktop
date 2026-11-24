@@ -11,7 +11,7 @@ pub(crate) fn configure_startup_theme(config: &mut WindowConfig, theme: StartupT
         StartupTheme::Dark => ("#startup-theme=dark", Theme::Dark),
         StartupTheme::System => return,
     };
-    // Pass the theme to the page before paint and cover the native background before HTML loads.
+    // Tauri resolves this fragment against its app base URL, including devUrl in dev builds.
     config.url = WebviewUrl::App(fragment.into());
     config.background_color = Some(startup_background(native_theme));
 }

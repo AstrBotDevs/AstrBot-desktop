@@ -1125,6 +1125,16 @@
       const revision = Number('{STARTUP_THEME_REVISION}');
       const initialRetryDelay = 1_000;
       let retryDelay = initialRetryDelay;
+      const scheduleRetry = (theme, message, reason) => {
+        if (pendingRetry) return;
+        if (retryDelay === initialRetryDelay) console.warn(message, reason);
+        const timer = window.setTimeout(() => {
+          pendingRetry = undefined;
+          void sync();
+        }, retryDelay);
+        pendingRetry = { theme, timer };
+        retryDelay = Math.min(retryDelay * 2, 30_000);
+      };
       const readTheme = () => {
         const mode = storage.getItem('themeMode');
         if (mode === 'dark' || mode === 'light' || mode === 'system') return mode;
@@ -1151,20 +1161,12 @@
               savedTheme = theme;
               retryDelay = initialRetryDelay;
             } else if (readTheme() === theme) {
-              if (retryDelay === initialRetryDelay) {
-                console.warn('[astrbotDesktop] Retrying startup theme save', result.reason);
-              }
-              const timer = window.setTimeout(() => {
-                pendingRetry = undefined;
-                void sync();
-              }, retryDelay);
-              pendingRetry = { theme, timer };
-              retryDelay = Math.min(retryDelay * 2, 30_000);
+              scheduleRetry(theme, '[astrbotDesktop] Retrying startup theme save', result.reason);
               return;
             }
           }
         } catch (error) {
-          console.warn('[astrbotDesktop] Failed to read Dashboard theme', error);
+          scheduleRetry(undefined, '[astrbotDesktop] Retrying Dashboard theme read', error);
         } finally {
           saving = false;
         }

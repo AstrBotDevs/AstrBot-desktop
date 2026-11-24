@@ -40,7 +40,10 @@ function runBootstrap(source, authResults, sharedState = {}) {
   class Storage {}
   if (sharedState.nativeStorage) {
     Object.assign(Storage.prototype, {
-      getItem(key) { return this.values.get(key) ?? null; },
+      getItem(key) {
+        sharedState.beforeStorageRead?.(key);
+        return this.values.get(key) ?? null;
+      },
       setItem(key, value) { this.values.set(String(key), String(value)); },
       removeItem(key) { this.values.delete(String(key)); },
       clear() { this.values.clear(); },
@@ -239,6 +242,29 @@ test('bridge retries repeated startup theme save failures until the save succeed
     await flushAsyncWork();
   }
   assert.deepEqual(startupThemeRequests(invocations), Array(retryDelays.length + 1).fill('dark'));
+  assert.equal(timers.length, 0);
+});
+
+test('bridge retries an interrupted theme storage read without a storage mutation', async () => {
+  const source = await readFile(bootstrapPath, 'utf8');
+  let failuresRemaining = 2;
+  const timers = [];
+  const { invocations } = runBootstrap(source, [], {
+    nativeStorage: true,
+    localValues: new Map([['themeMode', 'dark']]),
+    beforeStorageRead(key) {
+      if (key === 'themeMode' && failuresRemaining-- > 0) throw new Error('storage unavailable');
+    },
+    setTimeout: (run, delay) => timers.push({ run, delay }),
+  });
+  for (const delay of [1000, 2000]) {
+    await flushAsyncWork();
+    assert.deepEqual(startupThemeRequests(invocations), []);
+    assert.deepEqual(timers.map((timer) => timer.delay), [delay]);
+    timers.shift().run();
+  }
+  await flushAsyncWork();
+  assert.deepEqual(startupThemeRequests(invocations), ['dark']);
   assert.equal(timers.length, 0);
 });
 
