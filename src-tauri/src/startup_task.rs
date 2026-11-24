@@ -2,7 +2,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::{navigate_main_window_to_backend, ui_dispatch, BackendState};
 
-pub fn spawn_startup_task<F>(app_handle: AppHandle, log: F)
+pub fn spawn_startup_task<F>(app_handle: AppHandle, startup_page_loaded: bool, log: F)
 where
     F: Fn(&str) + Copy + Send + 'static,
 {
@@ -17,29 +17,23 @@ where
         .map_err(|error| format!("Backend startup task failed: {error}"))
         .and_then(|result| result);
 
-        match startup_result {
-            Ok(cache_version) => {
-                if let Err(error) = ui_dispatch::run_on_main_thread_dispatch(
-                    &startup_app_handle,
-                    "navigate backend",
-                    move |main_app| {
-                        if let Err(navigate_error) =
-                            navigate_main_window_to_backend(main_app, cache_version.as_deref())
-                        {
-                            ui_dispatch::show_startup_error(main_app, &navigate_error, log);
-                        }
-                    },
-                ) {
-                    ui_dispatch::show_startup_error_on_main_thread(
-                        &startup_app_handle,
-                        &error,
-                        log,
-                    );
+        if let Err(error) = ui_dispatch::run_on_main_thread_dispatch(
+            &startup_app_handle,
+            "present backend startup result",
+            move |app| {
+                let result = startup_result.and_then(|cache_version| {
+                    navigate_main_window_to_backend(
+                        app,
+                        cache_version.as_deref(),
+                        startup_page_loaded,
+                    )
+                });
+                if let Err(error) = result {
+                    ui_dispatch::show_startup_error(app, &error, startup_page_loaded, log);
                 }
-            }
-            Err(error) => {
-                ui_dispatch::show_startup_error_on_main_thread(&startup_app_handle, &error, log);
-            }
+            },
+        ) {
+            log(&error);
         }
     });
 }

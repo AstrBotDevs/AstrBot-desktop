@@ -16,12 +16,14 @@ static BACKEND_PATH_OVERRIDE: OnceLock<Option<OsString>> = OnceLock::new();
 pub(crate) fn navigate_main_window_to_backend(
     app_handle: &AppHandle,
     cache_version: Option<&str>,
+    startup_page_loaded: bool,
 ) -> Result<(), String> {
     let state = app_handle.state::<BackendState>();
     window::main_window::navigate_main_window_to_backend(
         app_handle,
         &state.backend_url,
         cache_version,
+        startup_page_loaded,
     )
 }
 

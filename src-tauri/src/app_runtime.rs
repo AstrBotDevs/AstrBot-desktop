@@ -1,3 +1,8 @@
+use std::{
+    sync::mpsc::{self, Receiver, SyncSender},
+    time::Duration,
+};
+
 use tauri::{
     webview::{PageLoadEvent, PageLoadPayload},
     Builder, Manager, RunEvent, WindowEvent,
@@ -233,20 +238,16 @@ fn handle_page_load_finished(webview: &tauri::Webview<tauri::Wry>, payload: &Pag
     }
 }
 
-fn configure_page_load_events(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
-    let startup_pending = std::sync::atomic::AtomicBool::new(true);
+fn configure_page_load_events(
+    builder: Builder<tauri::Wry>,
+    startup_page: SyncSender<()>,
+) -> Builder<tauri::Wry> {
     builder.on_page_load(move |webview, payload| match payload.event() {
         PageLoadEvent::Started => handle_page_load_started(webview, payload),
         PageLoadEvent::Finished => {
             handle_page_load_finished(webview, payload);
-            // Wait for the startup document so the blank webview is never shown.
-            if webview.label() == "main"
-                && startup_pending.swap(false, std::sync::atomic::Ordering::Relaxed)
-            {
-                let app = webview.app_handle();
-                let settings = app.state::<DesktopSettingsCache>().get();
-                apply_startup_window_visibility(app, settings.silent_launch);
-                startup_task::spawn_startup_task(app.clone(), append_startup_log);
+            if webview.label() == "main" {
+                let _ = startup_page.try_send(());
             }
         }
     })
@@ -262,8 +263,11 @@ fn apply_startup_window_visibility(app_handle: &tauri::AppHandle, silent_launch:
     }
 }
 
-fn configure_setup(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
-    builder.setup(|app| {
+fn configure_setup(
+    builder: Builder<tauri::Wry>,
+    startup_page: Receiver<()>,
+) -> Builder<tauri::Wry> {
+    builder.setup(move |app| {
         let app_handle = app.handle().clone();
         if let Err(error) = tray::setup::setup_tray(&app_handle) {
             append_startup_log(&format!("failed to initialize tray: {error}"));
@@ -278,6 +282,34 @@ fn configure_setup(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
                 append_startup_log(&format!("failed to set system startup background: {error}"));
             }
         }
+
+        tauri::async_runtime::spawn_blocking(move || {
+            // Wait briefly for the themed page to avoid a flash, then recover if it never loads.
+            let startup_page_loaded = startup_page.recv_timeout(Duration::from_secs(2)).is_ok();
+            if !startup_page_loaded {
+                append_startup_log(
+                    "startup page did not finish loading; continuing backend startup",
+                );
+            }
+
+            if let Err(error) = crate::ui_dispatch::run_on_main_thread_dispatch(
+                &app_handle,
+                "start backend",
+                move |app| {
+                    if app.state::<BackendState>().is_quitting() {
+                        return;
+                    }
+                    apply_startup_window_visibility(app, desktop_settings.silent_launch);
+                    startup_task::spawn_startup_task(
+                        app.clone(),
+                        startup_page_loaded,
+                        append_startup_log,
+                    );
+                },
+            ) {
+                append_startup_log(&error);
+            }
+        });
         Ok(())
     })
 }
@@ -319,8 +351,9 @@ pub(crate) fn run() {
     let builder = tauri::Builder::default();
     let builder = configure_plugins(builder);
     let builder = configure_window_events(builder);
-    let builder = configure_page_load_events(builder);
-    let builder = configure_setup(builder);
+    let (startup_page_tx, startup_page_rx) = mpsc::sync_channel(1);
+    let builder = configure_page_load_events(builder, startup_page_tx);
+    let builder = configure_setup(builder, startup_page_rx);
 
     let settings = desktop_settings::read_desktop_settings(
         runtime_paths::default_packaged_root_dir().as_deref(),
