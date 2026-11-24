@@ -1,3 +1,11 @@
+use std::{
+    sync::{
+        mpsc::{self, Receiver, SyncSender},
+        Mutex,
+    },
+    time::Duration,
+};
+
 use tauri::{
     webview::{PageLoadEvent, PageLoadPayload},
     Builder, Manager, RunEvent, WindowEvent,
@@ -193,6 +201,13 @@ fn configure_window_events(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> 
 
 fn handle_page_load_started(webview: &tauri::Webview<tauri::Wry>, payload: &PageLoadPayload<'_>) {
     append_desktop_log(&format!("page-load started: {}", payload.url()));
+    // Wry emits Started on commit (GTK/macOS) or ContentLoading (WebView2).
+    if webview.label() == "main" {
+        webview
+            .app_handle()
+            .state::<bridge::desktop::StartupThemeWrites>()
+            .advance();
+    }
     let state = webview.app_handle().state::<BackendState>();
     let action = app_runtime_events::page_load_action(
         PageLoadEvent::Started,
@@ -201,7 +216,7 @@ fn handle_page_load_started(webview: &tauri::Webview<tauri::Wry>, payload: &Page
     );
 
     if action == app_runtime_events::PageLoadAction::InjectDesktopBridge {
-        crate::inject_desktop_bridge(webview);
+        crate::inject_desktop_bridge(webview, payload.url());
     }
 }
 
@@ -219,7 +234,7 @@ fn handle_page_load_finished(webview: &tauri::Webview<tauri::Wry>, payload: &Pag
 
     match action {
         app_runtime_events::PageLoadAction::InjectDesktopBridge => {
-            crate::inject_desktop_bridge(webview);
+            crate::inject_desktop_bridge(webview, payload.url());
         }
         app_runtime_events::PageLoadAction::ApplyStartupLoadingMode => {
             window::startup_loading::apply_startup_loading_mode(
@@ -233,11 +248,52 @@ fn handle_page_load_finished(webview: &tauri::Webview<tauri::Wry>, payload: &Pag
     }
 }
 
-fn configure_page_load_events(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
-    builder.on_page_load(|webview, payload| match payload.event() {
+fn configure_page_load_events(
+    builder: Builder<tauri::Wry>,
+    startup_page: SyncSender<()>,
+) -> Builder<tauri::Wry> {
+    builder.on_page_load(move |webview, payload| match payload.event() {
         PageLoadEvent::Started => handle_page_load_started(webview, payload),
-        PageLoadEvent::Finished => handle_page_load_finished(webview, payload),
+        PageLoadEvent::Finished => {
+            handle_page_load_finished(webview, payload);
+            if webview.label() == "main" {
+                let app = webview.app_handle();
+                let backend = app.state::<BackendState>();
+                let is_dashboard = bridge::desktop::should_inject_desktop_bridge(
+                    &backend.backend_url,
+                    payload.url(),
+                );
+                if !is_dashboard {
+                    let show = app
+                        .state::<Mutex<startup_task::StartupPage>>()
+                        .lock()
+                        .unwrap()
+                        .finish_shell();
+                    if show && !backend.is_quitting() {
+                        let settings = app.state::<DesktopSettingsCache>().get();
+                        apply_startup_window_visibility(app, settings.silent_launch);
+                    }
+                    let _ = startup_page.try_send(());
+                }
+            }
+        }
     })
+}
+
+pub(crate) fn dashboard_loaded(app: &tauri::AppHandle, revision: u64) {
+    if app.state::<BackendState>().is_quitting() {
+        return;
+    }
+    let current_revision = app.state::<bridge::desktop::StartupThemeWrites>().current();
+    let show = app
+        .state::<Mutex<startup_task::StartupPage>>()
+        .lock()
+        .unwrap()
+        .finish_dashboard(revision, current_revision);
+    if show {
+        let settings = app.state::<DesktopSettingsCache>().get();
+        apply_startup_window_visibility(app, settings.silent_launch);
+    }
 }
 
 fn apply_startup_window_visibility(app_handle: &tauri::AppHandle, silent_launch: bool) {
@@ -250,8 +306,11 @@ fn apply_startup_window_visibility(app_handle: &tauri::AppHandle, silent_launch:
     }
 }
 
-fn configure_setup(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
-    builder.setup(|app| {
+fn configure_setup(
+    builder: Builder<tauri::Wry>,
+    startup_page: Receiver<()>,
+) -> Builder<tauri::Wry> {
+    builder.setup(move |app| {
         let app_handle = app.handle().clone();
         if let Err(error) = tray::setup::setup_tray(&app_handle) {
             append_startup_log(&format!("failed to initialize tray: {error}"));
@@ -259,9 +318,36 @@ fn configure_setup(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
         crate::windows_shutdown::install(&app_handle);
 
         let desktop_settings = app_handle.state::<DesktopSettingsCache>().get();
-        apply_startup_window_visibility(&app_handle, desktop_settings.silent_launch);
+        if desktop_settings.startup_theme() == desktop_settings::StartupTheme::System {
+            if let Err(error) =
+                window::startup_loading::apply_system_startup_background(&app_handle)
+            {
+                append_startup_log(&format!("failed to set system startup background: {error}"));
+            }
+        }
 
-        startup_task::spawn_startup_task(app_handle.clone(), append_startup_log);
+        tauri::async_runtime::spawn_blocking(move || {
+            // Wait briefly for the themed page to avoid a flash, then recover if it never loads.
+            let startup_page_loaded = startup_page.recv_timeout(Duration::from_secs(2)).is_ok();
+            if !startup_page_loaded {
+                append_startup_log(
+                    "startup page did not finish loading; continuing backend startup",
+                );
+            }
+
+            if let Err(error) = crate::ui_dispatch::run_on_main_thread_dispatch(
+                &app_handle,
+                "start backend",
+                move |app| {
+                    if app.state::<BackendState>().is_quitting() {
+                        return;
+                    }
+                    startup_task::spawn_startup_task(app.clone(), append_startup_log);
+                },
+            ) {
+                append_startup_log(&error);
+            }
+        });
         Ok(())
     })
 }
@@ -303,16 +389,29 @@ pub(crate) fn run() {
     let builder = tauri::Builder::default();
     let builder = configure_plugins(builder);
     let builder = configure_window_events(builder);
-    let builder = configure_page_load_events(builder);
-    let builder = configure_setup(builder);
+    let (startup_page_tx, startup_page_rx) = mpsc::sync_channel(1);
+    let builder = configure_page_load_events(builder, startup_page_tx);
+    let builder = configure_setup(builder, startup_page_rx);
+
+    let settings = desktop_settings::read_desktop_settings(
+        runtime_paths::default_packaged_root_dir().as_deref(),
+    );
+    let mut context = tauri::generate_context!();
+    if let Some(main) = context
+        .config_mut()
+        .app
+        .windows
+        .iter_mut()
+        .find(|window| window.label == "main")
+    {
+        window::startup_loading::configure_startup_theme(main, settings.startup_theme());
+    }
 
     builder
         .manage(BackendState::default())
-        .manage(DesktopSettingsCache::new(
-            desktop_settings::read_desktop_settings(
-                runtime_paths::default_packaged_root_dir().as_deref(),
-            ),
-        ))
+        .manage(Mutex::new(startup_task::StartupPage::default()))
+        .manage(bridge::desktop::StartupThemeWrites::default())
+        .manage(DesktopSettingsCache::new(settings))
         .manage(bridge::plugin_ui_extensions::PluginUiExtensionRuntimeState::default())
         .invoke_handler(tauri::generate_handler![
             crate::bridge::commands::desktop_bridge_is_desktop_runtime,
@@ -329,6 +428,8 @@ pub(crate) fn run() {
             crate::bridge::commands::desktop_bridge_request_plugin_ui_extension,
             crate::bridge::commands::desktop_bridge_open_external_url,
             crate::bridge::commands::desktop_bridge_open_repair_install,
+            crate::bridge::commands::desktop_bridge_dashboard_loaded,
+            crate::bridge::commands::desktop_bridge_set_startup_theme,
             crate::bridge::commands::desktop_bridge_set_window_theme,
             crate::bridge::commands::desktop_bridge_minimize_window,
             crate::bridge::commands::desktop_bridge_toggle_maximize_window,
@@ -336,7 +437,7 @@ pub(crate) fn run() {
             crate::bridge::commands::desktop_bridge_check_app_update,
             crate::bridge::commands::desktop_bridge_install_app_update
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application")
         .run(handle_run_event);
 }

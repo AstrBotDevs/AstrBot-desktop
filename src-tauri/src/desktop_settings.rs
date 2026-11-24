@@ -41,6 +41,17 @@ pub(crate) enum DesktopSettingKey {
     PluginUiExtensions,
 }
 
+const STARTUP_THEME_FIELD: &str = "startupTheme";
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum StartupTheme {
+    Light,
+    Dark,
+    #[default]
+    System,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum CloseAction {
@@ -131,6 +142,13 @@ impl Default for DesktopSettings {
 }
 
 impl DesktopSettings {
+    pub(crate) fn startup_theme(&self) -> StartupTheme {
+        self.other
+            .get(STARTUP_THEME_FIELD)
+            .and_then(|value| StartupTheme::deserialize(value).ok())
+            .unwrap_or_default()
+    }
+
     pub(crate) fn close_action(&self, is_windows: bool) -> Option<CloseAction> {
         if is_windows {
             self.windows_close_action
@@ -315,6 +333,23 @@ pub(crate) fn grant_plugin_ui_extension(
     Ok(state)
 }
 
+pub(crate) fn write_startup_theme(
+    packaged_root_dir: Option<&Path>,
+    theme: StartupTheme,
+) -> Result<DesktopSettings, String> {
+    let _state_guard = crate::desktop_state::lock_desktop_state();
+    let state_path = crate::desktop_state::resolve_desktop_state_path(packaged_root_dir)
+        .ok_or_else(|| "Desktop settings state path is unavailable".to_string())?;
+    let mut state = load_state(&state_path)?;
+    if state.startup_theme() != theme {
+        state
+            .other
+            .insert(STARTUP_THEME_FIELD.to_string(), serde_json::json!(theme));
+        save_state(&state_path, &state)?;
+    }
+    Ok(state)
+}
+
 pub(crate) fn clear_plugin_ui_extension_grants(
     packaged_root_dir: Option<&Path>,
 ) -> Result<DesktopSettings, String> {
@@ -401,6 +436,37 @@ mod tests {
     #[test]
     fn desktop_settings_default_preserves_existing_close_to_tray_behavior() {
         assert_eq!(DesktopSettings::default(), settings(false, false, true));
+    }
+
+    #[test]
+    fn startup_theme_survives_reload_and_keeps_other_desktop_settings() {
+        let _root_guard = EnvVarGuard::clear(crate::ASTRBOT_ROOT_ENV);
+        let root = tempfile::tempdir().expect("temp root");
+        let path = state_path(root.path());
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(
+            &path,
+            r#"{"silentLaunch":true,"startupTheme":17,"locale":"en-US"}"#,
+        )
+        .unwrap();
+
+        let original = read_desktop_settings(Some(root.path()));
+        assert_eq!(original.startup_theme(), StartupTheme::System);
+        assert!(original.silent_launch);
+        for theme in [
+            StartupTheme::Dark,
+            StartupTheme::Light,
+            StartupTheme::System,
+        ] {
+            write_startup_theme(Some(root.path()), theme).expect("write startup theme");
+            let reloaded = read_desktop_settings(Some(root.path()));
+            assert_eq!(reloaded.startup_theme(), theme);
+            assert!(reloaded.silent_launch);
+            assert_eq!(
+                reloaded.other.get("locale").and_then(Value::as_str),
+                Some("en-US")
+            );
+        }
     }
 
     #[test]

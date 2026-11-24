@@ -18,6 +18,20 @@
   const tauriEvent = window.__TAURI_INTERNALS__?.event ?? window.__TAURI__?.event;
   if (typeof invoke !== 'function') return;
 
+  const revision = Number('{STARTUP_THEME_REVISION}');
+  if (window.location.origin === '{DASHBOARD_ORIGIN}' && window.__astrbotDashboardLoadRevision !== revision) {
+    window.__astrbotDashboardLoadRevision = revision;
+    const reportLoaded = () => {
+      if (document.readyState === 'complete' && window.__astrbotDashboardLoadRevision === revision) {
+        void invoke('desktop_bridge_dashboard_loaded', { revision }).catch((error) => {
+          console.warn('[astrbotDesktop] Failed to report Dashboard load', error);
+        });
+      }
+    };
+    if (document.readyState === 'complete') reportLoaded();
+    else window.addEventListener('load', reportLoaded, { once: true });
+  }
+
   const BRIDGE_COMMANDS = Object.freeze({
     IS_DESKTOP_RUNTIME: 'desktop_bridge_is_desktop_runtime',
     GET_BACKEND_STATE: 'desktop_bridge_get_backend_state',
@@ -35,6 +49,7 @@
     OPEN_REPAIR_INSTALL: 'desktop_bridge_open_repair_install',
     CHECK_APP_UPDATE: 'desktop_bridge_check_app_update',
     INSTALL_APP_UPDATE: 'desktop_bridge_install_app_update',
+    SET_STARTUP_THEME: 'desktop_bridge_set_startup_theme',
     SET_WINDOW_THEME: 'desktop_bridge_set_window_theme',
     MINIMIZE_WINDOW: 'desktop_bridge_minimize_window',
     TOGGLE_MAXIMIZE_WINDOW: 'desktop_bridge_toggle_maximize_window',
@@ -1112,6 +1127,82 @@
     }
   };
 
+  const installStartupThemeSync = () => {
+    if (window.__astrbotStartupThemeSyncInstalled) return;
+
+    try {
+      const storage = window.localStorage;
+      if (!storage) return;
+      let savedTheme;
+      let saving = false;
+      let pendingRetry;
+      const initialRetryDelay = 1_000;
+      let retryDelay = initialRetryDelay;
+      const scheduleRetry = (theme, message, reason) => {
+        if (pendingRetry) return;
+        if (retryDelay === initialRetryDelay) console.warn(message, reason);
+        const timer = window.setTimeout(() => {
+          pendingRetry = undefined;
+          void sync();
+        }, retryDelay);
+        pendingRetry = { theme, timer };
+        retryDelay = Math.min(retryDelay * 2, 30_000);
+      };
+      const readTheme = () => {
+        const mode = storage.getItem('themeMode');
+        if (mode === 'dark' || mode === 'light' || mode === 'system') return mode;
+        const legacy = storage.getItem('uiTheme');
+        if (legacy === 'PurpleThemeDark') return 'dark';
+        if (legacy === 'PurpleTheme') return 'light';
+        return 'system';
+      };
+      const sync = async () => {
+        if (saving) return;
+        saving = true;
+        try {
+          const latestTheme = readTheme();
+          if (pendingRetry) {
+            if (latestTheme === pendingRetry.theme) return;
+            window.clearTimeout(pendingRetry.timer);
+            pendingRetry = undefined;
+            retryDelay = initialRetryDelay;
+          }
+          // Read the latest choice after each write so changes during IPC are coalesced.
+          for (let theme = latestTheme; theme !== savedTheme; theme = readTheme()) {
+            const result = await invokeBridge(BRIDGE_COMMANDS.SET_STARTUP_THEME, { theme, revision });
+            if (result?.ok !== false) {
+              savedTheme = theme;
+              retryDelay = initialRetryDelay;
+            } else if (readTheme() === theme) {
+              scheduleRetry(theme, '[astrbotDesktop] Retrying startup theme save', result.reason);
+              return;
+            }
+          }
+        } catch (error) {
+          scheduleRetry(undefined, '[astrbotDesktop] Retrying Dashboard theme read', error);
+        } finally {
+          saving = false;
+        }
+      };
+
+      // The auth bridge can shadow native methods with own methods on localStorage.
+      for (const method of ['setItem', 'removeItem', 'clear']) {
+        const target = Object.hasOwn(storage, method) ? storage : window.Storage?.prototype;
+        if (!target) continue;
+        const original = target[method];
+        target[method] = function (...args) {
+          const result = original.apply(this, args);
+          if (this === storage && (method === 'clear' || args[0] === 'themeMode' || args[0] === 'uiTheme')) {
+            void sync();
+          }
+          return result;
+        };
+      }
+      window.__astrbotStartupThemeSyncInstalled = true;
+      void sync();
+    } catch {}
+  };
+
   window.astrbotDesktop = {
     __tauriBridge: true,
     isDesktop: true,
@@ -1189,6 +1280,7 @@
   installNavigationBridges();
   void listenToTrayRestartBackendEvent();
   patchLocalStorageBridgeSync();
+  installStartupThemeSync();
   ensureDefaultChatTransportMode();
   void syncAuthToken();
   void syncShellLocale();

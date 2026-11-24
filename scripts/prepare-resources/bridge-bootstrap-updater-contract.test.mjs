@@ -37,8 +37,30 @@ function runBootstrap(source, authResults, sharedState = {}) {
   sharedState.navigation = navigation;
   const invocations = [];
   const intervals = [];
-  const localStorage = createStorage(localValues);
-  const sessionStorage = createStorage(sessionValues);
+  class Storage {}
+  if (sharedState.nativeStorage) {
+    Object.assign(Storage.prototype, {
+      getItem(key) {
+        sharedState.beforeStorageRead?.(key);
+        return this.values.get(key) ?? null;
+      },
+      setItem(key, value) { this.values.set(String(key), String(value)); },
+      removeItem(key) { this.values.delete(String(key)); },
+      clear() { this.values.clear(); },
+    });
+  }
+  const makeStorage = (values) => {
+    if (!sharedState.nativeStorage) return createStorage(values);
+    const storage = Object.assign(new Storage(), { values });
+    if (sharedState.allowStorageOverrides) {
+      const { setItem, removeItem, clear } = Storage.prototype;
+      return Object.assign(storage, { setItem, removeItem, clear });
+    }
+    // Native Storage can reject instance-level method overrides.
+    return Object.preventExtensions(storage);
+  };
+  const localStorage = makeStorage(localValues);
+  const sessionStorage = makeStorage(sessionValues);
   const location = {
     href: 'http://127.0.0.1:6185/#/auth/login',
     origin: 'http://127.0.0.1:6185',
@@ -53,10 +75,14 @@ function runBootstrap(source, authResults, sharedState = {}) {
     },
   };
   const window = {
+    Storage: sharedState.nativeStorage ? Storage : undefined,
     __TAURI_INTERNALS__: {
       event: sharedState.event,
       async invoke(command, payload = {}) {
         invocations.push({ command, payload });
+        if (command === 'desktop_bridge_set_startup_theme') {
+          return sharedState.saveTheme?.(payload.theme);
+        }
         if (command === 'desktop_bridge_install_app_update' && sharedState.install) {
           return sharedState.install();
         }
@@ -80,6 +106,9 @@ function runBootstrap(source, authResults, sharedState = {}) {
     sessionStorage,
     location,
     open: () => null,
+    addEventListener: sharedState.addEventListener ?? (() => {}),
+    setTimeout: sharedState.setTimeout,
+    clearTimeout: sharedState.clearTimeout,
     setInterval(handler, delay) {
       intervals.push({ handler, delay });
       return intervals.length;
@@ -88,6 +117,7 @@ function runBootstrap(source, authResults, sharedState = {}) {
   class MockElement {}
   class MockAnchor extends MockElement {}
   const document = {
+    get readyState() { return sharedState.readyState; },
     addEventListener() {},
     getElementById(id) {
       if (id !== 'app') return null;
@@ -104,7 +134,9 @@ function runBootstrap(source, authResults, sharedState = {}) {
     source
       .replace('{TRAY_RESTART_BACKEND_EVENT}', 'astrbot://tray-restart-backend')
       .replace('{CHAT_TRANSPORT_MODE_STORAGE_KEY}', 'chat_transport_mode')
-      .replace('{CHAT_TRANSPORT_MODE_WEBSOCKET}', 'websocket'),
+      .replace('{CHAT_TRANSPORT_MODE_WEBSOCKET}', 'websocket')
+      .replace('{DASHBOARD_ORIGIN}', sharedState.dashboardOrigin ?? location.origin)
+      .replace('{STARTUP_THEME_REVISION}', String(sharedState.themeRevision ?? 1)),
     {
       window,
       document,
@@ -125,6 +157,173 @@ function runBootstrap(source, authResults, sharedState = {}) {
     navigation,
   };
 }
+
+function startupThemeRequests(invocations) {
+  return invocations
+    .filter(({ command }) => command === 'desktop_bridge_set_startup_theme')
+    .map(({ payload }) => payload.theme);
+}
+
+test('Dashboard reports its document revision only when its own load completes', async () => {
+  const source = await readFile(bootstrapPath, 'utf8');
+  const listeners = new Map();
+  const state = {
+    themeRevision: 7,
+    readyState: 'loading',
+    addEventListener: (event, handler) => listeners.set(event, handler),
+  };
+  const { invocations } = runBootstrap(source, [], state);
+  const readyRevisions = () => invocations
+    .filter(({ command }) => command === 'desktop_bridge_dashboard_loaded')
+    .map(({ payload }) => payload.revision);
+  assert.deepEqual(readyRevisions(), []);
+  state.readyState = 'complete';
+  listeners.get('load')?.();
+  assert.deepEqual(readyRevisions(), [7]);
+
+  const completed = runBootstrap(source, [], { themeRevision: 8, readyState: 'complete' });
+  assert.equal(completed.invocations.find(({ command }) => command === 'desktop_bridge_dashboard_loaded')
+    ?.payload.revision, 8);
+
+  const other = runBootstrap(source, [], { dashboardOrigin: 'http://localhost:1420', readyState: 'complete' });
+  assert.equal(other.invocations.some(({ command }) => command === 'desktop_bridge_dashboard_loaded'), false);
+});
+
+test('startup theme requests carry the native revision of their Dashboard document', async () => {
+  const source = await readFile(bootstrapPath, 'utf8');
+  for (const themeRevision of [1, 2]) {
+    const { invocations } = runBootstrap(source, [], { themeRevision });
+    await flushAsyncWork();
+    const request = invocations.find(({ command }) => command === 'desktop_bridge_set_startup_theme');
+    assert.equal(request?.payload.revision, themeRevision);
+  }
+});
+
+for (const allowStorageOverrides of [false, true]) {
+  test(`bridge saves theme changes with ${allowStorageOverrides ? 'own' : 'prototype'} storage methods`, async () => {
+    const source = await readFile(bootstrapPath, 'utf8');
+    const { localStorage, sessionStorage, invocations } = runBootstrap(source, [], {
+      nativeStorage: true,
+      allowStorageOverrides,
+      localValues: new Map([['uiTheme', 'PurpleThemeDark']]),
+    });
+    for (const method of ['setItem', 'removeItem', 'clear']) {
+      assert.equal(Object.hasOwn(localStorage, method), allowStorageOverrides, method);
+    }
+    await flushAsyncWork();
+    assert.deepEqual(startupThemeRequests(invocations), ['dark']);
+
+    sessionStorage.setItem('themeMode', 'light');
+    localStorage.setItem('themeMode', 'system');
+    localStorage.setItem('uiTheme', 'PurpleThemeDark');
+    await flushAsyncWork();
+    assert.deepEqual(startupThemeRequests(invocations), ['dark', 'system']);
+
+    localStorage.setItem('themeMode', 'light');
+    await flushAsyncWork();
+    localStorage.removeItem('themeMode');
+    await flushAsyncWork();
+    localStorage.clear();
+    await flushAsyncWork();
+    assert.deepEqual(startupThemeRequests(invocations), ['dark', 'system', 'light', 'dark', 'system']);
+  });
+}
+
+test('bridge waits for an in-flight theme save before sending the latest choice', async () => {
+  const source = await readFile(bootstrapPath, 'utf8');
+  let finishDarkSave;
+  const darkSave = new Promise((resolve) => { finishDarkSave = resolve; });
+  const { localStorage, invocations } = runBootstrap(source, [], {
+    nativeStorage: true,
+    localValues: new Map([['themeMode', 'dark']]),
+    saveTheme: (theme) => theme === 'dark' ? darkSave : undefined,
+  });
+  await flushAsyncWork();
+  localStorage.setItem('themeMode', 'system');
+  localStorage.setItem('themeMode', 'light');
+  await flushAsyncWork();
+  assert.deepEqual(startupThemeRequests(invocations), ['dark']);
+
+  finishDarkSave();
+  await flushAsyncWork();
+  assert.deepEqual(startupThemeRequests(invocations), ['dark', 'light']);
+});
+
+test('bridge retries repeated startup theme save failures until the save succeeds', async () => {
+  const source = await readFile(bootstrapPath, 'utf8');
+  const retryDelays = [1000, 2000, 4000, 8000, 16000, 30000, 30000];
+  let failuresRemaining = retryDelays.length;
+  const timers = [];
+  const { invocations } = runBootstrap(source, [], {
+    nativeStorage: true,
+    localValues: new Map([['themeMode', 'dark']]),
+    saveTheme() {
+      if (failuresRemaining-- > 0) throw new Error('temporary IPC failure');
+    },
+    setTimeout: (run, delay) => timers.push({ run, delay }),
+  });
+  await flushAsyncWork();
+  for (const [attempt, delay] of retryDelays.entries()) {
+    assert.deepEqual(startupThemeRequests(invocations), Array(attempt + 1).fill('dark'));
+    assert.deepEqual(timers.map((timer) => timer.delay), [delay]);
+    timers.shift().run();
+    await flushAsyncWork();
+  }
+  assert.deepEqual(startupThemeRequests(invocations), Array(retryDelays.length + 1).fill('dark'));
+  assert.equal(timers.length, 0);
+});
+
+test('bridge retries an interrupted theme storage read without a storage mutation', async () => {
+  const source = await readFile(bootstrapPath, 'utf8');
+  let failuresRemaining = 2;
+  const timers = [];
+  const { invocations } = runBootstrap(source, [], {
+    nativeStorage: true,
+    localValues: new Map([['themeMode', 'dark']]),
+    beforeStorageRead(key) {
+      if (key === 'themeMode' && failuresRemaining-- > 0) throw new Error('storage unavailable');
+    },
+    setTimeout: (run, delay) => timers.push({ run, delay }),
+  });
+  for (const delay of [1000, 2000]) {
+    await flushAsyncWork();
+    assert.deepEqual(startupThemeRequests(invocations), []);
+    assert.deepEqual(timers.map((timer) => timer.delay), [delay]);
+    timers.shift().run();
+  }
+  await flushAsyncWork();
+  assert.deepEqual(startupThemeRequests(invocations), ['dark']);
+  assert.equal(timers.length, 0);
+});
+
+test('bridge interrupts retry backoff when the Dashboard theme changes', async () => {
+  const source = await readFile(bootstrapPath, 'utf8');
+  const timers = new Map();
+  let nextTimerId = 0;
+  const { invocations, localStorage } = runBootstrap(source, [], {
+    nativeStorage: true,
+    localValues: new Map([['themeMode', 'dark']]),
+    saveTheme(theme) {
+      if (theme === 'dark') throw new Error('temporary IPC failure');
+    },
+    setTimeout(run) {
+      const id = ++nextTimerId;
+      timers.set(id, run);
+      return id;
+    },
+    clearTimeout: (id) => timers.delete(id),
+  });
+  await flushAsyncWork();
+  localStorage.setItem('uiTheme', 'PurpleThemeDark');
+  await flushAsyncWork();
+  assert.deepEqual(startupThemeRequests(invocations), ['dark']);
+  assert.deepEqual([...timers.keys()], [1]);
+
+  localStorage.setItem('themeMode', 'light');
+  await flushAsyncWork();
+  assert.deepEqual(startupThemeRequests(invocations), ['dark', 'light']);
+  assert.equal(timers.size, 0);
+});
 
 test('bridge bootstrap defines astrbotAppUpdater methods', async () => {
   const source = await readFile(bootstrapPath, 'utf8');

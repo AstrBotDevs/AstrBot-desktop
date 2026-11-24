@@ -25,6 +25,7 @@ use crate::bridge::updater_types::{
     map_update_channel_ok, map_update_check_error, map_update_install_error, map_update_install_ok,
     DesktopAppUpdateChannelResult, DesktopAppUpdateCheckResult, DesktopAppUpdateResult,
 };
+use crate::desktop_settings::{self, StartupTheme};
 use crate::{
     append_desktop_log, restart_backend_flow, runtime_paths, shell_locale, tray, update_channel,
     AtomicFlagGuard, BackendBridgeResult, BackendBridgeState, BackendState,
@@ -536,6 +537,53 @@ pub(crate) fn desktop_bridge_open_repair_install() -> BackendBridgeResult {
             reason: Some(error),
         },
     }
+}
+
+fn is_main_dashboard(webview: &tauri::Webview) -> bool {
+    let app = webview.app_handle();
+    let backend = app.state::<BackendState>();
+    webview.label() == "main"
+        && webview.url().is_ok_and(|url| {
+            crate::bridge::desktop::should_inject_desktop_bridge(&backend.backend_url, &url)
+        })
+}
+
+#[tauri::command]
+pub(crate) fn desktop_bridge_dashboard_loaded(
+    webview: tauri::Webview,
+    revision: u64,
+) -> Result<(), String> {
+    let app = webview.app_handle().clone();
+    crate::ui_dispatch::run_on_main_thread_dispatch(&app, "finish Dashboard load", move |app| {
+        if is_main_dashboard(&webview) {
+            crate::app_runtime::dashboard_loaded(app, revision);
+        }
+    })
+}
+
+#[tauri::command]
+pub(crate) fn desktop_bridge_set_startup_theme(
+    webview: tauri::Webview,
+    theme: StartupTheme,
+    revision: u64,
+) -> Result<(), String> {
+    if !is_main_dashboard(&webview) {
+        return Err("Startup theme can only be set by the desktop Dashboard.".into());
+    }
+
+    let app = webview.app_handle();
+    let settings = app.state::<crate::DesktopSettingsCache>();
+    let packaged_root_dir = runtime_paths::default_packaged_root_dir();
+    app.state::<crate::bridge::desktop::StartupThemeWrites>()
+        .save_current(revision, || {
+            settings.update(|_| {
+                desktop_settings::write_startup_theme(packaged_root_dir.as_deref(), theme)
+            })
+        })
+        .map_err(|error| {
+            append_desktop_log(&format!("failed to persist startup theme: {error}"));
+            "Failed to save startup theme.".into()
+        })
 }
 
 #[tauri::command]

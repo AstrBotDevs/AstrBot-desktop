@@ -16,17 +16,19 @@ static BACKEND_PATH_OVERRIDE: OnceLock<Option<OsString>> = OnceLock::new();
 pub(crate) fn navigate_main_window_to_backend(
     app_handle: &AppHandle,
     cache_version: Option<&str>,
+    startup_page_loaded: bool,
 ) -> Result<(), String> {
     let state = app_handle.state::<BackendState>();
     window::main_window::navigate_main_window_to_backend(
         app_handle,
         &state.backend_url,
         cache_version,
+        startup_page_loaded,
     )
 }
 
-pub(crate) fn inject_desktop_bridge(webview: &tauri::Webview<tauri::Wry>) {
-    bridge::desktop::inject_desktop_bridge(webview, append_desktop_log);
+pub(crate) fn inject_desktop_bridge(webview: &tauri::Webview<tauri::Wry>, page_url: &url::Url) {
+    bridge::desktop::inject_desktop_bridge(webview, page_url, append_desktop_log);
 }
 
 pub(crate) fn backend_path_override() -> Option<OsString> {

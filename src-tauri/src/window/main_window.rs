@@ -78,18 +78,23 @@ pub fn navigate_main_window_to_backend(
     app_handle: &AppHandle,
     backend_url: &str,
     cache_version: Option<&str>,
+    startup_page_loaded: bool,
 ) -> Result<(), String> {
     let backend_url = backend_dashboard_url(backend_url, cache_version)?;
-    let backend_url_json =
-        serde_json::to_string(&backend_url).unwrap_or_else(|_| "\"/\"".to_string());
     let Some(window) = app_handle.get_webview_window("main") else {
         return Err("Main window is unavailable after backend startup.".to_string());
     };
 
-    let js = format!("window.location.replace({backend_url_json});");
-    window
-        .eval(&js)
-        .map_err(|error| format!("Failed to navigate to backend dashboard: {error}"))
+    let result = if startup_page_loaded {
+        // Keep the startup page out of the dashboard's back history.
+        let url = serde_json::to_string(&backend_url).map_err(|error| error.to_string())?;
+        window.eval(format!("window.location.replace({url});"))
+    } else {
+        // The initial document may not have a JavaScript context yet.
+        let url = Url::parse(&backend_url).map_err(|error| error.to_string())?;
+        window.navigate(url)
+    };
+    result.map_err(|error| format!("Failed to navigate to backend dashboard: {error}"))
 }
 
 #[cfg(test)]

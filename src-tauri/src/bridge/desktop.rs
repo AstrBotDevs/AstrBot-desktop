@@ -1,6 +1,7 @@
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use serde::Deserialize;
+use tauri::Manager;
 use url::Url;
 
 use crate::{bridge::origin_policy, TRAY_RESTART_BACKEND_EVENT};
@@ -11,6 +12,32 @@ static DESKTOP_BRIDGE_CHAT_TRANSPORT_CONTRACT_TEMPLATE: &str =
 static DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT: OnceLock<String> = OnceLock::new();
 static DESKTOP_BRIDGE_CHAT_TRANSPORT_CONTRACT: OnceLock<DesktopBridgeChatTransportContract> =
     OnceLock::new();
+
+#[derive(Default)]
+pub(crate) struct StartupThemeWrites(Mutex<u64>);
+
+impl StartupThemeWrites {
+    pub(crate) fn advance(&self) {
+        *self.0.lock().unwrap() += 1;
+    }
+
+    pub(crate) fn current(&self) -> u64 {
+        *self.0.lock().unwrap()
+    }
+
+    pub(crate) fn save_current(
+        &self,
+        revision: u64,
+        save: impl FnOnce() -> Result<(), String>,
+    ) -> Result<(), String> {
+        // Hold the revision lock through persistence so a reload cannot reorder writes.
+        let current = self.0.lock().unwrap();
+        if *current == revision {
+            save()?;
+        }
+        Ok(())
+    }
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,7 +65,9 @@ fn desktop_bridge_chat_transport_contract() -> &'static DesktopBridgeChatTranspo
     })
 }
 
-fn desktop_bridge_bootstrap_script() -> &'static str {
+fn desktop_bridge_bootstrap_script(revision: u64, page_url: &Url) -> String {
+    let origin = serde_json::to_string(&page_url.origin().ascii_serialization())
+        .expect("serialize Dashboard origin");
     DESKTOP_BRIDGE_BOOTSTRAP_SCRIPT
         .get_or_init(|| {
             let contract = desktop_bridge_chat_transport_contract();
@@ -47,14 +76,17 @@ fn desktop_bridge_bootstrap_script() -> &'static str {
                 .replace("{CHAT_TRANSPORT_MODE_STORAGE_KEY}", &contract.storage_key)
                 .replace("{CHAT_TRANSPORT_MODE_WEBSOCKET}", &contract.websocket_value)
         })
-        .as_str()
+        .replace("{STARTUP_THEME_REVISION}", &revision.to_string())
+        .replace("'{DASHBOARD_ORIGIN}'", &origin)
 }
 
-pub fn inject_desktop_bridge<F>(webview: &tauri::Webview<tauri::Wry>, log: F)
+pub fn inject_desktop_bridge<F>(webview: &tauri::Webview<tauri::Wry>, page_url: &Url, log: F)
 where
     F: Fn(&str),
 {
-    if let Err(error) = webview.eval(desktop_bridge_bootstrap_script()) {
+    let revision = webview.app_handle().state::<StartupThemeWrites>().current();
+    let script = desktop_bridge_bootstrap_script(revision, page_url);
+    if let Err(error) = webview.eval(script) {
         log(&format!("failed to inject desktop bridge script: {error}"));
     }
 }
@@ -64,4 +96,45 @@ pub fn should_inject_desktop_bridge(backend_url: &str, page_url: &Url) -> bool {
         return false;
     };
     origin_policy::tray_origin_decision(&backend_url, page_url).uses_backend_origin
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bootstrap_script_injects_the_revision_for_each_dashboard_document() {
+        let page_url = Url::parse("http://localhost:6185/dashboard").unwrap();
+        for revision in [17, 18] {
+            let script = desktop_bridge_bootstrap_script(revision, &page_url);
+            assert!(!script.contains("{STARTUP_THEME_REVISION}"));
+            assert!(script.contains(&format!("const revision = Number('{revision}');")));
+            assert!(script.contains("window.location.origin === \"http://localhost:6185\""));
+        }
+    }
+
+    #[test]
+    fn older_dashboard_cannot_save_after_a_reload() {
+        let writes = StartupThemeWrites::default();
+        let old = writes.current();
+        writes.advance();
+        let new = writes.current();
+        let mut persisted = None;
+
+        writes
+            .save_current(new, || {
+                persisted = Some("light");
+                Ok(())
+            })
+            .unwrap();
+        writes
+            .save_current(old, || {
+                persisted = Some("dark");
+                Ok(())
+            })
+            .unwrap();
+
+        assert!(new > old);
+        assert_eq!(persisted, Some("light"));
+    }
 }
