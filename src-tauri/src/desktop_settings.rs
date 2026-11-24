@@ -36,6 +36,7 @@ impl DesktopSettingsCache {
 pub(crate) enum DesktopSettingKey {
     LaunchAtLogin,
     SilentLaunch,
+    #[cfg(any(not(windows), test))]
     CloseToTray,
     PluginUiExtensions,
 }
@@ -49,6 +50,22 @@ pub(crate) enum StartupTheme {
     Dark,
     #[default]
     System,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum CloseAction {
+    HideToTray,
+    Exit,
+}
+
+fn deserialize_windows_close_action<'de, D>(
+    deserializer: D,
+) -> Result<Option<CloseAction>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(serde_json::from_value(Value::deserialize(deserializer)?).ok())
 }
 
 fn default_launch_at_login() -> bool {
@@ -89,6 +106,13 @@ pub(crate) struct DesktopSettings {
     #[serde(rename = "closeToTray", default = "default_close_to_tray")]
     pub(crate) close_to_tray: bool,
     #[serde(
+        rename = "windowsCloseAction",
+        default,
+        deserialize_with = "deserialize_windows_close_action",
+        skip_serializing_if = "Option::is_none"
+    )]
+    windows_close_action: Option<CloseAction>,
+    #[serde(
         rename = "pluginUiExtensionsEnabled",
         default = "default_plugin_ui_extensions_enabled"
     )]
@@ -109,6 +133,7 @@ impl Default for DesktopSettings {
             launch_at_login: default_launch_at_login(),
             silent_launch: default_silent_launch(),
             close_to_tray: default_close_to_tray(),
+            windows_close_action: None,
             plugin_ui_extensions_enabled: default_plugin_ui_extensions_enabled(),
             plugin_ui_extension_grants: Vec::new(),
             other: Map::new(),
@@ -124,10 +149,21 @@ impl DesktopSettings {
             .unwrap_or_default()
     }
 
+    pub(crate) fn close_action(&self, is_windows: bool) -> Option<CloseAction> {
+        if is_windows {
+            self.windows_close_action
+        } else if self.close_to_tray {
+            Some(CloseAction::HideToTray)
+        } else {
+            Some(CloseAction::Exit)
+        }
+    }
+
     fn set(&mut self, key: DesktopSettingKey, value: bool) {
         match key {
             DesktopSettingKey::LaunchAtLogin => self.launch_at_login = value,
             DesktopSettingKey::SilentLaunch => self.silent_launch = value,
+            #[cfg(any(not(windows), test))]
             DesktopSettingKey::CloseToTray => self.close_to_tray = value,
             DesktopSettingKey::PluginUiExtensions => self.plugin_ui_extensions_enabled = value,
         }
@@ -243,6 +279,23 @@ pub(crate) fn write_desktop_setting(
     key: DesktopSettingKey,
     value: bool,
 ) -> Result<DesktopSettings, String> {
+    update_desktop_settings(packaged_root_dir, |state| state.set(key, value))
+}
+
+#[cfg(any(windows, test))]
+pub(crate) fn write_windows_close_action(
+    packaged_root_dir: Option<&Path>,
+    action: Option<CloseAction>,
+) -> Result<DesktopSettings, String> {
+    update_desktop_settings(packaged_root_dir, |state| {
+        state.windows_close_action = action
+    })
+}
+
+fn update_desktop_settings(
+    packaged_root_dir: Option<&Path>,
+    update: impl FnOnce(&mut DesktopSettings),
+) -> Result<DesktopSettings, String> {
     let _state_guard = crate::desktop_state::lock_desktop_state();
     let Some(state_path) = crate::desktop_state::resolve_desktop_state_path(packaged_root_dir)
     else {
@@ -253,7 +306,7 @@ pub(crate) fn write_desktop_setting(
     };
 
     let mut state = load_state(&state_path)?;
-    state.set(key, value);
+    update(&mut state);
     save_state(&state_path, &state)?;
     Ok(state)
 }
@@ -414,6 +467,36 @@ mod tests {
                 Some("en-US")
             );
         }
+    }
+
+    #[test]
+    fn windows_close_choice_can_be_remembered_and_reset_without_changing_legacy_settings() {
+        let _root_guard = EnvVarGuard::clear(crate::ASTRBOT_ROOT_ENV);
+        let root = tempfile::tempdir().unwrap();
+        let path = state_path(root.path());
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, r#"{"closeToTray":false,"locale":"en-US"}"#).unwrap();
+
+        let read = || read_desktop_settings(Some(root.path()));
+        assert_eq!(read().close_action(true), None);
+        assert_eq!(read().close_action(false), Some(CloseAction::Exit));
+
+        for action in [Some(CloseAction::HideToTray), Some(CloseAction::Exit), None] {
+            write_windows_close_action(Some(root.path()), action).unwrap();
+            let saved = read();
+            assert_eq!(saved.close_action(true), action);
+            assert_eq!(saved.close_action(false), Some(CloseAction::Exit));
+            assert_eq!(saved.other["locale"], "en-US");
+        }
+    }
+
+    #[test]
+    fn invalid_windows_close_choice_prompts_without_resetting_other_settings() {
+        let settings: DesktopSettings =
+            serde_json::from_str(r#"{"windowsCloseAction":"unknown","silentLaunch":true}"#)
+                .unwrap();
+        assert_eq!(settings.close_action(true), None);
+        assert!(settings.silent_launch);
     }
 
     #[test]

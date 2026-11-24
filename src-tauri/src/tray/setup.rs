@@ -74,10 +74,20 @@ pub fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
         None::<&str>,
     )
     .map_err(|error| format!("Failed to create tray silent launch menu item: {error}"))?;
-    let close_to_tray_item = CheckMenuItem::with_id(
+    #[cfg(windows)]
+    let close_behavior_item = MenuItem::with_id(
         app_handle,
         actions::TRAY_MENU_CLOSE_TO_TRAY,
-        shell_texts.tray_close_to_tray,
+        shell_texts.tray_close_behavior,
+        true,
+        None::<&str>,
+    )
+    .map_err(|error| format!("Failed to create tray reset close choice menu item: {error}"))?;
+    #[cfg(not(windows))]
+    let close_behavior_item = CheckMenuItem::with_id(
+        app_handle,
+        actions::TRAY_MENU_CLOSE_TO_TRAY,
+        shell_texts.tray_close_behavior,
         true,
         desktop_settings.close_to_tray,
         None::<&str>,
@@ -122,7 +132,7 @@ pub fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
             &settings_separator,
             &launch_at_login_item,
             &silent_launch_item,
-            &close_to_tray_item,
+            &close_behavior_item,
             &plugin_ui_extensions_item,
             &clear_plugin_ui_extension_grants_item,
             &separator,
@@ -137,7 +147,7 @@ pub fn setup_tray(app_handle: &AppHandle) -> Result<(), String> {
         restart_backend_item: restart_backend_item.clone(),
         launch_at_login_item: launch_at_login_item.clone(),
         silent_launch_item: silent_launch_item.clone(),
-        close_to_tray_item: close_to_tray_item.clone(),
+        close_behavior_item: close_behavior_item.clone(),
         plugin_ui_extensions_item: plugin_ui_extensions_item.clone(),
         clear_plugin_ui_extension_grants_item: clear_plugin_ui_extension_grants_item.clone(),
         quit_item: quit_item.clone(),
