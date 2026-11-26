@@ -316,7 +316,7 @@ fn configure_setup(
     startup_page: Receiver<()>,
 ) -> Builder<tauri::Wry> {
     builder.setup(move |app| {
-        crate::install_link::setup(app)?;
+        crate::install_link::setup(app);
         let app_handle = app.handle().clone();
         if let Err(error) = tray::setup::setup_tray(&app_handle) {
             append_startup_log(&format!("failed to initialize tray: {error}"));

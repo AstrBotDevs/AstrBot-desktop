@@ -18,7 +18,7 @@ pub async fn run_restart_backend_task(
     auth_token: Option<String>,
 ) -> BackendBridgeResult {
     let app_handle_for_worker = app_handle.clone();
-    match tauri::async_runtime::spawn_blocking(move || {
+    let result = match tauri::async_runtime::spawn_blocking(move || {
         do_restart_backend(&app_handle_for_worker, auth_token.as_deref())
     })
     .await
@@ -35,5 +35,9 @@ pub async fn run_restart_backend_task(
             ok: false,
             reason: Some(format!("Backend restart task failed: {error}")),
         },
+    };
+    if result.ok {
+        crate::install_link::resume_pending(&app_handle);
     }
+    result
 }

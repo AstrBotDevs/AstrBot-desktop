@@ -82,21 +82,30 @@ pub(crate) struct InstallLinkState {
     ready: AtomicBool,
 }
 
-pub(crate) fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn setup(app: &tauri::App) {
     #[cfg(target_os = "linux")]
-    app.deep_link().register_all()?;
+    if let Err(error) = app.deep_link().register_all() {
+        append_desktop_log(&format!(
+            "could not register plugin installation links: {error}"
+        ));
+    }
     let handle = app.handle().clone();
     app.deep_link().on_open_url(move |event| {
         for url in event.urls() {
             receive(&handle, url.as_str());
         }
     });
-    if let Some(urls) = app.deep_link().get_current()? {
-        for url in urls {
-            receive(app.handle(), url.as_str());
+    match app.deep_link().get_current() {
+        Ok(Some(urls)) => {
+            for url in urls {
+                receive(app.handle(), url.as_str());
+            }
         }
+        Ok(None) => {}
+        Err(error) => append_desktop_log(&format!(
+            "could not read the initial plugin installation link: {error}"
+        )),
     }
-    Ok(())
 }
 
 fn receive(app: &AppHandle, value: &str) {
@@ -112,19 +121,7 @@ fn receive(app: &AppHandle, value: &str) {
             let state = app.state::<InstallLinkState>();
             *state.pending.lock().unwrap() = Some(fragment);
             crate::window::actions::show_main_window(app, DEFAULT_SHELL_LOCALE, append_desktop_log);
-            if state.ready.load(Ordering::SeqCst) {
-                let backend = app.state::<BackendState>().bridge_state(app);
-                if backend.spawning || backend.restarting {
-                    state.ready.store(false, Ordering::SeqCst);
-                    return;
-                }
-                if !backend.running && !backend.spawning && !backend.restarting {
-                    state.ready.store(false, Ordering::SeqCst);
-                    crate::startup_task::spawn_startup_task(app.clone(), crate::append_startup_log);
-                } else {
-                    open_pending(app);
-                }
-            }
+            resume_pending(app);
         },
     );
     if let Err(error) = result {
@@ -142,7 +139,76 @@ pub(crate) fn dashboard_ready(app: &AppHandle) {
     app.state::<InstallLinkState>()
         .ready
         .store(true, Ordering::SeqCst);
-    open_pending(app);
+    resume_pending(app);
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum PendingAction {
+    Wait,
+    Open,
+    StartBackend,
+}
+
+fn pending_action(ready: bool, startup_failed: bool, running: bool, busy: bool) -> PendingAction {
+    if busy || (!ready && !startup_failed) {
+        PendingAction::Wait
+    } else if ready && running {
+        PendingAction::Open
+    } else {
+        PendingAction::StartBackend
+    }
+}
+
+pub(crate) fn resume_pending(app: &AppHandle) {
+    let state = app.state::<InstallLinkState>();
+    if state.pending.lock().unwrap().is_none() || app.state::<BackendState>().is_quitting() {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        // bridge_state performs synchronous DNS and TCP probes.
+        let backend = app.state::<BackendState>().bridge_state(&app);
+        if let Err(error) = crate::ui_dispatch::run_on_main_thread_dispatch(
+            &app,
+            "resume plugin installation link",
+            move |app| {
+                let state = app.state::<InstallLinkState>();
+                let current_backend = app.state::<BackendState>();
+                if current_backend.is_quitting() || state.pending.lock().unwrap().is_none() {
+                    return;
+                }
+                let page = app.state::<Mutex<crate::startup_task::StartupPage>>();
+                let startup_failed = matches!(
+                    *page.lock().unwrap(),
+                    crate::startup_task::StartupPage::NativeError
+                );
+                let busy = backend.spawning
+                    || backend.restarting
+                    || crate::restart_backend_flow::is_backend_action_in_progress(&current_backend);
+                match pending_action(
+                    state.ready.load(Ordering::SeqCst),
+                    startup_failed,
+                    backend.running,
+                    busy,
+                ) {
+                    PendingAction::Wait => {}
+                    PendingAction::Open => open_pending(app),
+                    PendingAction::StartBackend => {
+                        state.ready.store(false, Ordering::SeqCst);
+                        if startup_failed {
+                            *page.lock().unwrap() = crate::startup_task::StartupPage::Waiting;
+                        }
+                        crate::startup_task::spawn_startup_task(
+                            app.clone(),
+                            crate::append_startup_log,
+                        );
+                    }
+                }
+            },
+        ) {
+            append_desktop_log(&error);
+        }
+    });
 }
 
 fn open_pending(app: &AppHandle) {
@@ -179,7 +245,44 @@ fn open_pending(app: &AppHandle) {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_target;
+    use super::{parse_target, pending_action, PendingAction};
+
+    #[test]
+    fn links_wait_during_restart_and_resume_without_a_document_reload() {
+        assert_eq!(
+            pending_action(true, false, false, true),
+            PendingAction::Wait
+        );
+        assert_eq!(
+            pending_action(true, false, true, false),
+            PendingAction::Open
+        );
+        assert_eq!(
+            pending_action(false, false, true, false),
+            PendingAction::Wait
+        );
+    }
+
+    #[test]
+    fn a_failed_startup_can_be_retried_even_before_the_dashboard_has_loaded() {
+        assert_eq!(
+            pending_action(true, false, false, false),
+            PendingAction::StartBackend
+        );
+        assert_eq!(
+            pending_action(false, true, false, false),
+            PendingAction::StartBackend
+        );
+        // A recovered backend still needs to load the dashboard from the error page.
+        assert_eq!(
+            pending_action(false, true, true, false),
+            PendingAction::StartBackend
+        );
+        assert_eq!(
+            pending_action(false, true, false, true),
+            PendingAction::Wait
+        );
+    }
 
     #[test]
     fn forwards_metadata_identity_and_custom_source() {
