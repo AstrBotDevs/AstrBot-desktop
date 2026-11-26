@@ -134,6 +134,11 @@ use crate::{
 
 fn configure_plugins(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
     builder
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            append_desktop_log("detected second instance launch, focusing existing main window");
+            window::actions::show_main_window(app, DEFAULT_SHELL_LOCALE, append_desktop_log);
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -141,10 +146,6 @@ fn configure_plugins(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            append_desktop_log("detected second instance launch, focusing existing main window");
-            window::actions::show_main_window(app, DEFAULT_SHELL_LOCALE, append_desktop_log);
-        }))
 }
 
 fn configure_window_events(builder: Builder<tauri::Wry>) -> Builder<tauri::Wry> {
@@ -203,6 +204,7 @@ fn handle_page_load_started(webview: &tauri::Webview<tauri::Wry>, payload: &Page
     append_desktop_log(&format!("page-load started: {}", payload.url()));
     // Wry emits Started on commit (GTK/macOS) or ContentLoading (WebView2).
     if webview.label() == "main" {
+        crate::install_link::page_started(webview.app_handle());
         webview
             .app_handle()
             .state::<bridge::desktop::StartupThemeWrites>()
@@ -294,6 +296,9 @@ pub(crate) fn dashboard_loaded(app: &tauri::AppHandle, revision: u64) {
         let settings = app.state::<DesktopSettingsCache>().get();
         apply_startup_window_visibility(app, settings.silent_launch);
     }
+    if revision == current_revision {
+        crate::install_link::dashboard_ready(app);
+    }
 }
 
 fn apply_startup_window_visibility(app_handle: &tauri::AppHandle, silent_launch: bool) {
@@ -311,6 +316,7 @@ fn configure_setup(
     startup_page: Receiver<()>,
 ) -> Builder<tauri::Wry> {
     builder.setup(move |app| {
+        crate::install_link::setup(app)?;
         let app_handle = app.handle().clone();
         if let Err(error) = tray::setup::setup_tray(&app_handle) {
             append_startup_log(&format!("failed to initialize tray: {error}"));
@@ -409,6 +415,7 @@ pub(crate) fn run() {
 
     builder
         .manage(BackendState::default())
+        .manage(crate::install_link::InstallLinkState::default())
         .manage(Mutex::new(startup_task::StartupPage::default()))
         .manage(bridge::desktop::StartupThemeWrites::default())
         .manage(DesktopSettingsCache::new(settings))

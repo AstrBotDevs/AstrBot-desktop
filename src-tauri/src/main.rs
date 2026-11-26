@@ -13,6 +13,7 @@ mod desktop_settings;
 mod desktop_state;
 
 mod exit_state;
+mod install_link;
 mod lifecycle;
 
 mod launch_plan;
